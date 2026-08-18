@@ -96,13 +96,17 @@ public sealed class TrayIconService : IDisposable
     {
         if (msg == WM_APP + 100)
         {
-            uint wp = (uint)wParam;
-            if (wp == 100)
+            uint lp = (uint)lParam;
+            uint message = lp & 0xFFFF; // LOWORD
+            uint iconId = (lp >> 16) & 0xFFFF; // HIWORD
+
+            if (iconId == 100)
             {
-                uint lp = (uint)lParam;
-                if (lp == WM_LBUTTONUP)
+                // Dans la version 4, le clic gauche envoie NIN_SELECT (0x0400) ou WM_LBUTTONUP (0x0202)
+                if (message == 0x0400 || message == 0x0202)
                     LeftClick?.Invoke(this, EventArgs.Empty);
-                else if (lp == WM_RBUTTONUP)
+                // Le clic droit envoie WM_CONTEXTMENU (0x007B) ou WM_RBUTTONUP (0x0205)
+                else if (message == 0x007B || message == 0x0205)
                     RightClick?.Invoke(this, EventArgs.Empty);
             }
         }

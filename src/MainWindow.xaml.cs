@@ -864,6 +864,11 @@ public sealed partial class MainWindow : Window
 
     public void FetchCoversForTracks(List<Track> tracks) => _ = FetchMissingCoversInBackgroundAsync(tracks);
     public void TriggerLibraryRescan() => _ = RunRescanAsync();
+    
+    public void RefreshSettingsFolders()
+    {
+        SettingsPageInstance?.RefreshFoldersList();
+    }
 
     public List<Track> Library => _library;
 

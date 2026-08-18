@@ -214,7 +214,7 @@ public sealed partial class SettingsPage : Page
 		return Color.FromArgb(byte.MaxValue, Convert.ToByte(hex.Substring(0, 2), 16), Convert.ToByte(hex.Substring(2, 2), 16), Convert.ToByte(hex.Substring(4, 2), 16));
 	}
 
-	private void RefreshFoldersList()
+	public void RefreshFoldersList()
 	{
 		FoldersList.Items.Clear();
 		foreach (string folder in App.Settings.Current.MusicFolders)

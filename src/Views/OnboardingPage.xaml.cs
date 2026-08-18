@@ -70,6 +70,7 @@ public sealed partial class OnboardingPage : Page
 		if (storageFolder != null)
 		{
 			App.Settings.Current.MusicFolders.Add(storageFolder.Path);
+			App.MainWindowInstance?.RefreshSettingsFolders();
 		}
 		App.Settings.Current.HasCompletedOnboarding = true;
 		await App.Settings.SaveAsync();

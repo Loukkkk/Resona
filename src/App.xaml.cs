@@ -69,7 +69,7 @@ public partial class App : Application
         _window = new MainWindow();
         MainWindowInstance = (MainWindow)_window;
 
-        // â”€â”€ Window close → minimize to tray â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ——— Window close → minimize to tray ——————————————————————————————
         _window.AppWindow.Closing += (s, e) =>
         {
             if (Settings.Current.MinimizeToTrayOnClose)
@@ -85,17 +85,31 @@ public partial class App : Application
 
         _ = Cache.InitializeAsync();
 
-        // â”€â”€ Démarrage minimisé â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if (Settings.Current.StartMinimized && Settings.Current.MinimizeToTrayOnClose)
+        // 🌟 Démarrage minimisé 🌟
+        bool isAutostart = Environment.GetCommandLineArgs().Contains("--autostart");
+        if (isAutostart && Settings.Current.StartMinimized && Settings.Current.MinimizeToTrayOnClose)
         {
             if (TrayIcon == null) SetupTrayIcon();
             TrayIcon?.Show();
             _window.AppWindow.Hide();
         }
 
-        // â”€â”€ Démarrage avec Windows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // 🌟 Démarrage avec Windows 🌟
         ApplyStartWithWindowsSetting();
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern IntPtr CreatePopupMenu();
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    public static extern bool InsertMenu(IntPtr hMenu, uint uPosition, uint uFlags, IntPtr uIDNewItem, string lpNewItem);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern uint TrackPopupMenuEx(IntPtr hMenu, uint uFlags, int x, int y, IntPtr hWnd, IntPtr lptpm);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern bool DestroyMenu(IntPtr hMenu);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
+    public struct POINT { public int X; public int Y; }
 
     public static void SetupTrayIcon()
     {
@@ -119,10 +133,34 @@ public partial class App : Application
         {
             window.DispatcherQueue.TryEnqueue(() =>
             {
-                TrayIcon?.Dispose();
-                TrayIcon = null;
-                AudioEngine.Dispose();
-                Application.Current.Exit();
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+                SetForegroundWindow(hwnd); // Important pour fermer le menu quand on clique ailleurs
+
+                IntPtr hMenu = CreatePopupMenu();
+                InsertMenu(hMenu, 0, 0x0000, (IntPtr)1, "Ouvrir Resona");
+                InsertMenu(hMenu, 1, 0x0000, (IntPtr)2, "Quitter");
+
+                GetCursorPos(out POINT pt);
+                
+                // Affiche le menu et attend le choix (0x0100 = TPM_RETURNCMD)
+                uint cmd = TrackPopupMenuEx(hMenu, 0x0100 | 0x0002, pt.X, pt.Y, hwnd, IntPtr.Zero);
+                DestroyMenu(hMenu);
+
+                if (cmd == 1)
+                {
+                    ShowWindow(hwnd, 9);
+                    SetForegroundWindow(hwnd);
+                    window.AppWindow.Show(true);
+                    window.AppWindow.MoveInZOrderAtTop();
+                    TrayIcon?.Hide();
+                }
+                else if (cmd == 2)
+                {
+                    TrayIcon?.Dispose();
+                    TrayIcon = null;
+                    AudioEngine.Dispose();
+                    Application.Current.Exit();
+                }
             });
         };
     }
@@ -138,7 +176,7 @@ public partial class App : Application
             {
                 var exePath = Environment.ProcessPath;
                 if (!string.IsNullOrEmpty(exePath))
-                    key.SetValue("Resona", $"\"{exePath}\"");
+                    key.SetValue("Resona", $"\"{exePath}\" --autostart");
             }
             else
             {

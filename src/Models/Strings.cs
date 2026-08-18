@@ -34,18 +34,15 @@ public class Strings : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-
+    public string Dialog_StartWithWindowsTitle => IsFr ? "Démarrage avec Windows" : "Start with Windows";
+    public string Dialog_StartWithWindowsContent => IsFr 
+        ? "Le démarrage automatique de l'application vient d'être activé.\n\nAttention : Si vous déplacez l'application dans un autre dossier, n'oubliez pas de la relancer manuellement une fois depuis son nouvel emplacement avant d'éteindre votre PC. L'application mettra ainsi à jour son emplacement automatiquement pour que cette fonctionnalité continue de marcher !" 
+        : "Automatic app startup has just been enabled.\n\nNote: If you move the application to another folder, do not forget to launch it manually once from its new location before turning off your PC. The app will automatically update its location so this feature keeps working!";
 
     public void NotifyLanguageChanged()
-
     {
-
         // Null property name triggers an update for all bindings to this object
-
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
-
-    
-
     }
 
 

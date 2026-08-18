@@ -79,7 +79,6 @@ Resona/
     ├── Program.cs             # Native entry point for WinUI 3
     ├── App.xaml(.cs)          # Application lifecycle and service registration
     ├── MainWindow.xaml(.cs)   # Main UI, navigation, and playback bar overlay
-    ├── Assets/                # Images, fonts, and static resources
     ├── Converters/            # XAML value converters (UI data binding)
     ├── Helpers/               # Utility classes (animations, UI extensions)
     ├── Models/

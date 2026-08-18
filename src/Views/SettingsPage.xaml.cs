@@ -557,6 +557,39 @@ public sealed partial class SettingsPage : Page
 				StartMinimizedSwitch.IsOn = false;
 				await App.Settings.SaveAsync();
 			}
+			else
+			{
+				try
+				{
+					var dialog = new ContentDialog
+					{
+						Title = Resona.Models.Strings.Current.Dialog_StartWithWindowsTitle,
+						XamlRoot = this.XamlRoot,
+						RequestedTheme = ActualTheme
+					};
+
+					var contentStack = new StackPanel { Spacing = 24, Margin = new Thickness(0, 10, 0, 0) };
+					contentStack.Children.Add(new TextBlock
+					{
+						Text = Resona.Models.Strings.Current.Dialog_StartWithWindowsContent,
+						TextWrapping = TextWrapping.Wrap
+					});
+
+					var okBtn = new Button
+					{
+						Content = "OK",
+						HorizontalAlignment = HorizontalAlignment.Center,
+						Padding = new Thickness(40, 8, 40, 8)
+					};
+					okBtn.Click += (s, ev) => dialog.Hide();
+					
+					contentStack.Children.Add(okBtn);
+					dialog.Content = contentStack;
+
+					await dialog.ShowAsync();
+				}
+				catch { }
+			}
 			App.ApplyStartWithWindowsSetting();
 		}
 	}

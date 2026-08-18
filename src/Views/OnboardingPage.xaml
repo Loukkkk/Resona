@@ -29,7 +29,13 @@
             <StackPanel x:Name="ActionPanel" Spacing="12" Opacity="0" HorizontalAlignment="Center">
                 <Button Content="{x:Bind models:Strings.Current.OnboardingPage_Content_Choisirundossierdemu, Mode=OneWay}" HorizontalAlignment="Center"
                         Style="{ThemeResource AccentButtonStyle}" Padding="24,12"
-                        Click="ChooseFolder_Click" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        Click="ChooseFolder_Click">
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="AccentButtonForeground" Color="Black" />
+                        <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="White" />
+                        <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="White" />
+                    </Button.Resources>
+                </Button>
                 <Button Content="{x:Bind models:Strings.Current.OnboardingPage_Content_Passercettetape, Mode=OneWay}" HorizontalAlignment="Center"
                         Background="Transparent" BorderThickness="0"
                         Click="Skip_Click" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />

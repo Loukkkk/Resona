@@ -137,8 +137,8 @@ public partial class App : Application
                 SetForegroundWindow(hwnd); // Important pour fermer le menu quand on clique ailleurs
 
                 IntPtr hMenu = CreatePopupMenu();
-                InsertMenu(hMenu, 0, 0x0000, (IntPtr)1, "Ouvrir Resona");
-                InsertMenu(hMenu, 1, 0x0000, (IntPtr)2, "Quitter");
+                InsertMenu(hMenu, 0, 0x0000, (IntPtr)2, "Quitter");
+                InsertMenu(hMenu, 1, 0x0000, (IntPtr)1, "Ouvrir Resona");
 
                 GetCursorPos(out POINT pt);
                 

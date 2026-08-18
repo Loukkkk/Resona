@@ -528,7 +528,8 @@ public sealed partial class MainWindow : Window
         gradient.GradientStops.Add(new GradientStop { Color = darkened, Offset = 0 });
         gradient.GradientStops.Add(new GradientStop { Color = themeSurface, Offset = 1 });
 
-        if (App.Settings.Current.PlayerGradientOverflowEnabled)
+        bool isSolid = App.Settings.Current.Backdrop == AppBackdropStyle.Solid;
+        if (App.Settings.Current.PlayerGradientOverflowEnabled && isSolid)
         {
             _gradientStartColor = darkened;
             _gradientEndColor = themeSurface;
@@ -552,7 +553,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            PlayerBar.Background = gradient;
+            PlayerBar.Background = isSolid ? gradient : transparentBrush;
             PlayerBar.Margin = new Thickness(0);
             PlayerGradientOverflow.Visibility = Visibility.Collapsed;
             PlayerGradientFadeLayer.Visibility = Visibility.Collapsed;
@@ -2697,7 +2698,7 @@ public sealed partial class MainWindow : Window
 			PlayerBar.Visibility = Visibility.Visible;
 			PlayerBar.Opacity = 0.0;
 			PlayerBar.Height = 0.0;
-			if (App.Settings.Current.PlayerGradientOverflowEnabled)
+			if (App.Settings.Current.PlayerGradientOverflowEnabled && App.Settings.Current.Backdrop == AppBackdropStyle.Solid)
 			{
 				PlayerGradientOverflow.Visibility = Visibility.Visible;
 				PlayerGradientFadeLayer.Visibility = Visibility.Visible;

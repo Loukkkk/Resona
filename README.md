@@ -6,13 +6,15 @@ A modern Windows audio player built with WinUI 3 and .NET 8. Designed for a quic
 
 * 🎨 **Modern Design:** Beautiful WinUI 3 interface with support for 3 backdrop materials: Solid Color, Acrylic, and Mica.
 * 🎧 **Bit-perfect Playback:** Uses NAudio (with an option to activate WASAPI Exclusive mode to bypass the Windows mixer for pure, unaltered sound).
-* 🔊 **Non-Destructive Normalization:** ReplayGain-style RMS/peak volume analysis. Gain is applied only during playback, ensuring your original files are never modified.
-* 📝 **Synchronized Lyrics:** Automatically fetches and caches synchronized lyrics via [LRCLib](https://lrclib.net).
-* 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality album covers using the iTunes Search API.
-* 🏷️ **Auto-Tagging:** Automatically identifies unknown tracks using acoustic fingerprinting (Chromaprint/fpcalc) to fetch accurate metadata (artist, title) from MusicBrainz.
-* 📂 **Playlist Management:** Full support for M3U and M3U8 import/export.
+* 🎛️ **Equalizer:** Built-in 10-band graphic equalizer with presets to fine-tune your audio experience.
+* 🔊 **Normalization:** ReplayGain-style RMS/peak volume analysis. Gain is applied only during playback, ensuring your original files are never modified.
+* 🎤 **Synchronized Lyrics:** Automatically fetches and caches synchronized lyrics via [LRCLib](https://lrclib.net), complete with a built-in translation option.
+* 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality covers using the iTunes Search API.
+* 📖 **Artist Biographies:** Automatically fetches and displays artist biographies and information directly from Wikipedia.
+* 🔍 **Auto-Tagging:** Automatically identifies unknown tracks using acoustic fingerprinting (Chromaprint/fpcalc) to fetch accurate metadata (artist, title) from MusicBrainz.
+* 📝 **Playlist Management:** Full support for M3U and M3U8 import/export.
 * 🤖 **AI DJ:** Provides prompts to AI models to generate smart playlists, suggest tracks, and offer deep insights into your music collection.
-* 🌐 **Language:** Available in English and French. The interface auto-adapts to your OS language.
+* 🌍 **Language:** Available in English and French. The interface auto-adapts to your OS language.
 
 ---
 

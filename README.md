@@ -1,6 +1,6 @@
 # 🎵 Resona
 
-A modern Windows audio player built with WinUI 3 and .NET 8. Designed for a quick startup experience and excellent quality, Resona organizes your music library without getting in your way.
+A modern Windows local music player designed for seamless library management, music downloading, auto-tagging, lyrics & cover fetching, AI playlist prompts, an equalizer, EN/FR support & more.
 
 ## ✨ Features
 

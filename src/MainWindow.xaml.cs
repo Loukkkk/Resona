@@ -841,6 +841,8 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
 
     private const int GWLP_WNDPROC = -4;
     private const uint WM_GETMINMAXINFO = 0x0024;
+    private const uint WM_COMMAND = 0x0111;
+    private const uint THBN_CLICKED = 0x1800;
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct MINMAXINFO
@@ -884,6 +886,29 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
             info.ptMinTrackSize.X = 940; // Default min width
             info.ptMinTrackSize.Y = 600; // Default min height
             System.Runtime.InteropServices.Marshal.StructureToPtr(info, lParam, true);
+        }
+        else if (msg == WM_COMMAND)
+        {
+            // Clics sur les boutons de la thumbnail toolbar (barre des tâches)
+            long wp = wParam.ToInt64();
+            uint notifCode = (uint)((wp >> 16) & 0xFFFF);
+            uint buttonId = (uint)(wp & 0xFFFF);
+
+            if (notifCode == THBN_CLICKED)
+            {
+                switch (buttonId)
+                {
+                    case 100: // Play/Pause
+                        DispatcherQueue.TryEnqueue(() => PlayPauseButton_Click(null, null));
+                        return IntPtr.Zero;
+                    case 101: // Précédent
+                        DispatcherQueue.TryEnqueue(() => PrevButton_Click(null, null));
+                        return IntPtr.Zero;
+                    case 102: // Suivant
+                        DispatcherQueue.TryEnqueue(() => NextButton_Click(null, null));
+                        return IntPtr.Zero;
+                }
+            }
         }
         return CallWindowProc(_originalWndProc, hwnd, msg, wParam, lParam);
     }

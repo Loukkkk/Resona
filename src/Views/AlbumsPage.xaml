@@ -1,4 +1,4 @@
-<Page
+ï»¿<Page
     NavigationCacheMode="Required"
     Background="Transparent"
     x:Class="Resona.Views.AlbumsPage"
@@ -6,14 +6,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:Resona.Models">
 
-    <Grid Padding="24">
+    <Grid Padding="24,44,24,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- En-tête -->
+        <!-- En-tï¿½te -->
         <Grid Grid.Row="0" Margin="0,0,0,16" VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -49,7 +49,14 @@
                            MaximumRowsOrColumns="99"
                            ItemWidth="196"
                            ItemHeight="300"
-                           Margin="0,0,0,24" />
+                           Margin="0,0,0,24" >
+                <VariableSizedWrapGrid.ChildrenTransitions>
+                    <TransitionCollection>
+                        <RepositionThemeTransition />
+                        <AddDeleteThemeTransition />
+                    </TransitionCollection>
+                </VariableSizedWrapGrid.ChildrenTransitions>
+            </VariableSizedWrapGrid>
         </ScrollViewer>
 
         <!-- Pagination -->
@@ -67,6 +74,7 @@
         </StackPanel>
     </Grid>
 </Page>
+
 
 
 

@@ -51,7 +51,7 @@ Resona does not have an installer — to fully remove it:
 
 ## ⚠️ Disclaimer
 
-This application was conceived and fully coded by AI. Since no other audio player on the market currently offers this blend of modern design, and all these handy features, this AI-generated solution fills the gap.
+This application was fully coded by AI. Since no other audio player on the market currently offers this blend of modern design, and all these handy features, this AI-generated solution fills the gap.
 
 > [!NOTE]
 > The day a human developer creates a similar open-source application with equivalent or superior quality, this repository will be permanently deleted.

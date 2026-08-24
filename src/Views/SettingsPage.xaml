@@ -1,11 +1,11 @@
-<Page
+ï»¿<Page
     x:Class="Resona.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:Resona.Models"
     Background="Transparent" NavigationCacheMode="Required">
 
-    <ScrollViewer Padding="32,24" Background="Transparent">
+    <ScrollViewer Padding="32,44,32,24" Background="Transparent">
         <StackPanel Spacing="28" MaxWidth="720" HorizontalAlignment="Left">
 
             <TextBlock Text="{x:Bind models:Strings.Current.GlobalSettings, Mode=OneWay}" FontSize="32" FontWeight="Bold"
@@ -20,21 +20,42 @@
                         <StackPanel Spacing="6">
                             <TextBlock Text="{x:Bind models:Strings.Current.SettingsLanguageDesc, Mode=OneWay}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                            <ComboBox x:Name="LanguageComboBox" Width="200" SelectionChanged="LanguageComboBox_SelectionChanged">
-                                <ComboBoxItem Content="{x:Bind models:Strings.Current.SettingsPage_Content_Franaisfr, Mode=OneWay}" Tag="fr" />
-                                <ComboBoxItem Content="{x:Bind models:Strings.Current.SettingsPage_Content_Englishen, Mode=OneWay}" Tag="en" />
-                            </ComboBox>
+                            <DropDownButton x:Name="LanguageDropDown" MinHeight="32" Padding="12,0,12,0" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Foreground="{ThemeResource TextFillColorPrimaryBrush}">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout Placement="Bottom">
+                                        <MenuFlyoutItem Text="{x:Bind models:Strings.Current.SettingsPage_Content_Franaisfr, Mode=OneWay}" Tag="fr" Click="LanguageFlyoutItem_Click" />
+                                        <MenuFlyoutItem Text="{x:Bind models:Strings.Current.SettingsPage_Content_Englishen, Mode=OneWay}" Tag="en" Click="LanguageFlyoutItem_Click" />
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
                         </StackPanel>
                     </StackPanel>
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== FONCTIONNALITÉS ===================== -->
+            <!-- ===================== FONCTIONNALITES ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Fonctionnalits, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 <Grid Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="16">
+                        <ToggleSwitch x:Name="NowPlayingSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Toggle_AutoNowPlaying, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="NowPlayingSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_AutoNowPlayingDesc, Mode=OneWay}"
+                                   TextWrapping="Wrap" Opacity="0.6" FontSize="12" Margin="0,-12,0,0"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+
+                        <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+
                         <ToggleSwitch x:Name="NormalizationSwitch"
                                       Header="{x:Bind models:Strings.Current.SettingsPage_Header_Normalisationduvolum, Mode=OneWay}"
                                       OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
@@ -122,7 +143,7 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== SYSTÈME ===================== -->
+            <!-- ===================== SYSTEME ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Systme, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -175,7 +196,7 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== ÉGALISEUR ===================== -->
+            <!-- ===================== EGALISEUR ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_galiseur, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -245,7 +266,7 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== BIBLIOTHÈQUE ===================== -->
+            <!-- ===================== BIBLIOTHEQUE ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Bibliothquemusicale, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -257,7 +278,7 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== CATÉGORIES AFFICHÉES ===================== -->
+            <!-- ===================== CATEGORIES AFFICHEES ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Catgoriesaffichesdan, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -323,7 +344,7 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== TÉLÉCHARGEMENT ===================== -->
+            <!-- ===================== TELECHARGEMENT ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Tlchargement, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -391,7 +412,7 @@
 
                         <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
 
-                        <!-- qualité / débit -->
+                        <!-- qualite / debit -->
                         <StackPanel Spacing="6">
                             <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_qualitdbitcible, Mode=OneWay}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -460,11 +481,37 @@
                         </StackPanel>
                     </StackPanel>
                 </Grid>
-            </StackPanel>
+            
+                <!-- Updates -->
+                <StackPanel Margin="0,20,0,0" Spacing="16">
+                    <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Updates, Mode=OneWay}"
+                               FontSize="18" FontWeight="SemiBold" VerticalAlignment="Top"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    <StackPanel  Spacing="20">
+                        <StackPanel Spacing="8">
+                            <ToggleSwitch x:Name="AutoUpdateSwitch" 
+                                          Header="{x:Bind models:Strings.Current.SettingsPage_Text_AutoUpdate, Mode=OneWay}"
+                                          OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}"
+                                          OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                          Toggled="AutoUpdateSwitch_Toggled"
+                                          Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                                <ToggleSwitch.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                    </DataTemplate>
+                                </ToggleSwitch.HeaderTemplate>
+                            </ToggleSwitch>
+                            <Button x:Name="CheckUpdateButton" Content="{x:Bind models:Strings.Current.SettingsPage_Text_CheckUpdate, Mode=OneWay}"
+                                    Click="CheckUpdateButton_Click" Margin="0,10,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+</StackPanel>
 
         </StackPanel>
     </ScrollViewer>
 </Page>
+
 
 
 

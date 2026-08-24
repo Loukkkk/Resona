@@ -1,4 +1,4 @@
-<Page
+﻿<Page
 
     NavigationCacheMode="Required"
 
@@ -13,7 +13,7 @@
 
 
 
-    <Grid Padding="24">
+    <Grid Padding="24,44,24,24">
 
         <Grid.RowDefinitions>
 
@@ -81,7 +81,14 @@
 
                                ItemHeight="154"
 
-                               Margin="0,0,0,24" />
+                               Margin="0,0,0,24" >
+                <VariableSizedWrapGrid.ChildrenTransitions>
+                    <TransitionCollection>
+                        <RepositionThemeTransition />
+                        <AddDeleteThemeTransition />
+                    </TransitionCollection>
+                </VariableSizedWrapGrid.ChildrenTransitions>
+            </VariableSizedWrapGrid>
 
         </ScrollViewer>
 
@@ -116,6 +123,7 @@
     </Grid>
 
 </Page>
+
 
 
 

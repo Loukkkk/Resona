@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     NavigationCacheMode="Disabled"
     Background="Transparent"
     x:Class="Resona.Views.PlaylistDetailPage"
@@ -11,7 +11,7 @@
         <converters:StringToImageBrushConverter x:Key="StringToImageBrushConverter" />
     </Page.Resources>
 
-    <Grid Padding="24">
+    <Grid Padding="24,44,24,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -24,7 +24,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button x:Name="BackButton" Grid.Column="0" Click="BackButton_Click" Visibility="Collapsed" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" CornerRadius="4" Width="40" Height="40">
+            <Button x:Name="BackButton" Grid.Column="0" Click="BackButton_Click" Visibility="Collapsed" VerticalAlignment="Center" CornerRadius="4" Width="40" Height="40">
                 <FontIcon Glyph="&#xE72B;" FontSize="16" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
             </Button>
             <Border x:Name="HeaderCover" CornerRadius="10" Width="120" Height="120"
@@ -189,6 +189,8 @@
         </ListView>
     </Grid>
 </Page>
+
+
 
 
 

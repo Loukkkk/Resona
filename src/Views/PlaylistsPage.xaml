@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     NavigationCacheMode="Required"
     Background="Transparent"
     x:Class="Resona.Views.PlaylistsPage"
@@ -11,7 +11,7 @@
         <converters:StringToImageBrushConverter x:Key="StringToImageBrushConverter" />
     </Page.Resources>
 
-    <Grid Padding="24">
+    <Grid Padding="24,44,24,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -78,6 +78,12 @@
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="24">
                 <GridView x:Name="PlaylistsGrid" SelectionMode="Extended" RightTapped="PlaylistsGrid_RightTapped" IsItemClickEnabled="True" ItemClick="PlaylistsGrid_ItemClick" SelectionChanged="PlaylistsGrid_SelectionChanged" Tapped="PlaylistsGrid_Tapped">
+                    <GridView.ItemContainerTransitions>
+                        <TransitionCollection>
+                            <RepositionThemeTransition />
+                            <AddDeleteThemeTransition />
+                        </TransitionCollection>
+                    </GridView.ItemContainerTransitions>
                     <GridView.ItemsPanel>
                         <ItemsPanelTemplate>
                             <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="6" />
@@ -278,6 +284,7 @@
         </ScrollViewer>
     </Grid>
 </Page>
+
 
 
 

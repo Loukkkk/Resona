@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     NavigationCacheMode="Required"
     Background="Transparent"
     x:Class="Resona.Views.LibraryPage"
@@ -12,7 +12,7 @@
         <converters:StringToImageBrushConverter x:Key="StringToImageBrushConverter" />
     </Page.Resources>
 
-    <Grid Padding="24,24,24,24">
+    <Grid Padding="24,44,24,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -21,19 +21,21 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,16" VerticalAlignment="Center" UseLayoutRounding="False">
-            <Button x:Name="BackButton" Click="BackButton_Click" Visibility="Collapsed" VerticalAlignment="Center" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" CornerRadius="4" Width="40" Height="40">
+            <Button x:Name="BackButton" Click="BackButton_Click" Visibility="Collapsed" VerticalAlignment="Center" Margin="0,0,4,0" CornerRadius="4" Width="40" Height="40">
                 <FontIcon Glyph="&#xE72B;" FontSize="16" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
             </Button>
-            <StackPanel VerticalAlignment="Center" Spacing="2" UseLayoutRounding="False">
-                <TextBlock x:Name="PageTitleText" Text="{x:Bind models:Strings.Current.LibraryPage_Text_BIBLIOTHQUE, Mode=OneWay}" FontSize="28" FontWeight="Bold"
-                           VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <StackPanel VerticalAlignment="Center" Spacing="2" UseLayoutRounding="False">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock x:Name="PageTitleText" Text="{x:Bind models:Strings.Current.LibraryPage_Text_BIBLIOTHQUE, Mode=OneWay}" FontSize="28" FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    <TextBlock x:Name="TotalTracksHint" VerticalAlignment="Bottom" Margin="0,0,0,6" Text=" "
+                               FontSize="14"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
                 <TextBlock x:Name="PageSubtitleText" Visibility="Collapsed" Opacity="0.6" FontSize="13"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
             </StackPanel>
-            <TextBlock x:Name="TotalTracksHint" VerticalAlignment="Center" Margin="0,8,0,0" Text=" "
-                         FontSize="14"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" Spacing="12" Grid.Row="1" Margin="0,0,0,12" VerticalAlignment="Center">
@@ -63,7 +65,7 @@
                     BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE8CB;" FontSize="14" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                    <TextBlock x:Name="SortButtonLabel" Text="{x:Bind models:Strings.Current.LibraryPage_Text_TrierArtiste, Mode=OneWay}" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    <TextBlock x:Name="SortButtonLabel"  Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 </StackPanel>
                 <Button.Flyout>
                     <MenuFlyout Placement="Bottom">
@@ -224,15 +226,19 @@
                     Visibility="Collapsed">
             <Button x:Name="PrevPageButton" Content="&#xE76B;" FontFamily="Segoe Fluent Icons"
                     Click="PrevPage_Click" Width="36" Height="36" Padding="0"
-                    Background="Transparent" BorderThickness="0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
             <TextBlock x:Name="PageIndicator" VerticalAlignment="Center" FontSize="13" Opacity="0.8"
                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
             <Button x:Name="NextPageButton" Content="&#xE76C;" FontFamily="Segoe Fluent Icons"
                     Click="NextPage_Click" Width="36" Height="36" Padding="0"
-                    Background="Transparent" BorderThickness="0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
         </StackPanel>
     </Grid>
 </Page>
+
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     NavigationCacheMode="Required"
     Background="Transparent"
     x:Class="Resona.Views.QueuePage"
@@ -11,7 +11,7 @@
         <converters:StringToImageBrushConverter x:Key="StringToImageBrushConverter" />
     </Page.Resources>
 
-    <Grid Padding="24,24,24,24">
+    <Grid Padding="24,44,24,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -142,6 +142,7 @@
         </ListView>
     </Grid>
 </Page>
+
 
 
 

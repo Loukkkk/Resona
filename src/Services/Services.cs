@@ -1,5 +1,5 @@
-// ============================================================
-//  Services.cs  —  Resona
+﻿// ============================================================
+//  Services.cs  Ã¢â‚¬â€  Resona
 //  Fusion de : CoverArtService, LyricsService, PlaylistM3uService,
 //              SettingsService, LibraryScannerService, LibraryCacheService,
 //              DownloadService
@@ -247,32 +247,37 @@ public class LyricsService
 
 public class PlaylistM3uService
 {
-    public async Task<(List<string> resolvedPaths, List<string> missing)> ImportAsync(string playlistFilePath)
-    {
+    public async Task<(List<string> resolvedPaths, List<string> missing, string? coverPath)> ImportAsync(string playlistFilePath)
+	{
         var resolved = new List<string>();
-        var missing  = new List<string>();
+        var missing = new List<string>();
+		string? coverPath = null;
         string baseDir = Path.GetDirectoryName(playlistFilePath) ?? string.Empty;
         var lines = await System.IO.File.ReadAllLinesAsync(playlistFilePath, DetectEncoding(playlistFilePath));
         foreach (var rawLine in lines)
         {
             var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith("#")) continue;
+            if (line.Length == 0) continue;
+			if (line.StartsWith("#EXTIMG:")) { string cPath = line.Substring(8).Trim(); string fullCPath = Path.IsPathRooted(cPath) ? cPath : Path.GetFullPath(Path.Combine(baseDir, cPath)); if (System.IO.File.Exists(fullCPath)) coverPath = fullCPath; continue; }
+			if (line.StartsWith("#")) continue;
             string fullPath = Path.IsPathRooted(line)
                 ? line
                 : Path.GetFullPath(Path.Combine(baseDir, line));
             if (System.IO.File.Exists(fullPath)) resolved.Add(fullPath);
             else                       missing.Add(line);
         }
-        return (resolved, missing);
+        if (string.IsNullOrEmpty(coverPath)) { string name = Path.GetFileNameWithoutExtension(playlistFilePath); foreach (var ext in new[] { ".jpg", ".jpeg", ".png", ".webp" }) { string p = Path.Combine(baseDir, name + ext); if (System.IO.File.Exists(p)) { coverPath = p; break; } } }
+			return (resolved, missing, coverPath);
     }
 
-    public async Task ExportAsync(string outputPath, IEnumerable<Track> tracks, bool useRelativePaths = true)
-    {
+    public async Task ExportAsync(string outputPath, IEnumerable<Track> tracks, bool useRelativePaths = true, string? coverImagePath = null)
+	{
         bool isM3u8 = Path.GetExtension(outputPath).Equals(".m3u8", StringComparison.OrdinalIgnoreCase);
         var encoding = isM3u8 ? new UTF8Encoding(false) : Encoding.GetEncoding(1252);
         string baseDir = Path.GetDirectoryName(outputPath) ?? string.Empty;
         var sb = new StringBuilder();
         sb.AppendLine("#EXTM3U");
+		if (!string.IsNullOrEmpty(coverImagePath) && System.IO.File.Exists(coverImagePath)) { try { string ext = Path.GetExtension(coverImagePath); string newCoverName = Path.GetFileNameWithoutExtension(outputPath) + ext; string newCoverPath = Path.Combine(baseDir, newCoverName); if (coverImagePath != newCoverPath) System.IO.File.Copy(coverImagePath, newCoverPath, true); sb.AppendLine($"#EXTIMG:{newCoverName}"); } catch { } }
         foreach (var track in tracks)
         {
             int durationSeconds = (int)track.Duration.TotalSeconds;
@@ -460,12 +465,12 @@ public class LibraryScannerService
             var tag = file.Tag;
             if (tag.Pictures.Length > 0) embeddedCoverBytes = tag.Pictures[0].Data.Data;
 
-            return new Track
+                        Track t = new Track
             {
                 FilePath     = filePath,
                 Title        = string.IsNullOrWhiteSpace(tag.Title) ? Path.GetFileNameWithoutExtension(filePath) : tag.Title,
-                Artist       = tag.Performers.Length > 0 ? string.Join(", ", tag.Performers) : "Artiste inconnu",
-                Album        = string.IsNullOrWhiteSpace(tag.Album) ? "Album inconnu" : tag.Album,
+                Artist       = tag.Performers.Length > 0 ? string.Join(", ", tag.Performers) : Models.Strings.Current.CS_ArtisteInconnu,
+                Album        = string.IsNullOrWhiteSpace(tag.Album) ? Models.Strings.Current.CS_AlbumInconnu : tag.Album,
                 AlbumArtist  = tag.AlbumArtists.Length > 0 ? string.Join(", ", tag.AlbumArtists) : string.Empty,
                 Duration     = file.Properties.Duration,
                 TrackNumber  = (int)tag.Track,
@@ -473,6 +478,35 @@ public class LibraryScannerService
                 Genre        = tag.Genres.Length > 0 ? string.Join(", ", tag.Genres) : string.Empty,
                 LastModified = System.IO.File.GetLastWriteTimeUtc(filePath)
             };
+            if (t.Duration == TimeSpan.Zero)
+            {
+                try
+                {
+                    string localFfmpeg = System.IO.Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+                    string exe = System.IO.File.Exists(localFfmpeg) ? localFfmpeg : "ffmpeg";
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = exe,
+                        Arguments = $"-i \"{filePath}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardError = true
+                    };
+                    using var proc = System.Diagnostics.Process.Start(psi);
+                    if (proc != null)
+                    {
+                        string output = proc.StandardError.ReadToEnd();
+                        proc.WaitForExit();
+                        var match = System.Text.RegularExpressions.Regex.Match(output, @"Duration:\s*(\d+):(\d{2}):(\d{2})\.(\d+)");
+                        if (match.Success)
+                        {
+                            t.Duration = new TimeSpan(0, int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value), int.Parse(match.Groups[3].Value), int.Parse(match.Groups[4].Value) * 10);
+                        }
+                    }
+                }
+                catch { }
+            }
+            return t;
         }
         catch
         {
@@ -509,8 +543,8 @@ public class LibraryScannerService
                 {
                     FilePath     = filePath,
                     Title        = Path.GetFileNameWithoutExtension(filePath),
-                    Artist       = "Artiste inconnu",
-                    Album        = "Album inconnu",
+                    Artist       = Models.Strings.Current.CS_ArtisteInconnu,
+                    Album        = Models.Strings.Current.CS_AlbumInconnu,
                     Duration     = duration,
                     LastModified = System.IO.File.GetLastWriteTimeUtc(filePath)
                 };
@@ -997,7 +1031,7 @@ public static class SafeAudioReader
             if (!isDash)
             {
                 // Pour les M4A standards, on stream directement depuis le fichier original en ignorant l'ID3 !
-                // Cela élimine complètement le délai de copie du fichier en cache.
+                // Cela ÃƒÂ©limine complÃƒÂ¨tement le dÃƒÂ©lai de copie du fichier en cache.
                 var skipStream = new Id3SkippingStream(fsIn, offset);
                 try
                 {
@@ -1015,7 +1049,7 @@ public static class SafeAudioReader
                 fsIn.Dispose(); // On le ferme, FFmpeg va s'en charger
             }
 
-            // Si le streaming a échoué (ou si c'est un DASH), on fait un fallback : 
+            // Si le streaming a ÃƒÂ©chouÃƒÂ© (ou si c'est un DASH), on fait un fallback : 
             // On strip l'ID3 vers un fichier temporaire pour ffmpeg
             string strippedPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".m4a");
             using (var tempFsIn = System.IO.File.OpenRead(filePath))
@@ -1027,7 +1061,7 @@ public static class SafeAudioReader
                 }
             }
 
-            // Si c'est un fichier "dash" (ex: Frostpunk), WMF a du mal même sans ID3. 
+            // Si c'est un fichier "dash" (ex: Frostpunk), WMF a du mal mÃƒÂªme sans ID3. 
             // On le remux de force via FFmpeg pour reconstruire un conteneur propre.
             if (isDash)
             {
@@ -1038,7 +1072,7 @@ public static class SafeAudioReader
                     var process = new System.Diagnostics.Process();
                     string localFfmpeg = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
                     process.StartInfo.FileName = System.IO.File.Exists(localFfmpeg) ? localFfmpeg : "ffmpeg";
-                    // Remux instantané au lieu d'un décodage lent en WAV
+                    // Remux instantanÃƒÂ© au lieu d'un dÃƒÂ©codage lent en WAV
                     process.StartInfo.Arguments = $"-y -i \"{strippedPath}\" -c:a copy -f mp4 \"{tempM4a}\"";
                     process.StartInfo.UseShellExecute = false;
                     process.StartInfo.CreateNoWindow = true;
@@ -1060,7 +1094,7 @@ public static class SafeAudioReader
                 }
             }
 
-            // Fallback ultime FFmpeg si WMF échoue complètement (décodage complet)
+            // Fallback ultime FFmpeg si WMF ÃƒÂ©choue complÃƒÂ¨tement (dÃƒÂ©codage complet)
             string tempWavFallback = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".wav");
             bool fallbackSuccess = false;
             try
@@ -1085,7 +1119,7 @@ public static class SafeAudioReader
             if (fallbackSuccess)
                 return new SafeWaveFileReader(tempWavFallback, tempWavFallback);
 
-            throw new InvalidOperationException("Impossible de décoder ce fichier via WMF ou FFmpeg.");
+            throw new InvalidOperationException("Impossible de dÃƒÂ©coder ce fichier via WMF ou FFmpeg.");
         }
         return new SafeMediaFoundationReader(filePath, null);
     }
@@ -1183,7 +1217,7 @@ public class AudioEngineService : IDisposable
                 }
 
                 // Fallback ultime : Media Foundation sur le Stream direct 
-                // (Permet de lire les M4A même s'ils ont l'extension .mp3)
+                // (Permet de lire les M4A mÃƒÂªme s'ils ont l'extension .mp3)
                 if (sampleProvider == null)
                 {
                     try
@@ -1195,13 +1229,13 @@ public class AudioEngineService : IDisposable
                     }
                     catch (Exception ex)
                     {
-                        throw new NotSupportedException($"Format audio non pris en charge ou illisible.\nFichier : {track.FilePath}", ex);
+                        var msg = Resona.Models.Strings.Current.IsFr ? $"Format audio non pris en charge ou illisible (le fichier est peut-être corrompu ou c'est un fichier WebM/Opus déguisé en MP3).\nFichier : {track.FilePath}" : $"Unsupported or unreadable audio format (the file might be corrupted or it's a WebM/Opus file disguised as MP3).\nFile : {track.FilePath}";
+                        throw new NotSupportedException(msg, ex);
                     }
                 }
             }
 
-            if (sampleProvider == null)
-                throw new InvalidOperationException($"Impossible de créer un lecteur.\nFichier : {track.FilePath}");
+            if (sampleProvider == null) { var msg2 = Resona.Models.Strings.Current.IsFr ? $"Impossible de créer un lecteur.\nFichier : {track.FilePath}" : $"Cannot create audio reader.\nFile : {track.FilePath}"; throw new InvalidOperationException(msg2); }
 
             _rmsCapture     = new RmsCaptureSampleProvider(sampleProvider);
             _volumeProvider = new VolumeSampleProvider(_rmsCapture) { Volume = ComputeLinearGain() };
@@ -1230,14 +1264,14 @@ public class AudioEngineService : IDisposable
                 catch (Exception ex)
                 {
                     Stop();
-                    throw new InvalidOperationException("Le périphérique audio n'a pas pu être initialisé.", ex);
+                    throw new InvalidOperationException("Le pÃƒÂ©riphÃƒÂ©rique audio n'a pas pu ÃƒÂªtre initialisÃƒÂ©.", ex);
                 }
             }
 
             if (output == null || _finalProvider == null)
             {
                 Stop();
-                throw new InvalidOperationException("Initialisation échouée.");
+                throw new InvalidOperationException("Initialisation ÃƒÂ©chouÃƒÂ©e.");
             }
 
             try
@@ -1249,7 +1283,7 @@ public class AudioEngineService : IDisposable
             catch (Exception ex)
             {
                 Stop();
-                throw new InvalidOperationException("Le lecteur audio n'a pas pu démarrer.", ex);
+                throw new InvalidOperationException("Le lecteur audio n'a pas pu dÃƒÂ©marrer.", ex);
             }
         }
         catch (Exception ex)
@@ -1419,7 +1453,7 @@ public class AudioEngineService : IDisposable
 
         float targetVolume = ComputeLinearGain();
         float startVolume  = _volumeProvider.Volume;
-        if (Math.Abs(targetVolume - startVolume) < 0.01f) { _volumeProvider.Volume = targetVolume; return; }
+        if (Math.Abs(targetVolume - startVolume) < 0.01f) { if (_volumeProvider != null) _volumeProvider.Volume = targetVolume; return; }
 
         _ = Task.Run(async () =>
         {
@@ -1427,10 +1461,10 @@ public class AudioEngineService : IDisposable
             for (int i = 1; i <= steps; i++)
             {
                 float t = (float)i / steps;
-                _volumeProvider.Volume = startVolume + (targetVolume - startVolume) * t;
+                if (_volumeProvider != null) _volumeProvider.Volume = startVolume + (targetVolume - startVolume) * t;
                 await Task.Delay(10);
             }
-            _volumeProvider.Volume = targetVolume;
+            if (_volumeProvider != null) _volumeProvider.Volume = targetVolume;
         });
     }
 
@@ -1674,7 +1708,7 @@ public class NormalizationService
                     return Math.Clamp(file.Tag.ReplayGainTrackGain, minGain, maxGain);
                 }
 
-                // Recherche manuelle dans les tags ID3v2 (cas fréquent si ajouté par d'autres logiciels)
+                // Recherche manuelle dans les tags ID3v2 (cas frÃƒÂ©quent si ajoutÃƒÂ© par d'autres logiciels)
                 var id3v2 = file.GetTag(TagLib.TagTypes.Id3v2) as TagLib.Id3v2.Tag;
                 if (id3v2 != null)
                 {
@@ -1898,12 +1932,14 @@ public class DownloadService
     {
         Directory.CreateDirectory(BinDir);
 
-        if (!IsYtDlpPresent)
+        if (!File.Exists(YtDlpPath))
+        {
             await EnsureBinaryAsync(
                 YtDlpPath,
-                "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+                "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe",
                 "yt-dlp.exe",
                 onProgress);
+        }
 
         if (!File.Exists(FfmpegPath))
             await EnsureFfmpegAsync(onProgress);
@@ -1911,8 +1947,8 @@ public class DownloadService
 
     public static async Task EnsureFfmpegAsync(Action<string>? onProgress)
     {
-        onProgress?.Invoke("Téléchargement de ffmpeg...");
-        const string zipUrl  = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+        onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? "TÃƒÂ©lÃƒÂ©chargement de ffmpeg..." : "Downloading ffmpeg...");
+        const string zipUrl  = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
         string tmpDir  = Path.Combine(Path.GetTempPath(), $"Resona_ffmpeg_{Guid.NewGuid():N}");
         string zipPath = Path.Combine(tmpDir, "ffmpeg.zip");
         try
@@ -1922,13 +1958,13 @@ public class DownloadService
             using var http = new System.Net.Http.HttpClient();
             http.DefaultRequestHeaders.Add("User-Agent", "Resona");
             http.Timeout = TimeSpan.FromMinutes(10);
-            onProgress?.Invoke("Téléchargement de ffmpeg (build essentials ~75 Mo)...");
+            onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? "TÃƒÂ©lÃƒÂ©chargement de ffmpeg (~160 Mo)..." : "Downloading ffmpeg (~160 MB)...");
 
             using (var httpStream = await http.GetStreamAsync(zipUrl))
             using (var fileStream  = File.Create(zipPath))
                 await httpStream.CopyToAsync(fileStream);
 
-            onProgress?.Invoke("Extraction de ffmpeg.exeâ€¦");
+            onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? "Extraction de ffmpeg.exe..." : "Extracting ffmpeg.exe...");
             string? extractedPath = null;
             using (var zip = System.IO.Compression.ZipFile.OpenRead(zipPath))
             {
@@ -1947,16 +1983,16 @@ public class DownloadService
             if (extractedPath != null && File.Exists(extractedPath))
             {
                 File.Copy(extractedPath, FfmpegPath, overwrite: true);
-                onProgress?.Invoke("ffmpeg installé.");
+                onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? "ffmpeg installÃƒÂ©." : "ffmpeg installed.");
             }
             else
             {
-                onProgress?.Invoke("âš ï¸ ffmpeg.exe introuvable dans l'archive.");
+                onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? "Ã¢ÂÅ’ ffmpeg.exe introuvable dans l'archive." : "Ã¢ÂÅ’ ffmpeg.exe not found in archive.");
             }
         }
         catch (Exception ex)
         {
-            onProgress?.Invoke($"Erreur ffmpeg : {ex.Message}");
+            onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? $"Erreur ffmpeg : {ex.Message}" : $"ffmpeg error: {ex.Message}");
         }
         finally
         {
@@ -1967,18 +2003,18 @@ public class DownloadService
     private static async Task EnsureBinaryAsync(string localPath, string url, string name, Action<string>? onProgress)
     {
         if (File.Exists(localPath)) return;
-        onProgress?.Invoke($"Téléchargement de {name}â€¦");
+        onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? $"TÃƒÂ©lÃƒÂ©chargement de {name}..." : $"Downloading {name}...");
         try
         {
             using var http = new System.Net.Http.HttpClient();
             http.DefaultRequestHeaders.Add("User-Agent", "Resona");
             var bytes = await http.GetByteArrayAsync(url);
             await File.WriteAllBytesAsync(localPath, bytes);
-            onProgress?.Invoke($"{name} installé.");
+            onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? $"{name} installÃƒÂ©." : $"{name} installed.");
         }
         catch (Exception ex)
         {
-            onProgress?.Invoke($"Erreur lors du téléchargement de {name} : {ex.Message}");
+            onProgress?.Invoke(Resona.Models.Strings.Current.IsFr ? $"Erreur lors du tÃƒÂ©lÃƒÂ©chargement de {name} : {ex.Message}" : $"Error downloading {name}: {ex.Message}");
         }
     }
 
@@ -2033,7 +2069,7 @@ public class DownloadService
 
         string ytDlp = FindYtDlp();
         if (ytDlp == "yt-dlp" && !await IsBinaryAvailableAsync(ytDlp))
-            throw new FileNotFoundException("yt-dlp introuvable même après tentative d'installation automatique.");
+            throw new FileNotFoundException("yt-dlp introuvable mÃƒÂªme aprÃƒÂ¨s tentative d'installation automatique.");
 
         string args = BuildArguments(url, opts);
 
@@ -2061,7 +2097,7 @@ public class DownloadService
         await proc.WaitForExitAsync();
 
         if (proc.ExitCode != 0)
-            throw new Exception($"yt-dlp a terminé avec le code {proc.ExitCode}.");
+            throw new Exception(Resona.Models.Strings.Current.IsFr ? $"yt-dlp s'est termin\u00E9 avec le code {proc.ExitCode}." : $"yt-dlp exited with code {proc.ExitCode}.");
     }
 
     private static string BuildArguments(string url, DownloadOptions opts)
@@ -2097,10 +2133,11 @@ public class DownloadService
 
         string output = Path.Combine(opts.OutputDirectory, "%(title)s.%(ext)s").Replace("\\", "/");
 
-        return $"-x --audio-format {formatExt} {bitrateArg} " +
+        return $"--extractor-args \"youtube:player_client=android\" " +
+               $"-x --audio-format {formatExt} {bitrateArg} " +
                $"--embed-thumbnail --embed-metadata " +
                $"--parse-metadata \"%(upload_date>%Y)s:%(meta_date)s\" " +
-               $"--output \"{output}\" " +
+               $"--no-mtime --output \"{output}\" " +
                $"--no-playlist-reverse " +
                $"--progress " +
                $"\"{url}\"";
@@ -2277,11 +2314,11 @@ public static class AutoTagService
         // DEBUG: Log what we receive and what we send
         string debugLog = $"[{DateTime.Now:HH:mm:ss}] LookupAsync called\n  artist={artist}\n  title={title}\n  filePath={filePath}\n";
 
-        // Always prefer filename for search — metadata titles are often incomplete or wrong
+        // Always prefer filename for search Ã¢â‚¬â€ metadata titles are often incomplete or wrong
         if (!string.IsNullOrEmpty(filePath))
         {
             title = CleanTitle(System.IO.Path.GetFileNameWithoutExtension(filePath));
-            if (!string.IsNullOrWhiteSpace(artist) && !artist.Contains("inconnu", StringComparison.OrdinalIgnoreCase) && !title.Contains(artist, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(artist) && !artist.Contains("inconnu", StringComparison.OrdinalIgnoreCase) && !artist.Contains("unknown", StringComparison.OrdinalIgnoreCase) && !title.Contains(artist, StringComparison.OrdinalIgnoreCase))
             {
                 title = $"{title} {artist}";
             }
@@ -2298,7 +2335,7 @@ public static class AutoTagService
             .Select(s => s.Trim())
             .FirstOrDefault(s => s.Length > 0) ?? "";
 
-        if (searchArtist.Contains("inconnu", StringComparison.OrdinalIgnoreCase))
+        if (searchArtist.Contains("inconnu", StringComparison.OrdinalIgnoreCase) || searchArtist.Contains("unknown", StringComparison.OrdinalIgnoreCase))
         {
             searchArtist = "";
         }
@@ -2597,7 +2634,7 @@ public static class AutoTagService
         // Remplacer les caracteres de parentheses/crochets/japonais par des espaces
         s = System.Text.RegularExpressions.Regex.Replace(s, @"[\(\)\[\]\{\}]+", " ");
 
-        // Enlever les mots-clés parasites (sans enlever cover, remix, etc. qui font partie du vrai titre)
+        // Enlever les mots-clÃƒÂ©s parasites (sans enlever cover, remix, etc. qui font partie du vrai titre)
         string[] keywords = { "official", "music video", "lyric", "lyrics", "audio", "visualizer", "remaster", "remastered", "edit", "clip", "hq", "hd", "4k", "1080p", "720p", "explicit", "clean", "ncs", "free download", "preview", "amv", "video", "music" };
         
         foreach (var r in keywords)
@@ -2615,8 +2652,8 @@ public static class AutoTagService
         if (string.IsNullOrWhiteSpace(result.Title)) return false;
         if (string.IsNullOrWhiteSpace(result.Artist)) return false;
 
-        if (result.Artist.Contains("inconnu", StringComparison.OrdinalIgnoreCase)) return false;
-        if (result.Title.Contains("inconnu", StringComparison.OrdinalIgnoreCase)) return false;
+        if (result.Artist.Contains("inconnu", StringComparison.OrdinalIgnoreCase) || result.Artist.Contains("unknown", StringComparison.OrdinalIgnoreCase)) return false;
+        if (result.Title.Contains("inconnu", StringComparison.OrdinalIgnoreCase) || result.Title.Contains("unknown", StringComparison.OrdinalIgnoreCase)) return false;
 
         if (result.Title.Contains(" - "))
         {
@@ -2656,7 +2693,7 @@ public static class AutoTagService
     {
         if (a == b) return 1.0;
         
-        // Custom permissive subset check for "rosé apt" -> "ROSÃ‰ & Bruno Mars APT."
+        // Custom permissive subset check for "rosÃƒÂ© apt" -> "ROSÃƒÆ’Ã¢â‚¬Â° & Bruno Mars APT."
         var aWords = a.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 2).ToArray();
         var bWords = b.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 2).ToArray();
         
@@ -2984,3 +3021,9 @@ public static class LyricsTranslatorService
         catch { return text; }
     }
 }
+
+
+
+
+
+

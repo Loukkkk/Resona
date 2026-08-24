@@ -1,4 +1,4 @@
-using Microsoft.UI.Text;
+﻿using Microsoft.UI.Text;
 using Microsoft.UI.Input;
 using Windows.UI.Core;
 using Microsoft.UI.Xaml.Shapes;
@@ -33,10 +33,13 @@ public sealed partial class SettingsPage : Page
 	private bool _isLoading = true;
 
 	private static readonly string[] EqualizerLabels = new string[10] { "31", "62", "125", "250", "500", "1K", "2K", "4K", "8K", "16K" };
-	public SettingsPage()
+	private bool _isInitializingUpdates = true;
+    public SettingsPage()
 	{
 		_isLoading = true;
 		InitializeComponent();
+        AutoUpdateSwitch.IsOn = App.Settings.Current.AutoUpdateEnabled;
+        _isInitializingUpdates = false;
 		LoadEssentialSettings();
 		base.Loaded += delegate
 		{
@@ -54,13 +57,14 @@ public sealed partial class SettingsPage : Page
 		AppSettings current = App.Settings.Current;
 
 		var langToSelect = string.IsNullOrEmpty(current.AppLanguage) ? System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName : current.AppLanguage;
-		LanguageComboBox.SelectedIndex = langToSelect == "fr" ? 0 : 1;
+		LanguageDropDown.Content = langToSelect == "fr" ? Models.Strings.Current.SettingsPage_Content_Franaisfr : Models.Strings.Current.SettingsPage_Content_Englishen;
 
 		NormalizationSwitch.IsOn = current.NormalizationEnabled;
 		LyricsSwitch.IsOn = current.LyricsEnabled;
 		TranslateLyricsSwitch.IsOn = current.TranslateLyricsEnabled;
 		CoverSwitch.IsOn = current.AutoFetchMissingCovers;
 		ExclusiveModeSwitch.IsOn = current.ExclusiveAudioMode;
+		NowPlayingSwitch.IsOn = current.AutoOpenNowPlaying;
 		ShowLibraryCheck.IsChecked = current.ShowLibraryCategory;
 		ShowAlbumsCheck.IsChecked = current.ShowAlbumsCategory;
 		ShowPlaylistsCheck.IsChecked = current.ShowPlaylistsCategory;
@@ -148,24 +152,18 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 
-	private static string FormatHint(DownloadFormat fmt)
+		private static string FormatHint(DownloadFormat fmt)
 	{
-		if (1 == 0)
-		{
-		}
 		string result = fmt switch
 		{
-			DownloadFormat.Opus => "Codec libopus · Meilleure qualité par kbit/s disponible · Recommandé.", 
-			DownloadFormat.Mp3 => "Codec libmp3lame · Universel, compatible partout.", 
-			DownloadFormat.Flac => "Sans perte · Fichiers trÃ\u00a8s lourds · Codec : flac.", 
-			DownloadFormat.M4a => "Codec AAC · Bonne qualité, compatible Apple.", 
-			DownloadFormat.Vorbis => "Codec libvorbis · Open source, OGG.", 
-			DownloadFormat.Wav => "PCM non compressé · Archivage uniquement · TrÃ\u00a8s lourd.", 
+			DownloadFormat.Opus => Models.Strings.Current.IsFr ? "Codec libopus — Meilleure qualité par kbit/s disponible — Recommandé." : "libopus codec — Best quality per kbit/s available — Recommended.", 
+			DownloadFormat.Mp3 => Models.Strings.Current.IsFr ? "Codec libmp3lame — Universel, compatible partout." : "libmp3lame codec — Universal, widely compatible.", 
+			DownloadFormat.Flac => Models.Strings.Current.IsFr ? "Sans perte — Fichiers très lourds — Codec : flac." : "Lossless — Very large files — Codec: flac.", 
+			DownloadFormat.M4a => Models.Strings.Current.IsFr ? "Codec AAC — Bonne qualité, compatible Apple." : "AAC codec — Good quality, Apple compatible.", 
+			DownloadFormat.Vorbis => Models.Strings.Current.IsFr ? "Codec libvorbis — Open source, OGG." : "libvorbis codec — Open source, OGG.", 
+			DownloadFormat.Wav => Models.Strings.Current.IsFr ? "PCM non compressé — Archivage uniquement — Très lourd." : "Uncompressed PCM — Archival only — Very large.", 
 			_ => string.Empty, 
 		};
-		if (1 == 0)
-		{
-		}
 		return result;
 	}
 
@@ -257,9 +255,9 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 
-	private void LanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	private void LanguageFlyoutItem_Click(object sender, RoutedEventArgs e)
 	{
-		if (_isLoading || LanguageComboBox.SelectedItem is not ComboBoxItem item) return;
+		if (_isLoading || sender is not Microsoft.UI.Xaml.Controls.MenuFlyoutItem item) return;
 		
 		string lang = item.Tag?.ToString() ?? "fr";
 		if (App.Settings.Current.AppLanguage != lang)
@@ -267,6 +265,8 @@ public sealed partial class SettingsPage : Page
 			App.Settings.Current.AppLanguage = lang;
 			App.Settings.SaveSync();
 			Resona.Models.Strings.Current.NotifyLanguageChanged();
+
+			LanguageDropDown.Content = lang == "fr" ? Models.Strings.Current.SettingsPage_Content_Franaisfr : Models.Strings.Current.SettingsPage_Content_Englishen;
 
 			// Force ComboBox text refresh: re-select current items so the closed-state text updates
 			RefreshComboBoxSelection(DownloadFormatCombo);
@@ -359,6 +359,15 @@ public sealed partial class SettingsPage : Page
 		if (!_isLoading)
 		{
 			App.Settings.Current.ExclusiveAudioMode = ExclusiveModeSwitch.IsOn;
+			await App.Settings.SaveAsync();
+		}
+	}
+
+	private async void NowPlayingSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.AutoOpenNowPlaying = NowPlayingSwitch.IsOn;
 			await App.Settings.SaveAsync();
 		}
 	}
@@ -465,11 +474,11 @@ public sealed partial class SettingsPage : Page
 		{
 			List<string> list;
 			List<string> list2;
-			(list, list2) = await App.PlaylistIO.ImportAsync(storageFile.Path);
+			var tuple = await App.PlaylistIO.ImportAsync(storageFile.Path); list = tuple.Item1; list2 = tuple.Item2;
 			await new ContentDialog
 			{
-				Title = "Import terminé",
-				Content = $"{list.Count} piste(s) importée(s)." + ((list2.Count > 0) ? $"\n{list2.Count} piste(s) introuvable(s)." : ""),
+				Title = Models.Strings.Current.IsFr ? "Import termin\u00E9" : "Import complete",
+				Content = Models.Strings.Current.IsFr ? $"{list.Count} piste(s) importÃ©e(s)." + ((list2.Count > 0) ? $"\n{list2.Count} piste(s) introuvable(s)." : "") : $"{list.Count} track(s) imported." + ((list2.Count > 0) ? $"\n{list2.Count} track(s) not found." : ""),
 				CloseButtonText = "OK",
 				XamlRoot = base.XamlRoot
 			}.ShowAsync();
@@ -478,18 +487,18 @@ public sealed partial class SettingsPage : Page
 
 	private async void ExportPlaylist_Click(object sender, RoutedEventArgs e)
 	{
-		List<Playlist> playlists = await App.Cache.LoadAllPlaylistsAsync();
-		if (playlists.Count == 0)
-		{
-			await new ContentDialog
-			{
-				Title = "Aucune playlist",
-				Content = "Aucune playlist Ã\u00a0 exporter.",
-				CloseButtonText = "OK",
-				XamlRoot = base.XamlRoot
-			}.ShowAsync();
-			return;
-		}
+        List<Playlist> playlists = await App.Cache.LoadAllPlaylistsAsync();
+        if (playlists.Count == 0)
+        {
+            await new ContentDialog
+            {
+                Title = Models.Strings.Current.IsFr ? "Aucune playlist" : "No playlists",
+                Content = Models.Strings.Current.IsFr ? "Aucune playlist Ã  exporter." : "No playlists to export.",
+                CloseButtonText = "OK",
+                XamlRoot = base.XamlRoot
+            }.ShowAsync();
+            return;
+        }
 		FolderPicker folderPicker = new FolderPicker();
 		InitializeWithWindow.Initialize(folderPicker, WindowNative.GetWindowHandle(App.MainWindowInstance));
 		folderPicker.FileTypeFilter.Add("*");
@@ -517,8 +526,8 @@ public sealed partial class SettingsPage : Page
 		}
 		await new ContentDialog
 		{
-			Title = "Export terminé",
-			Content = $"{exported} playlist(s) exportée(s)." + ((skipped > 0) ? $"\n{skipped} playlist(s) vide(s) ignorée(s)." : ""),
+			Title = Models.Strings.Current.IsFr ? "Export termin\u00E9" : "Export complete",
+			Content = Models.Strings.Current.IsFr ? $"{exported} playlist(s) exportÃ©e(s)." + ((skipped > 0) ? $"\n{skipped} playlist(s) vide(s) ignorÃ©e(s)." : "") : $"{exported} playlist(s) exported." + ((skipped > 0) ? $"\n{skipped} empty playlist(s) skipped." : ""),
 			CloseButtonText = "OK",
 			XamlRoot = base.XamlRoot
 		}.ShowAsync();
@@ -927,12 +936,21 @@ public sealed partial class SettingsPage : Page
 		App.Settings.SaveAsync();
 	}
 
-	private async void AIRestoreBackupBtn_Click(object sender, RoutedEventArgs e)
+		private async void AIRestoreBackupBtn_Click(object sender, RoutedEventArgs e)
 	{
 		ContentDialog dialog = new ContentDialog
 		{
-			Title = new TextBlock { Text = "Patientez", HorizontalAlignment = HorizontalAlignment.Center },
-			Content = new ProgressRing { IsActive = true, Margin = new Thickness(0, 10, 0, 0), Width = 40, Height = 40 },
+			Content = new StackPanel
+			{
+				Spacing = 20,
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center,
+				Children = 
+				{
+					new TextBlock { Text = Models.Strings.Current.IsFr ? "Patientez..." : "Please wait...", HorizontalAlignment = HorizontalAlignment.Center, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+					new ProgressRing { IsActive = true, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0), Width = 40, Height = 40 }
+				}
+			},
 			XamlRoot = base.XamlRoot
 		};
 		_ = dialog.ShowAsync();
@@ -957,11 +975,12 @@ public sealed partial class SettingsPage : Page
 				}
 			});
 			dialog.Hide();
+			await Task.Delay(500);
 
 			ContentDialog successDialog = new ContentDialog
 			{
-				Title = "Succès",
-				Content = "Les données d'affichage ont été réinitialisées avec les tags originaux des fichiers.",
+				Title = Models.Strings.Current.IsFr ? "Succès" : "Success",
+				Content = Models.Strings.Current.IsFr ? "Les données d'affichage ont été réinitialisées avec les tags originaux des fichiers." : "Display data has been restored with original file tags.",
 				CloseButtonText = "OK",
 				XamlRoot = base.XamlRoot
 			};
@@ -976,9 +995,10 @@ public sealed partial class SettingsPage : Page
 		catch (Exception ex)
 		{
 			dialog.Hide();
+			await Task.Delay(500);
 			ContentDialog errDialog = new ContentDialog
 			{
-				Title = "Erreur",
+				Title = Models.Strings.Current.IsFr ? "Erreur" : "Error",
 				Content = ex.Message,
 				CloseButtonText = "OK",
 				XamlRoot = base.XamlRoot
@@ -987,5 +1007,16 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 	
+    private void AutoUpdateSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isInitializingUpdates) return;
+        App.Settings.Current.AutoUpdateEnabled = AutoUpdateSwitch.IsOn;
+        App.Settings.SaveSync();
+    }
 
+    private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        await UpdateManager.CheckForUpdatesAsync(this.Content.XamlRoot, true);
+    
+}
 }

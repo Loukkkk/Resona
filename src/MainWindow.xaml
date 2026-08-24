@@ -7,7 +7,7 @@
     xmlns:views="using:Resona.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
 
-    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" UseLayoutRounding="True" Opacity="0" PointerPressed="RootGrid_PointerPressed">
+    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" UseLayoutRounding="True" Opacity="0" >
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -15,26 +15,44 @@
 
         <Grid x:Name="AppTitleBar" Height="48" VerticalAlignment="Top" HorizontalAlignment="Stretch" Margin="64,0,160,0" Canvas.ZIndex="10" Background="Transparent" />
 
+        <Image x:Name="NowPlayingBlurredBackground" Grid.RowSpan="2" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" Canvas.ZIndex="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+            <Image.RenderTransform>
+                <CompositeTransform ScaleX="1.1" ScaleY="1.1" />
+            </Image.RenderTransform>
+        </Image>
+        <Border x:Name="NowPlayingDimOverlay" Grid.RowSpan="2" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Opacity="0" Canvas.ZIndex="0" IsHitTestVisible="False" />
+
         <Grid x:Name="PlayerGradientOverflow"
               Grid.Row="0"
               Grid.RowSpan="2"
               VerticalAlignment="Stretch"
               HorizontalAlignment="Stretch"
-              Canvas.ZIndex="0"
+              Canvas.ZIndex="-1"
               IsHitTestVisible="False"
               Visibility="Collapsed">
             <Border x:Name="PlayerGradientColorLayer"
                     VerticalAlignment="Bottom"
                     HorizontalAlignment="Stretch" />
+            <Border x:Name="PlayerGradientFadeLayer"
+                    VerticalAlignment="Bottom"
+                    HorizontalAlignment="Stretch" />
         </Grid>
 
-        <Border x:Name="PlayerGradientFadeLayer"
-                Grid.Row="0"
-                VerticalAlignment="Bottom"
-                HorizontalAlignment="Stretch"
-                Canvas.ZIndex="0"
-                IsHitTestVisible="False"
-                Visibility="Collapsed" />
+        <Border x:Name="NowPlayingCenterCoverBorder" Grid.RowSpan="2" Width="400" Height="400" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False" Tapped="NowPlayingCenterCover_Tapped" PointerEntered="NowPlayingCenterCover_PointerEntered" PointerExited="NowPlayingCenterCover_PointerExited" Canvas.ZIndex="10" Translation="0,0,32">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="NowPlayingCenterCoverTransform" Y="-5" />
+            </Border.RenderTransform>
+            <Border.Shadow>
+                <ThemeShadow />
+            </Border.Shadow>
+            <Border.Background>
+                <SolidColorBrush Color="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            </Border.Background>
+            <Grid>
+                <FontIcon x:Name="NowPlayingCenterPlaceholder" Glyph="&#xE8D6;" FontSize="80" Opacity="0.15" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Image x:Name="NowPlayingCenterCoverImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
 
         <NavigationView x:Name="RootNav"
                          Grid.Row="0"
@@ -43,12 +61,12 @@
                          PaneDisplayMode="Left"
                          IsBackButtonVisible="Collapsed"
                          IsSettingsVisible="True"
-                         OpenPaneLength="260"
+                         OpenPaneLength="160"
                          CompactPaneLength="48"
                          CompactModeThresholdWidth="640"
                          ExpandedModeThresholdWidth="1007"
                          Background="Transparent"
-                         SelectionChanged="RootNav_SelectionChanged">
+                         SelectionChanged="RootNav_SelectionChanged" PaneOpening="RootNav_PaneOpening" PaneClosing="RootNav_PaneClosing">
             <NavigationView.Resources>
                 <StaticResource x:Key="NavigationViewItemForegroundSelectedPressed" ResourceKey="TextFillColorPrimaryBrush" />
                 <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
@@ -108,7 +126,7 @@
                 </NavigationViewItem><NavigationViewItem x:Name="DummyEndItem" IsEnabled="False" Opacity="0" Height="0" Margin="0" Padding="0" MinHeight="0" /></NavigationView.MenuItems>
 
             <Grid>
-                <Frame x:Name="ContentFrame" Background="Transparent">
+                <Frame x:Name="ContentFrame" Background="Transparent" >
                     <Frame.ContentTransitions>
                         <TransitionCollection>
                             <NavigationThemeTransition>
@@ -148,17 +166,19 @@
               Visibility="Collapsed" Opacity="0"
               Background="{StaticResource AppSurfaceBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="2*" MaxWidth="600" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="0" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left">
                 <Border x:Name="NowPlayingCoverBorder" CornerRadius="8" Width="48" Height="48"
                         Background="#10FFFFFF"
-                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Tapped="NowPlayingCover_Tapped">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="NowPlayingCoverTransform" Y="0" />
+                    </Border.RenderTransform>
                     <Grid>
                         <FontIcon x:Name="NowPlayingPlaceholderIcon" Glyph="&#xE8D6;" FontSize="20" Opacity="0.5" />
                         <Image x:Name="NowPlayingCover"
@@ -167,7 +187,10 @@
                                VerticalAlignment="Center" />
                     </Grid>
                 </Border>
-                <StackPanel VerticalAlignment="Center" MaxWidth="200">
+                <StackPanel x:Name="NowPlayingTextContainer" VerticalAlignment="Center" MaxWidth="200">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform x:Name="NowPlayingTextTransform" X="0" />
+                    </StackPanel.RenderTransform>
                     <HyperlinkButton x:Name="NowPlayingTitle" Content="{x:Bind models:Strings.Current.MainWindow_Text_Aucunelecture, Mode=OneWay}" FontWeight="SemiBold"
                                Click="NowPlayingTitle_Click" Padding="0" MinWidth="0" MinHeight="0"
                                Foreground="White" />
@@ -175,7 +198,7 @@
                         <HyperlinkButton x:Name="NowPlayingArtist" Content="" Opacity="0.7" FontSize="12"
                                          Foreground="White" Padding="0" MinWidth="0" MinHeight="0"
                                          Click="NowPlayingArtist_Click" />
-                        <TextBlock Text="•" Opacity="0.7" FontSize="12" Foreground="White" />
+                        <TextBlock Text="&#x2022;" Opacity="0.7" FontSize="12" Foreground="White" />
                         <HyperlinkButton x:Name="NowPlayingAlbum" Content="" Opacity="0.7" FontSize="12"
                                          Foreground="White" Padding="0" MinWidth="0" MinHeight="0"
                                          Click="NowPlayingAlbum_Click" />
@@ -207,6 +230,12 @@
                             BorderThickness="0" CornerRadius="20" UseLayoutRounding="True"
                             Width="40" Height="40" Padding="0"
                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                        <Button.Resources>
+                            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                            <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="AppAccentBrush" />
+                            <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="AppAccentBrush" />
+                        </Button.Resources>
                         <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="16" Margin="2,0,0,0"
                                   Foreground="{StaticResource AppAccentForegroundBrush}" />
                     </Button>
@@ -224,12 +253,12 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="CurrentTimeText" Text="{x:Bind models:Strings.Current.MainWindow_Text_000, Mode=OneWay}" Grid.Column="0" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Width="36"
                                Foreground="White" Margin="0,3,0,0" />
-                    <Grid Grid.Column="1" VerticalAlignment="Center" Height="30" Margin="10,0">
+                    <Grid Grid.Column="1" VerticalAlignment="Center" Height="30" Margin="2,0">
                         <Grid x:Name="CustomProgressTrack" Height="4" Background="{ThemeResource ControlStrongFillColorDefaultBrush}" CornerRadius="2" VerticalAlignment="Center" Margin="9,5,9,0" />
-                        <Grid x:Name="CustomProgressFill" Height="4" Background="{ThemeResource SystemAccentColor}" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0" Margin="9,5,0,0" />
+                        <Grid x:Name="CustomProgressFill" Height="4" Background="{StaticResource AppTimecodeBrush}" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0" Margin="9,5,0,0" />
                         <Grid x:Name="CustomProgressThumb" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,5,0,0" IsHitTestVisible="False">
-                            <Ellipse Fill="{ThemeResource SliderThumbBackground}" Width="18" Height="18" />
-                            <Ellipse Fill="{ThemeResource SystemAccentColor}" Width="10" Height="10" />
+                            <Ellipse x:Name="CustomProgressThumbOuter" Fill="{ThemeResource SliderThumbBackground}" Width="18" Height="18" />
+                            <Ellipse x:Name="CustomProgressThumbInner" Fill="{ThemeResource SystemAccentColor}" Width="10" Height="10" />
                         </Grid>
                         <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" Opacity="0" Margin="-1,5,-1,0"
                                 ValueChanged="ProgressSlider_ValueChanged" SizeChanged="ProgressSlider_SizeChanged" StepFrequency="0.001" VerticalAlignment="Center" />
@@ -239,19 +268,21 @@
                 </Grid>
             </StackPanel>
 
-            <Grid x:Name="LyricsButton" Grid.Column="2" VerticalAlignment="Center" Visibility="Collapsed" MinWidth="100"
-                  PointerEntered="LyricsButton_PointerEntered" PointerExited="LyricsButton_PointerExited" PointerPressed="LyricsButton_PointerPressed" PointerReleased="LyricsButton_PointerReleased" Tapped="LyricsButton_Tapped" Background="Transparent">
-                <Rectangle x:Name="LyricsButtonBg" RadiusX="16" RadiusY="16" Fill="Transparent" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" />
-                <StackPanel Orientation="Horizontal" Spacing="8" Padding="16,8" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xE8D2;" FontSize="15" Foreground="White" />
-                    <TextBlock Text="{x:Bind models:Strings.Current.MainWindow_Text_Paroles, Mode=OneWay}" FontSize="13" Foreground="White" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="16">
+                <Border x:Name="LyricsButton" Opacity="0" IsHitTestVisible="False" Width="110" Height="34" VerticalAlignment="Center" Background="Transparent"
+                    BorderBrush="{StaticResource AppAccentBrush}" BorderThickness="1.5" CornerRadius="16" UseLayoutRounding="True"
+                    PointerEntered="LyricsButton_PointerEntered" PointerExited="LyricsButton_PointerExited" PointerPressed="LyricsButton_PointerPressed" PointerReleased="LyricsButton_PointerReleased" Tapped="LyricsButton_Tapped">
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <FontIcon x:Name="LyricsIcon" Glyph="&#xE8D2;" FontSize="15" Foreground="White" />
+                    <TextBlock x:Name="LyricsText" Text="{x:Bind models:Strings.Current.MainWindow_Text_Paroles, Mode=OneWay}" FontSize="13" Foreground="White" Margin="0,0,0,1" />
                 </StackPanel>
-            </Grid>
+            </Border>
 
-            <StackPanel Grid.Column="3" VerticalAlignment="Center" Orientation="Horizontal" Spacing="6" Width="160">
-                <FontIcon Glyph="&#xE767;" />
+            <StackPanel  VerticalAlignment="Center" Orientation="Horizontal" Spacing="6" Width="160">
+                <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" Foreground="White" />
                 <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100"
                         ValueChanged="VolumeSlider_ValueChanged" Width="120" UseLayoutRounding="True" />
+            </StackPanel>
             </StackPanel>
         </Grid>
     </Grid>

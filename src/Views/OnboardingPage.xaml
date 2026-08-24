@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     x:Class="Resona.Views.OnboardingPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -44,5 +44,6 @@
         </StackPanel>
     </Grid>
 </Page>
+
 
 

@@ -1,4 +1,4 @@
-using Microsoft.UI.Input;
+﻿using Microsoft.UI.Input;
 using Windows.UI.Core;
 using Microsoft.UI.Xaml.Shapes;
 using System.Runtime.CompilerServices;
@@ -159,7 +159,7 @@ public sealed partial class PlaylistDetailPage : Page
 		_playlist = playlist;
 		_tracks = tracks;
 		PlaylistName.Text = _playlist.Name;
-		PlaylistCount.Text = ((_tracks.Count == 0) ? "" : $"— {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)}");
+		PlaylistCount.Text = ((_tracks.Count == 0) ? "" : $"♪ {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)}");
 		Grid child = BuildCoverMosaic(_tracks, 120.0, 120.0);
 		HeaderCover.Child = child;
 		
@@ -169,7 +169,7 @@ public sealed partial class PlaylistDetailPage : Page
 	private void BuildUI()
 	{
 		PlaylistName.Text = _playlist.Name;
-		PlaylistCount.Text = ((_tracks.Count == 0) ? "" : $"— {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)}");
+		PlaylistCount.Text = ((_tracks.Count == 0) ? "" : $"♪ {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)}");
 		Grid child = BuildCoverMosaic(_tracks, 120.0, 120.0);
 		HeaderCover.Child = child;
 		DisplayedTracks.Clear();
@@ -214,7 +214,7 @@ public sealed partial class PlaylistDetailPage : Page
 		{
 			return;
 		}
-		bool flag = isPlaying && App.AudioEngine.State == PlaybackState.Playing;
+		bool flag = isPlaying && App.AudioEngine.State != NAudio.Wave.PlaybackState.Paused;
 		if (isHovered)
 		{
 			border.Visibility = Visibility.Visible;
@@ -261,6 +261,7 @@ public sealed partial class PlaylistDetailPage : Page
 
 	private void PlayOverlay_Tapped(object sender, TappedRoutedEventArgs e)
 	{
+		if (MainWindow.LastClickWasXButton) { MainWindow.LastClickWasXButton = false; return; }
 		if (sender is FrameworkElement { DataContext: Track dataContext } frameworkElement)
 		{
 			if (dataContext.IsPlaying)
@@ -530,7 +531,7 @@ public sealed partial class PlaylistDetailPage : Page
 			await new ContentDialog
 			{
 				Title = "Playlist vide",
-				Content = "Aucune piste à exporter.",
+				Content = Resona.Models.Strings.Current.IsFr ? "Aucune piste à exporter." : "No tracks to export.",
 				CloseButtonText = "OK",
 				XamlRoot = base.XamlRoot
 			}.ShowAsync();
@@ -543,7 +544,7 @@ public sealed partial class PlaylistDetailPage : Page
 		StorageFile storageFile = await fileSavePicker.PickSaveFileAsync();
 		if (storageFile != null)
 		{
-			await App.PlaylistIO.ExportAsync(storageFile.Path, _tracks, useRelativePaths: false);
+			await App.PlaylistIO.ExportAsync(storageFile.Path, _tracks, useRelativePaths: false, _playlist.CoverImagePath);
 		}
 	}
 
@@ -554,7 +555,7 @@ public sealed partial class PlaylistDetailPage : Page
 			Text = _playlist.Name
 		};
 		ContentDialog contentDialog = new ContentDialog();
-		contentDialog.Title = "Renommer";
+		contentDialog.Title = Models.Strings.Current.IsFr ? "Renommer" : "Rename";
 		contentDialog.PrimaryButtonText = "OK";
 		contentDialog.CloseButtonText = Resona.Models.Strings.Current.CS_Annuler;
 		contentDialog.DefaultButton = ContentDialogButton.Primary;
@@ -578,13 +579,13 @@ public sealed partial class PlaylistDetailPage : Page
 		}
 	}
 
-	private async Task DeleteAsync()
+			private async Task DeleteAsync()
 	{
 		if (await new ContentDialog
 		{
-			Title = "Supprimer la playlist",
-			Content = "Supprimer « " + _playlist.Name + " » ? Les fichiers audio ne sont pas supprimés.",
-			PrimaryButtonText = "Supprimer",
+			Title = Models.Strings.Current.IsFr ? "Supprimer la playlist" : "Delete playlist",
+			Content = Models.Strings.Current.IsFr ? "Supprimer \u00AB " + _playlist.Name + " \u00BB ? Les fichiers audio ne sont pas supprim\u00E9s." : "Delete \u00AB " + _playlist.Name + " \u00BB? Audio files will not be deleted.",
+			PrimaryButtonText = Models.Strings.Current.IsFr ? "Supprimer" : "Delete",
 			CloseButtonText = Resona.Models.Strings.Current.CS_Annuler,
 			DefaultButton = ContentDialogButton.Close,
 			XamlRoot = base.XamlRoot
@@ -626,5 +627,13 @@ public sealed partial class PlaylistDetailPage : Page
         }
     }
 }
+
+
+
+
+
+
+
+
 
 

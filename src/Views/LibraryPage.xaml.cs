@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -32,7 +32,7 @@ public sealed partial class LibraryPage : Page
 
 	private string _currentSort = "artist_asc";
 
-	private string _collectionTitle = "Bibliothèque";
+	private string _collectionTitle = Resona.Models.Strings.Current.LibraryPage_Text_BIBLIOTHQUE;
 
 	private string? _collectionSubtitle;
 
@@ -54,7 +54,7 @@ public sealed partial class LibraryPage : Page
 	{
 		InitializeComponent();
 		_currentSort = App.Settings.Current.LibrarySort;
-		RefreshHeaderText(); SortButtonLabel.Text = "Trier : " + (_currentSort switch { "title_asc" => "Titre (A->Z)", "artist_asc" => "Artiste (A->Z)", "album_asc" => "Album (A->Z)", "duration_asc" => "Durée (croissant)", "duration_desc" => "Durée (décroissant)", "added_desc" => "Ajout récent d'abord", _ => Resona.Models.Strings.Current.CS_Artiste }); // TODO localize sorts if needed
+		RefreshHeaderText(); UpdateSortButtonText();
 		LoadDisplayLimitSelection();
 		StartRmsTimer();
 		if (TrackListView != null)
@@ -215,7 +215,7 @@ public sealed partial class LibraryPage : Page
 			_collectionTitle = tuple.Item1;
 			_collectionSubtitle = tuple.Item2;
 			BackButton.Visibility = !string.IsNullOrEmpty(_collectionSubtitle) ? Visibility.Visible : Visibility.Collapsed;
-			RefreshHeaderText(); SortButtonLabel.Text = "Trier : " + (_currentSort switch { "title_asc" => "Titre (A->Z)", "artist_asc" => "Artiste (A->Z)", "album_asc" => "Album (A->Z)", "duration_asc" => "DurÃ©e (croissant)", "duration_desc" => "DurÃ©e (dÃ©croissant)", "added_desc" => "Ajout rÃ©cent d'abord", _ => Resona.Models.Strings.Current.CS_Artiste }); // TODO localize sorts if needed
+			RefreshHeaderText(); UpdateSortButtonText();
 			SetTracks(tuple.Item3);
 		}
 		else if (_allTracks.Count > 0 && FilteredTracks.Count == 0)
@@ -325,10 +325,25 @@ public sealed partial class LibraryPage : Page
 	{
 		_collectionTitle = title;
 		_collectionSubtitle = subtitle;
-		RefreshHeaderText(); SortButtonLabel.Text = "Trier : " + (_currentSort switch { "title_asc" => "Titre (A->Z)", "artist_asc" => "Artiste (A->Z)", "album_asc" => "Album (A->Z)", "duration_asc" => "DurÃ©e (croissant)", "duration_desc" => "DurÃ©e (dÃ©croissant)", "added_desc" => "Ajout rÃ©cent d'abord", _ => Resona.Models.Strings.Current.CS_Artiste }); // TODO localize sorts if needed
+		RefreshHeaderText(); UpdateSortButtonText();
 		SetTracks(tracks);
 	}
 
+	
+	private void UpdateSortButtonText()
+	{
+		string sortName = _currentSort switch
+		{
+			"title_asc" => Resona.Models.Strings.Current.LibraryPage_Text_TitreAgtZ,
+			"artist_asc" => Resona.Models.Strings.Current.LibraryPage_Text_ArtisteAgtZ,
+			"album_asc" => Resona.Models.Strings.Current.LibraryPage_Text_AlbumAgtZ,
+			"duration_asc" => Resona.Models.Strings.Current.LibraryPage_Text_Durecroissant,
+			"duration_desc" => Resona.Models.Strings.Current.LibraryPage_Text_Duredcroissant,
+			"added_desc" => Resona.Models.Strings.Current.LibraryPage_Text_Ajoutrcentdabord,
+			_ => Resona.Models.Strings.Current.LibraryPage_Text_ArtisteAgtZ
+		};
+		SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+	}
 	private void RefreshHeaderText()
 	{
 		if (PageTitleText != null)
@@ -367,7 +382,7 @@ public sealed partial class LibraryPage : Page
 		{
 			return;
 		}
-		bool flag = isPlaying && App.AudioEngine.State == PlaybackState.Playing;
+		bool flag = isPlaying && App.AudioEngine.State != NAudio.Wave.PlaybackState.Paused;
 		if (isHovered)
 		{
 			border.Visibility = Visibility.Visible;
@@ -423,7 +438,7 @@ public sealed partial class LibraryPage : Page
 			_currentPage = Math.Clamp(_currentPage, 0, _totalPages - 1);
 			UpdateFilteredTracks(list.Skip(_currentPage * libraryDisplayLimit).Take(libraryDisplayLimit).ToList());
 			PaginationPanel.Visibility = Visibility.Visible;
-			PageIndicator.Text = $"Page {_currentPage + 1} / {_totalPages}";
+			PageIndicator.Text = $"{Resona.Models.Strings.Current.CS_Page} {_currentPage + 1} / {_totalPages}";
 			PrevPageButton.IsEnabled = _currentPage > 0;
 			NextPageButton.IsEnabled = _currentPage < _totalPages - 1;
 			return;
@@ -492,7 +507,7 @@ public sealed partial class LibraryPage : Page
 		if (sender is MenuFlyoutItem menuFlyoutItem)
 		{
 			_currentSort = menuFlyoutItem.Tag?.ToString() ?? "artist_asc";
-			App.Settings.Current.LibrarySort = _currentSort; await App.Settings.SaveAsync(); SortButtonLabel.Text = "Trier : " + menuFlyoutItem.Text;
+			App.Settings.Current.LibrarySort = _currentSort; await App.Settings.SaveAsync(); UpdateSortButtonText();
 			_currentPage = 0;
 			ApplyFilter(SearchBox.Text);
 		}
@@ -573,7 +588,7 @@ public sealed partial class LibraryPage : Page
 			{
 				parent.Items.Add(new MenuFlyoutItem
 				{
-					Text = "Aucune playlist",
+					Text = Resona.Models.Strings.Current.CS_NoPlaylist,
 					IsEnabled = false
 				});
 			}
@@ -637,6 +652,7 @@ public sealed partial class LibraryPage : Page
 
 	private void PlayOverlay_Tapped(object sender, TappedRoutedEventArgs e)
 	{
+		if (MainWindow.LastClickWasXButton) { MainWindow.LastClickWasXButton = false; return; }
 		if (!(sender is Border border))
 		{
 			return;
@@ -684,6 +700,8 @@ public sealed partial class LibraryPage : Page
 		return null;
 	}
 
+	public bool TryGoBack() { BackButton_Click(null, null); return true; }
+
 	private void BackButton_Click(object sender, RoutedEventArgs e)
 	{
 		App.MainWindowInstance?.RestoreSidebarSelection();
@@ -715,6 +733,9 @@ public sealed partial class LibraryPage : Page
         }
     }
 }
+
+
+
 
 
 

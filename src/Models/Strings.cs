@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 
 using System.Runtime.CompilerServices;
 using Resona;
@@ -42,12 +42,12 @@ public class Strings : INotifyPropertyChanged
     public void NotifyLanguageChanged()
     {
         // Null property name triggers an update for all bindings to this object
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty)); PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("IsFr"));
     }
 
 
 
-    public string CS_AIPromptDJ => IsFr ? "Tu es un DJ IA. Créer une playlist  partir de la Bibliothèque musicale locale fournie, selon la demande : '{0}'.\n\nRenvoie un objet JSON brut avec : 'playlist_name' (Le nom de la playlist) et 'track_ids' (Un tableau de TEXTE/STRINGS contenant UNIQUEMENT les 'id' des chansons sélectionnées. N'oublie pas les guillemets autour de chaque ID)." : "You are an AI DJ. Create a playlist from the provided local music library, based on the request: '{0}'.\n\nReturn a raw JSON object with: 'playlist_name' (The name of the playlist) and 'track_ids' (An array of TEXT/STRINGS containing ONLY the 'id' of the selected songs. Do not forget the quotes around each ID).";
+    public string CS_AIPromptDJ => IsFr ? "Tu es un DJ IA. Créer une playlist à partir de la Bibliothèque musicale locale fournie, selon la demande : '{0}'.\n\nRenvoie un objet JSON brut avec : 'playlist_name' (Le nom de la playlist) et 'track_ids' (Un tableau de TEXTE/STRINGS contenant UNIQUEMENT les 'id' des chansons sélectionnées. N'oublie pas les guillemets autour de chaque ID)." : "You are an AI DJ. Create a playlist from the provided local music library, based on the request: '{0}'.\n\nReturn a raw JSON object with: 'playlist_name' (The name of the playlist) and 'track_ids' (An array of TEXT/STRINGS containing ONLY the 'id' of the selected songs. Do not forget the quotes around each ID).";
 
     public string CS_AIPromptCleanup_Albums => IsFr ? "- Pour les albums: Supprimer les 'OST', 'Single', les noms de fichiers qui n'ont pas de sens, regrouper les mêmes albums sous leur vrai nom officiel.\n- Tu DOIS vérifier en ligne (recherche web) pour trouver les vrais noms d'albums et regrouper ceux qui sont similaires sous le même nom exact.\n" : "- For albums: Remove 'OST', 'Single', meaningless filenames, group identical albums under their true official name.\n- You MUST check online (web search) to find the true album names and group similar ones under the exact same name.\n";
 
@@ -74,7 +74,7 @@ public class Strings : INotifyPropertyChanged
 
     public string CS_AIDialog_Success => IsFr ? "Succès" : "Success";
 
-    public string CS_AIDialog_Updated => IsFr ? "Mise  jour réussie de {0} pistes." : "Successfully updated {0} tracks.";
+    public string CS_AIDialog_Updated => IsFr ? "Mise à jour réussie de {0} pistes." : "Successfully updated {0} tracks.";
 
     public string DownloadPage_Desc1 => IsFr ? "Télécharge de la musique depuis YouTube, SoundCloud, Bandcamp et + de 1700 sites.\n" : "Download music from YouTube, SoundCloud, Bandcamp and 1700+ sites.\n";
 
@@ -136,8 +136,10 @@ public class Strings : INotifyPropertyChanged
 
 
 
-    public string CS_Ajouteruneplaylist => IsFr ? "Ajouter  une playlist" : "Add to playlist";
+    public string CS_Ajouteruneplaylist => IsFr ? "Ajouter à une playlist" : "Add to playlist";
 
+    public string CS_AlbumInconnu => IsFr ? "Album inconnu" : "Unknown album";
+    public string CS_ArtisteInconnu => IsFr ? "Artiste inconnu" : "Unknown artist";
     public string CS_Album => IsFr ? "Album" : "Album";
 
     public string CS_Anne => IsFr ? "Année" : "Year";
@@ -188,7 +190,7 @@ public class Strings : INotifyPropertyChanged
 
     public string CS_Titre => IsFr ? "Titre" : "Title";
 
-    public string CS_Ajouterlafiledatten => IsFr ? "Ajouter  la file d'attente" : "Add to queue";
+    public string CS_Ajouterlafiledatten => IsFr ? "Ajouter à la file d'attente" : "Add to queue";
 
     public string CS_Voirlalbum => IsFr ? "Voir l'album" : "View album";
 
@@ -197,6 +199,20 @@ public class Strings : INotifyPropertyChanged
     public string CS_Copierlesparoles => IsFr ? "Copier les paroles" : "Copy lyrics";
 
     public string CS_Recherche => IsFr ? "Recherche..." : "Searching...";
+    public string CS_Settings => IsFr ? "Paramètres" : "Settings";
+    public string CS_Library => IsFr ? "Bibliothèque" : "Library";
+    public string CS_NoPlaylist => IsFr ? "Aucune playlist" : "No playlist";
+    public string CS_ImportComplete => IsFr ? "Importation terminée" : "Import complete";
+    public string CS_ImportCompleteDesc => IsFr ? "{0} playlist(s) importée(s) - {1} piste(s)." : "{0} playlist(s) imported - {1} track(s).";
+    public string CS_Importing => IsFr ? "Importation en cours..." : "Importing...";
+    public string CS_NewPlaylist => IsFr ? "Nouvelle playlist" : "New playlist";
+    public string CS_MyPlaylist => IsFr ? "Ma Playlist" : "My Playlist";
+    public string CS_Create => IsFr ? "Créer" : "Create";
+    public string CS_Pages => IsFr ? "Page(s)" : "Page(s)";
+    public string CS_Play => IsFr ? "Lire" : "Play";
+    public string CS_Rename => IsFr ? "Renommer" : "Rename";
+    public string CS_Delete => IsFr ? "Supprimer" : "Delete";
+    public string CS_NoPlaylistInCategory => IsFr ? "Aucune playlist. Importez un fichier .m3u/.m3u8 ou créez une playlist manuellement." : "No playlist. Import an .m3u/.m3u8 file or create a playlist manually.";
 
 
 
@@ -274,7 +290,7 @@ public class Strings : INotifyPropertyChanged
     public string PlaylistsPage_Text_Importerm3um3u8 => IsFr ? "Importer (.m3u / .m3u8)" : "Import (.m3u / .m3u8)";
     public string PlaylistsPage_Text_NomAgtZ => IsFr ? "Nom (A-Z)" : "Name (A-Z)";
     public string PlaylistsPage_Text_NomZgtA => IsFr ? "Nom (Z-A)" : "Name (Z-A)";
-    public string PlaylistsPage_Text_Nombredesons => IsFr ? "{0} sons" : "{0} tracks";
+    public string PlaylistsPage_Text_Nombredesons => IsFr ? "Nombre de sons" : "Number of tracks";
     public string PlaylistsPage_Text_Nouvelleplaylist => IsFr ? "Nouvelle playlist" : "New playlist";
     public string PlaylistsPage_Text_Playlists => IsFr ? "Playlists" : "Playlists";
     public string PlaylistsPage_Text_TrierNom => IsFr ? "Trier par Nom" : "Sort by Name";
@@ -286,6 +302,10 @@ public class Strings : INotifyPropertyChanged
     public string QueuePage_Text_Filedattente => IsFr ? "File d'attente" : "Queue";
     public string SettingsLanguageDesc => IsFr ? "Change la langue de l'application" : "Change the application language";
     public string SettingsLanguageTitle => IsFr ? "Langue" : "Language";
+    public string NowPlayingPage_Text_EnLecture => IsFr ? "En lecture" : "Now Playing";
+    public string NowPlayingPage_Text_Artiste => IsFr ? "Artiste" : "Artist";
+    public string SettingsPage_Toggle_AutoNowPlaying => IsFr ? "Ouvrir l'affichage de lecture automatiquement" : "Auto-open Now Playing view";
+    public string SettingsPage_Text_AutoNowPlayingDesc => IsFr ? "Basculer sur la pochette en grand au lancement d'un titre." : "Switch to large cover view when playing a track.";
     public string SettingsPage_Content_128kbps => IsFr ? "128 kbps" : "128 kbps";
     public string SettingsPage_Content_192kbps => IsFr ? "192 kbps" : "192 kbps";
     public string SettingsPage_Content_256kbps => IsFr ? "256 kbps" : "256 kbps";
@@ -301,7 +321,7 @@ public class Strings : INotifyPropertyChanged
     public string SettingsPage_Content_Dossiers => IsFr ? "Dossiers" : "Folders";
     public string SettingsPage_Content_Dsactiv => IsFr ? "Désactivé" : "Disabled";
     public string SettingsPage_Content_Englishen => IsFr ? "English (en)" : "English (en)";
-    public string SettingsPage_Content_Exporterlabibliothqu => IsFr ? "Exporter la Bibliothèque" : "Export library";
+    public string SettingsPage_Content_Exporterlabibliothqu => IsFr ? "Exporter toutes les playlists" : "Export all playlists";
     public string SettingsPage_Content_FLACsanspertegrosfic => IsFr ? "FLAC (sans perte)" : "FLAC (lossless)";
     public string SettingsPage_Content_Franaisfr => IsFr ? "Français (fr)" : "Français (fr)";
     public string SettingsPage_Content_Genres => IsFr ? "Genres" : "Genres";
@@ -358,4 +378,15 @@ public class Strings : INotifyPropertyChanged
     public string SettingsPage_Text_galiseur => IsFr ? "Égaliseur" : "Equalizer";
     public string SettingsPage_Text_qualitdbitcible => IsFr ? "Qualité / Débit cible" : "Quality / Target bitrate";
     public string StatisticsPage_Text_Statistiques => IsFr ? "Statistiques" : "Statistics";
+
+    public string SettingsPage_Text_Updates => IsFr ? "Mises à jour" : "Updates";
+    public string SettingsPage_Text_AutoUpdate => IsFr ? "Vérifier les mises à jour au lancement" : "Check for updates on startup";
+    public string SettingsPage_Text_CheckUpdate => IsFr ? "Rechercher une mise à jour" : "Check for updates";
+    public string Update_NewVersion_Title => IsFr ? "Nouvelle mise à jour" : "New update available";
+    public string Update_NewVersion_Message => IsFr ? "Une nouvelle version de Resona est disponible. Voulez-vous la télécharger ?" : "A new version of Resona is available. Do you want to download it?";
+    public string Update_Download => IsFr ? "Télécharger" : "Download";
+    public string Update_Close => IsFr ? "Fermer" : "Close";
+    public string Update_UpToDate_Title => IsFr ? "Vous êtes à jour" : "You are up to date";
+    public string Update_UpToDate_Message => IsFr ? "Vous possédez déjà la dernière version de Resona." : "You already have the latest version of Resona.";
+
 }

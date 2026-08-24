@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     NavigationCacheMode="Required"
     Background="Transparent"
     x:Class="Resona.Views.DownloadPage"
@@ -158,5 +158,6 @@
     </Grid>
     </ScrollViewer>
 </Page>
+
 
 

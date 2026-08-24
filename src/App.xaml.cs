@@ -137,8 +137,10 @@ public partial class App : Application
                 SetForegroundWindow(hwnd); // Important pour fermer le menu quand on clique ailleurs
 
                 IntPtr hMenu = CreatePopupMenu();
-                InsertMenu(hMenu, 0, 0x0000, (IntPtr)2, "Quitter");
-                InsertMenu(hMenu, 1, 0x0000, (IntPtr)1, "Ouvrir Resona");
+                string strOpen = Models.Strings.Current.IsFr ? "Ouvrir Resona" : "Open Resona";
+                string strQuit = Models.Strings.Current.IsFr ? "Quitter" : "Quit";
+                InsertMenu(hMenu, 0, 0x0400, (IntPtr)1, strOpen);
+                InsertMenu(hMenu, 1, 0x0400, (IntPtr)2, strQuit);
 
                 GetCursorPos(out POINT pt);
                 
@@ -251,6 +253,7 @@ public partial class App : Application
         // preset : sur le noir absolu on veut quand même un vrai dégradé violet/etc.
         // uniquement les contrôles FONCTIONNELS utilisent functionalAccent ci-dessus.
         SetBrushColor(res, "AppAccentBrush", accent);
+        SetBrushColor(res, "AppTimecodeBrush", isBlackAccent ? Windows.UI.Color.FromArgb(255, 255, 255, 255) : accent);
         SetBrushColor(res, "AppAccentSecondaryBrush", accentSecondary);
         SetBrushColor(res, "AppDeepBackgroundBrush", background);
         SetBrushColor(res, "AppSurfaceBrush", surface);

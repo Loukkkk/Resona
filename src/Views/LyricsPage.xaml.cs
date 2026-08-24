@@ -19,9 +19,6 @@ public sealed partial class LyricsPage : Page
 
 	public void ShowLyrics(string? lyrics)
 	{
-		LyricsText.Text = (string.IsNullOrWhiteSpace(lyrics) ? "Aucune parole trouvée pour ce morceau." : lyrics);
+		LyricsText.Text = (string.IsNullOrWhiteSpace(lyrics) ? (Models.Strings.Current.IsFr ? "Aucune parole trouvée pour ce morceau." : "No lyrics found for this track.") : lyrics);
 	}
 }
-
-
-

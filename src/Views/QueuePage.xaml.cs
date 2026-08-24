@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -143,7 +143,7 @@ public sealed partial class QueuePage : Page
 		{
 			return;
 		}
-		bool flag = isPlaying && App.AudioEngine.State == PlaybackState.Playing;
+		bool flag = isPlaying && App.AudioEngine.State != NAudio.Wave.PlaybackState.Paused;
 		if (isHovered)
 		{
 			border.Visibility = Visibility.Visible;
@@ -192,6 +192,7 @@ public sealed partial class QueuePage : Page
 
 	private void PlayOverlay_Tapped(object sender, TappedRoutedEventArgs e)
 	{
+		if (MainWindow.LastClickWasXButton) { MainWindow.LastClickWasXButton = false; return; }
 		if (sender is FrameworkElement { DataContext: Track dataContext } frameworkElement)
 		{
 			if (dataContext.IsPlaying)
@@ -234,7 +235,7 @@ public sealed partial class QueuePage : Page
 		}
 		if (menuFlyout.Items.Count >= 2)
 		{
-			string text = ((selected != null && selected.Count > 1 && selected.Contains(track)) ? $"Supprimer {selected.Count} titres de la file d'attente" : "Supprimer de la file d'attente");
+			string text = Models.Strings.Current.IsFr ? (selected != null && selected.Count > 1 && selected.Contains(track) ? $"Supprimer {selected.Count} titres de la file d'attente" : "Supprimer de la file d'attente") : (selected != null && selected.Count > 1 && selected.Contains(track) ? $"Remove {selected.Count} tracks from queue" : "Remove from queue");
 			MenuFlyoutItem menuFlyoutItem = new MenuFlyoutItem
 			{
 				Text = text,
@@ -427,6 +428,7 @@ public sealed partial class QueuePage : Page
         }
     }
 }
+
 
 
 

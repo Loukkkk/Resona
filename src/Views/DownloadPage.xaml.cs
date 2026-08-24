@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -80,7 +80,7 @@ public sealed partial class DownloadPage : Page
 		}
 		SearchResultsPanel.Children.Clear();
 		SearchResultsPanel.Visibility = Visibility.Visible;
-		StatusText.Text = "Recherche en cours…";
+		StatusText.Text = Models.Strings.Current.IsFr ? "Recherche en cours..." : "Searching...";
 		ProgressRing.IsActive = true;
 		try
 		{
@@ -90,7 +90,7 @@ public sealed partial class DownloadPage : Page
 			{
 				SearchResultsPanel.Children.Add(new TextBlock
 				{
-					Text = "Aucun résultat.",
+					Text = Resona.Models.Strings.Current.CS_Aucunrsultat,
 					Opacity = 0.6,
 					FontSize = 13.0,
 					Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]
@@ -153,7 +153,7 @@ public sealed partial class DownloadPage : Page
 					Padding = new Thickness(10.0, 6.0, 10.0, 6.0),
 					VerticalAlignment = VerticalAlignment.Center
 				};
-				ToolTipService.SetToolTip(button, "Télécharger ce morceau");
+				ToolTipService.SetToolTip(button, "TÃƒÆ’Ã‚Â©lÃƒÆ’Ã‚Â©charger ce morceau");
 				string capturedUrl = item3;
 				button.Click += delegate(object s2, RoutedEventArgs e2)
 				{
@@ -172,11 +172,11 @@ public sealed partial class DownloadPage : Page
 				grid.Children.Add(button);
 				SearchResultsPanel.Children.Add(grid);
 			}
-			StatusText.Text = $"{list.Count} résultats";
+			StatusText.Text = $"{list.Count} rÃƒÆ’Ã‚Â©sultats";
 		}
 		catch (Exception ex)
 		{
-			StatusText.Text = "âŒ Erreur de recherche : " + ex.Message;
+			StatusText.Text = Models.Strings.Current.IsFr ? "\u274C " + ex.Message : "\u274C " + ex.Message;
 		}
 		finally
 		{
@@ -234,7 +234,7 @@ public sealed partial class DownloadPage : Page
 			StatusText.Text = string.Empty;
 			return;
 		}
-		StatusText.Text = "Installation de yt-dlp et ffmpeg…";
+		StatusText.Text = Models.Strings.Current.IsFr ? "Installation de yt-dlp et ffmpeg..." : "Installing yt-dlp and ffmpeg...";
 		ProgressRing.IsActive = true;
 		await DownloadService.EnsureBinariesAsync(delegate(string line)
 		{
@@ -244,7 +244,7 @@ public sealed partial class DownloadPage : Page
 			});
 		});
 		ProgressRing.IsActive = false;
-		StatusText.Text = (DownloadService.IsYtDlpPresent ? string.Empty : "âš \ufe0f Installation échouée — vérifiez votre connexion.");
+		StatusText.Text = (DownloadService.IsYtDlpPresent ? string.Empty : "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â \ufe0f Installation ÃƒÆ’Ã‚Â©chouÃƒÆ’Ã‚Â©e ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â vÃƒÆ’Ã‚Â©rifiez votre connexion.");
 	}
 
 	private async void DownloadButton_Click(object sender, RoutedEventArgs e)
@@ -261,7 +261,7 @@ public sealed partial class DownloadPage : Page
 		}
 		if (string.IsNullOrWhiteSpace(url))
 		{
-			await ShowDialog("URL manquante", "Colle l'URL d'une vidéo ou d'une playlist.");
+			await ShowDialog("URL manquante", "Colle l'URL d'une vidÃƒÆ’Ã‚Â©o ou d'une playlist.");
 			return;
 		}
 		AppSettings current = App.Settings.Current;
@@ -278,7 +278,7 @@ public sealed partial class DownloadPage : Page
 			_isDownloading = true;
 			DownloadButton.IsEnabled = false;
 			ProgressRing.IsActive = true;
-			StatusText.Text = "Préparation…";
+			StatusText.Text = Models.Strings.Current.IsFr ? "PrÃƒÂ©paration..." : "Preparing...";
 			LogBox.Text = string.Empty;
 			DownloadOptions opts = new DownloadOptions
 			{
@@ -293,22 +293,19 @@ public sealed partial class DownloadPage : Page
 				{
 					base.DispatcherQueue.TryEnqueue(delegate
 					{
-						StatusText.Text = ((line.Length > 90) ? (line.Substring(0, 90) + "…") : line);
+						StatusText.Text = ((line.Length > 90) ? (line.Substring(0, 90) + "...") : line);
 						LogBox.Text = line + "\n" + LogBox.Text;
 					});
 				});
-				StatusText.Text = "? Téléchargement terminé !";
-				App.MainWindowInstance?.TriggerLibraryRescan();
-				if (AutoTagCheckBox.IsChecked != true)
-				{
-					return;
-				}
-				await Task.Delay(1500);
+				StatusText.Text = Models.Strings.Current.IsFr ? "\u2705 T\u00E9l\u00E9chargement termin\u00E9 !" : "\u2705 Download complete!";
+				await Task.Delay(1000);
 				DateTime cutoff = DateTime.UtcNow.AddSeconds(-30.0);
 				List<string> list = (from f in Directory.GetFiles(outputDir)
 					where File.GetLastWriteTimeUtc(f) >= cutoff
 					where f.EndsWith(".mp3") || f.EndsWith(".flac") || f.EndsWith(".opus") || f.EndsWith(".m4a") || f.EndsWith(".wav")
 					select f).ToList();
+					
+				App.MainWindowInstance?.StartScanAnimation();
 				foreach (string item in list)
 				{
 					Track track = App.Scanner.ExtractMetadata(item) ?? new Track
@@ -316,16 +313,25 @@ public sealed partial class DownloadPage : Page
 						FilePath = item,
 						Title = Path.GetFileNameWithoutExtension(item)
 					};
-					if (!(await App.MainWindowInstance.ShowAutoTagDialogAsync(track)))
+					
+					bool isSavedByAutoTag = false;
+					if (AutoTagCheckBox.IsChecked == true)
 					{
-						break;
+					    isSavedByAutoTag = await App.MainWindowInstance.ShowAutoTagDialogAsync(track);
+					}
+					
+					if (!isSavedByAutoTag)
+					{
+					    await App.Cache.UpsertTrackAsync(track);
+					    App.MainWindowInstance?.AddTrackToLibrary(track);
 					}
 				}
+				App.MainWindowInstance?.TriggerLibraryRescan();
 				return;
 			}
 			catch (Exception ex)
 			{
-				StatusText.Text = "âŒ " + ex.Message;
+				StatusText.Text = Models.Strings.Current.IsFr ? "\u274C " + ex.Message : "\u274C " + ex.Message;
 				return;
 			}
 			finally
@@ -335,7 +341,7 @@ public sealed partial class DownloadPage : Page
 				ProgressRing.IsActive = false;
 			}
 		}
-		await ShowDialog("Dossier introuvable", "Configure d'abord le dossier dans Paramètres ? Téléchargement.");
+		await ShowDialog("Dossier introuvable", "Configure d'abord le dossier dans ParamÃƒÆ’Ã‚Â¨tres ? TÃƒÆ’Ã‚Â©lÃƒÆ’Ã‚Â©chargement.");
 	}
 
 	private async void PasteButton_Click(object sender, RoutedEventArgs e)
@@ -365,6 +371,13 @@ public sealed partial class DownloadPage : Page
 		}.ShowAsync();
 	}
 }
+
+
+
+
+
+
+
 
 
 

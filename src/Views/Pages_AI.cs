@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,7 +17,7 @@ public sealed partial class AlbumsPage : Page
         var items = _library
             .Where(t => !string.IsNullOrWhiteSpace(t.Album) 
                      && !t.Album.Equals("Unknown Album", StringComparison.OrdinalIgnoreCase) 
-                     && !t.Album.Equals("Album inconnu", StringComparison.OrdinalIgnoreCase))
+                     && !t.Album.Equals(Models.Strings.Current.CS_AlbumInconnu, StringComparison.OrdinalIgnoreCase) && !t.Album.Equals("Unknown album", StringComparison.OrdinalIgnoreCase))
             .Select(t => t.Album!)
             .Distinct()
             .ToList();
@@ -152,7 +152,7 @@ public static class AIHelper
         if (!App.Settings.Current.AIEnabled || items.Count == 0) return;
 
         var promptParts = AIService.GenerateCleanupPromptParts(items, typeName);
-        string? responseJson = await ShowManualAIDialog(page.XamlRoot, $"Nettoyage IA - {typeName}", promptParts.Instructions, promptParts.JsonData);
+        string? responseJson = await ShowManualAIDialog(page.XamlRoot, Models.Strings.Current.IsFr ? $"Nettoyage IA - {typeName}" : $"AI Cleanup - {typeName}", promptParts.Instructions, promptParts.JsonData);
         await Task.Delay(800); // Prevent WinUI ContentDialog overlap crash
 
         if (string.IsNullOrWhiteSpace(responseJson)) return;
@@ -198,8 +198,8 @@ public static class AIHelper
 
                 var completeDialog = new ContentDialog
                 {
-                    Title = "Terminé",
-                    Content = $"{typeName} nettoyés avec succès. {tracksToModify.Count} éléments modifiés.",
+                    Title = Models.Strings.Current.IsFr ? "Termin\u00E9" : "Done",
+                    Content = Models.Strings.Current.IsFr ? $"{typeName} nettoyÃ©s avec succÃ¨s. {tracksToModify.Count} Ã©lÃ©ments modifiÃ©s." : $"{typeName} successfully cleaned up. {tracksToModify.Count} items modified.",
                     CloseButtonText = "OK",
                     XamlRoot = page.XamlRoot
                 };
@@ -209,8 +209,8 @@ public static class AIHelper
             {
                 var noChangeDialog = new ContentDialog
                 {
-                    Title = "Terminé",
-                    Content = "Aucune modification trouvée dans la réponse de l'IA.",
+                    Title = Models.Strings.Current.IsFr ? "Termin\u00E9" : "Done",
+                    Content = Models.Strings.Current.IsFr ? "Aucune modification trouvÃ©e dans la rÃ©ponse de l'IA." : "No modifications found in the AI response.",
                     CloseButtonText = "OK",
                     XamlRoot = page.XamlRoot
                 };
@@ -221,7 +221,7 @@ public static class AIHelper
         {
             var errorDialog = new ContentDialog
             {
-                Title = "Erreur",
+                Title = Models.Strings.Current.IsFr ? "Erreur" : "Error",
                 Content = ex.Message,
                 CloseButtonText = "OK",
                 XamlRoot = page.XamlRoot
@@ -230,5 +230,8 @@ public static class AIHelper
         }
     }
 }
+
+
+
 
 

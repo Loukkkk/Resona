@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 
@@ -107,6 +107,17 @@ public sealed partial class AlbumsPage : Page
 
 
 	private List<Track> _library = new List<Track>();
+	private string _currentSort = "name_asc";
+
+	private void SortAlbumsMenu_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string sort)
+		{
+			_currentSort = sort;
+			SortButtonLabel.Text = item.Text;
+			BuildUIBatched(SearchBox.Text);
+		}
+	}
 
 
 
@@ -722,19 +733,18 @@ public sealed partial class AlbumsPage : Page
 
 
 
-		List<(string, List<Track>)> list = (from g in (from g in _library.GroupBy<Track, string>((Track t) => t.Album, StringComparer.OrdinalIgnoreCase)
-
-
-
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.Album, StringComparer.OrdinalIgnoreCase)
 				where !string.IsNullOrWhiteSpace(g.Key) && g.Count() > 1 && (string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(filter, StringComparison.OrdinalIgnoreCase))
+				select g;
+		
+		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
+		{
+			"name_desc" => listQuery.OrderByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"count_desc" => listQuery.OrderByDescending(g => g.Count()),
+			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+		};
 
-
-
-				select g).OrderBy<IGrouping<string, Track>, string>((IGrouping<string, Track> g) => g.Key, StringComparer.OrdinalIgnoreCase)
-
-
-
-			select (name: g.Key, tracks: g.OrderBy((Track t) => t.TrackNumber).ToList())).ToList();
+		List<(string, List<Track>)> list = listOrdered.Select(g => (g.Key, g.OrderBy(t => t.TrackNumber).ToList())).ToList();
 
 
 

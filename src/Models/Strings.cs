@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 
 using System.Runtime.CompilerServices;
 using Resona;
@@ -381,6 +381,7 @@ public class Strings : INotifyPropertyChanged
 
     public string SettingsPage_Text_Updates => IsFr ? "Mises à jour" : "Updates";
     public string SettingsPage_Text_AutoUpdate => IsFr ? "Vérifier les mises à jour au lancement" : "Check for updates on startup";
+    public string SettingsPage_Text_ClearCovers => IsFr ? "Vider le cache des pochettes automatiques" : "Clear automatic cover cache";
     public string SettingsPage_Text_CheckUpdate => IsFr ? "Rechercher une mise à jour" : "Check for updates";
     public string Update_NewVersion_Title => IsFr ? "Nouvelle mise à jour" : "New update available";
     public string Update_NewVersion_Message => IsFr ? "Une nouvelle version de Resona est disponible. Voulez-vous la télécharger ?" : "A new version of Resona is available. Do you want to download it?";

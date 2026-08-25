@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     NavigationCacheMode="Required"
     Background="Transparent"
     x:Class="Resona.Views.StatisticsPage"
@@ -17,7 +17,7 @@
                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel x:Name="ContentPanel" Spacing="8" Margin="0,0,0,24" />
+            <StackPanel x:Name="ContentPanel" Spacing="8" Margin="0,0,24,24" />
         </ScrollViewer>
     </Grid>
 </Page>

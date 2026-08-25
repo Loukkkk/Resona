@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -22,14 +22,7 @@ namespace Resona
                 {
                     string latestTag = tagElem.GetString() ?? "";
                     
-                    string currentTag = "v1.2";
-                    try
-                    {
-                        var v = Windows.ApplicationModel.Package.Current.Id.Version;
-                        currentTag = $"v{v.Major}.{v.Minor}";
-                    }
-                    catch { }
-                    
+                    string currentTag = "v2.1";
                     bool hasUpdate = latestTag != currentTag && !string.IsNullOrEmpty(latestTag) && latestTag != "v1.0";
                     
                     if (hasUpdate)

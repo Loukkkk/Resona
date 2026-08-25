@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 
@@ -103,6 +103,17 @@ public sealed partial class ArtistsPage : Page
 
 
 	private List<Track> _library = new List<Track>();
+	private string _currentSort = "name_asc";
+
+	private void SortArtistsMenu_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string sort)
+		{
+			_currentSort = sort;
+			SortButtonLabel.Text = item.Text;
+			BuildUIBatched(SearchBox.Text);
+		}
+	}
 
 
 
@@ -918,42 +929,24 @@ public sealed partial class ArtistsPage : Page
 
 
 
-		List<(string, List<Track>, int)> list = (from g in _library.GroupBy<Track, string>((Track t) => t.Artist, StringComparer.OrdinalIgnoreCase)
-
-
-
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.Artist, StringComparer.OrdinalIgnoreCase)
 			where !string.IsNullOrWhiteSpace(g.Key) && (string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase))
-
-
-
-			select g).OrderBy<IGrouping<string, Track>, string>((IGrouping<string, Track> g) => g.Key, StringComparer.OrdinalIgnoreCase).Select(delegate(IGrouping<string, Track> g)
-
-
-
+			select g;
+		
+		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
 		{
+			"name_desc" => listQuery.OrderByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"count_desc" => listQuery.OrderByDescending(g => g.Count()),
+			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+		};
 
-
-
+		List<(string, List<Track>, int)> list = listOrdered.Select(delegate(IGrouping<string, Track> g)
+		{
 			List<Track> item = (from t in g
-
-
-
 				orderby t.Album, t.TrackNumber
-
-
-
 				select t).ToList();
-
-
-
-			int item2 = g.Select((Track t) => t.Album).Distinct<string>(StringComparer.OrdinalIgnoreCase).Count();
-
-
-
-			return (key: g.Key, tracks: item, albumCount: item2);
-
-
-
+			int item2 = g.Select((Track t) => t.Album).Where((string a) => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+			return (g.Key, item, item2);
 		}).ToList();
 
 

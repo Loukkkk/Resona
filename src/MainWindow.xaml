@@ -166,9 +166,9 @@
               Visibility="Collapsed" Opacity="0"
               Background="{StaticResource AppSurfaceBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="2*" MaxWidth="600" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="*" MinWidth="320" />
             </Grid.ColumnDefinitions>
 
             <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left">
@@ -187,7 +187,7 @@
                                VerticalAlignment="Center" />
                     </Grid>
                 </Border>
-                <StackPanel x:Name="NowPlayingTextContainer" VerticalAlignment="Center" MaxWidth="200">
+                <StackPanel x:Name="NowPlayingTextContainer" VerticalAlignment="Center" Width="228">
                     <StackPanel.RenderTransform>
                         <TranslateTransform x:Name="NowPlayingTextTransform" X="0" />
                     </StackPanel.RenderTransform>
@@ -279,9 +279,11 @@
             </Border>
 
             <StackPanel  VerticalAlignment="Center" Orientation="Horizontal" Spacing="6" Width="160">
-                <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" Foreground="White" />
+                <Button x:Name="VolumeMuteButton" Click="VolumeMuteButton_Click" Background="Transparent" BorderThickness="0" Padding="0" Width="30" Height="30" CornerRadius="15">
+                    <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" Foreground="White" />
+                </Button>
                 <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100"
-                        ValueChanged="VolumeSlider_ValueChanged" Width="120" UseLayoutRounding="True" />
+                        ValueChanged="VolumeSlider_ValueChanged" PointerWheelChanged="VolumeSlider_PointerWheelChanged" Width="120" UseLayoutRounding="True" />
             </StackPanel>
             </StackPanel>
         </Grid>

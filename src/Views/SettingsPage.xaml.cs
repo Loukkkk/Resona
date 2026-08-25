@@ -349,7 +349,7 @@ public sealed partial class SettingsPage : Page
 			await App.Settings.SaveAsync();
 			if (CoverSwitch.IsOn)
 			{
-				App.MainWindowInstance?.StartBackgroundCoverFetch();
+				App.MainWindowInstance?.FetchCoversForTracks(App.MainWindowInstance.Library);
 			}
 		}
 	}
@@ -970,6 +970,7 @@ public sealed partial class SettingsPage : Page
 						track.Artist = fileMeta.Artist;
 						track.Album = fileMeta.Album;
 						track.Genre = fileMeta.Genre;
+						track.DateAdded = fileMeta.DateAdded;
 						await App.Cache.UpsertTrackAsync(track);
 					}
 				}
@@ -1007,7 +1008,8 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 	
-    private void AutoUpdateSwitch_Toggled(object sender, RoutedEventArgs e)
+    
+	private void AutoUpdateSwitch_Toggled(object sender, RoutedEventArgs e)
     {
         if (_isInitializingUpdates) return;
         App.Settings.Current.AutoUpdateEnabled = AutoUpdateSwitch.IsOn;

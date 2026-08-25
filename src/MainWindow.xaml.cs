@@ -1,4 +1,4 @@
-﻿﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -545,6 +545,7 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
     private List<Track> _queue = new();
     private int _queueIndex = -1;
 	private System.Collections.Generic.Stack<Models.Track> _playbackHistory = new();
+	private System.Collections.Generic.Stack<Models.Track> _playbackFuture = new();
     private readonly List<Track> _manualQueue = new();
 
     private static readonly Dictionary<string, Windows.UI.Color?> _coverColorCache = new();
@@ -1577,27 +1578,86 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
         _foldersPageInstance?.LoadData(_library);
         _ = FetchMissingCoversInBackgroundAsync(_library.ToList());
         _ = BackgroundRescanAsync();
-        if (App.Settings.Current.AutoFetchMissingCovers)
-        {
-            StartBackgroundCoverFetch();
-        }
     }
+
+        private bool _isFetchingCovers = false;
+    private HashSet<string> _failedCoverSearches = new HashSet<string>();
 
     private async Task FetchMissingCoversInBackgroundAsync(List<Track> tracks)
     {
-        foreach (var track in tracks)
+        if (_isFetchingCovers) return;
+        _isFetchingCovers = true;
+        try
         {
-            if (!string.IsNullOrEmpty(track.CoverArtPath)) continue;
-            var embedded = App.Scanner.ExtractEmbeddedCover(track.FilePath);
-            if (embedded != null && embedded.Length > 0)
+            var missing = tracks.Where(t => string.IsNullOrEmpty(t.CoverArtPath)).ToList();
+            var stillMissing = new List<Track>();
+            
+            // Extract embedded covers extremely fast (no delays)
+            foreach (var track in missing)
             {
-                var localPath = await App.CoverArt.SaveEmbeddedCoverAsync(track.Id, embedded);
-                if (localPath != null) { track.CoverArtPath = localPath; await App.Cache.UpdateTrackAsync(track); continue; }
+                var embedded = App.Scanner.ExtractEmbeddedCover(track.FilePath);
+                if (embedded != null && embedded.Length > 0)
+                {
+                    var localPath = await App.CoverArt.SaveEmbeddedCoverAsync(track.Id, embedded);
+                    if (localPath != null) { track.CoverArtPath = localPath; await App.Cache.UpdateTrackAsync(track); continue; }
+                }
+                stillMissing.Add(track);
             }
-            if (!App.Settings.Current.AutoFetchMissingCovers) continue;
-            var path = await App.CoverArt.FindAndCacheCoverAsync(track.Id, track.Artist, track.Album);
-            if (path != null) { track.CoverArtPath = path; await App.Cache.UpdateTrackAsync(track); }
-            await Task.Delay(150);
+
+            if (!App.Settings.Current.AutoFetchMissingCovers) return;
+
+            // Group by Album/Artist to reduce iTunes API calls
+            var grouped = stillMissing
+                .Where(t => !_failedCoverSearches.Contains(t.Id))
+                .GroupBy(t => {
+                    string safeArtist = t.Artist ?? "";
+                    string safeAlbum = t.Album ?? "";
+                    if (safeAlbum.ToLowerInvariant().Contains("inconnu") || safeAlbum.ToLowerInvariant().Contains("unknown")) safeAlbum = "";
+                    if (safeArtist.ToLowerInvariant().Contains("inconnu") || safeArtist.ToLowerInvariant().Contains("unknown")) safeArtist = "";
+                    
+                    if (!string.IsNullOrEmpty(safeAlbum) && !string.IsNullOrEmpty(safeArtist))
+                        return safeArtist + "|" + safeAlbum;
+                    return t.Id;
+                })
+                .ToList();
+
+            foreach (var group in grouped)
+            {
+                if (!App.Settings.Current.AutoFetchMissingCovers) break;
+
+                var firstTrack = group.First();
+                if (string.IsNullOrWhiteSpace(firstTrack.Artist) && string.IsNullOrWhiteSpace(firstTrack.Album) && string.IsNullOrWhiteSpace(firstTrack.Title)) continue;
+
+                var path = await App.CoverArt.FindAndCacheCoverAsync(firstTrack.Id, firstTrack.Artist, firstTrack.Album, firstTrack.Title);
+                if (path != null)
+                {
+                    foreach (var track in group)
+                    {
+                        track.CoverArtPath = path;
+                        await App.Cache.UpdateTrackAsync(track);
+                    }
+                    
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_currentIndex >= 0 && group.Any(t => t.Id == _library[_currentIndex].Id))
+                            SetPlayerCover(path);
+                    });
+                }
+                else
+                {
+                    foreach (var track in group)
+                    {
+                        _failedCoverSearches.Add(track.Id);
+                    }
+                }
+                
+                await Task.Delay(800);
+            }
+        }
+        catch { }
+        finally
+        {
+            _isFetchingCovers = false;
         }
     }
 
@@ -1836,10 +1896,25 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
             foreach (var t in _playlistsPageInstance.DisplayedTracks.Where(x => x.FilePath == filePath)) t.IsPlaying = isPlaying;
     }
 
-    public async void PlayTrack(Track track, List<Track>? queue = null, bool isGoingBack = false)
+    public async void PlayTrack(Track track, List<Track>? queue = null, bool isGoingBack = false, bool isGoingForward = false)
     {
         var old = _queue.FirstOrDefault(t => t.Id == _nowPlayingId);
-		if (!isGoingBack && old != null) _playbackHistory.Push(old);
+        if (old != null)
+        {
+            if (isGoingBack)
+            {
+                _playbackFuture.Push(old);
+            }
+            else if (isGoingForward)
+            {
+                _playbackHistory.Push(old);
+            }
+            else
+            {
+                _playbackHistory.Push(old);
+                _playbackFuture.Clear();
+            }
+        }
         if (App.NowPlayingFilePath != null)
             UpdateIsPlayingGlobally(App.NowPlayingFilePath, false);
 
@@ -2014,9 +2089,22 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
         NowPlayingCover.Source = null;
     }
 
+    private string SanitizeUnknown(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return "";
+        var l = input.ToLowerInvariant();
+        if (l.Contains("inconnu") || l.Contains("unknown")) return "";
+        return input;
+    }
+
     private async Task FindMissingCoverAsync(Track track)
     {
-        var path = await App.CoverArt.FindAndCacheCoverAsync(track.Id, track.Artist, track.Album);
+        string sArtist = SanitizeUnknown(track.Artist);
+        string sAlbum = SanitizeUnknown(track.Album);
+        string sTitle = SanitizeUnknown(track.Title);
+        if (string.IsNullOrEmpty(sArtist) && string.IsNullOrEmpty(sAlbum) && string.IsNullOrEmpty(sTitle)) return;
+
+        var path = await App.CoverArt.FindAndCacheCoverAsync(track.Id, sArtist, sAlbum, track.Title);
         if (path != null)
         {
             track.CoverArtPath = path;
@@ -2030,52 +2118,21 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
         }
     }
 
-    private bool _isFetchingCovers = false;
-    private HashSet<string> _failedCoverSearches = new HashSet<string>();
-    public async void StartBackgroundCoverFetch()
-    {
-        if (_isFetchingCovers || !App.Settings.Current.AutoFetchMissingCovers) return;
-        _isFetchingCovers = true;
-        try
-        {
-            var missingCovers = _library.Where(t => string.IsNullOrEmpty(t.CoverArtPath) && !_failedCoverSearches.Contains(t.Id)).ToList();
-            foreach (var track in missingCovers)
-            {
-                if (!App.Settings.Current.AutoFetchMissingCovers) break;
-                if (string.IsNullOrWhiteSpace(track.Artist) && string.IsNullOrWhiteSpace(track.Album)) continue;
-
-                var path = await App.CoverArt.FindAndCacheCoverAsync(track.Id, track.Artist, track.Album);
-                if (path != null)
-                {
-                    track.CoverArtPath = path;
-                    await App.Cache.UpdateTrackAsync(track);
-                    DispatcherQueue.TryEnqueue(() =>
-                    {
-                        if (_currentIndex >= 0 && _library[_currentIndex].Id == track.Id)
-                            SetPlayerCover(path);
-                    });
-                }
-                else
-                {
-                    _failedCoverSearches.Add(track.Id);
-                }
-                
-                await Task.Delay(2000);
-            }
-        }
-        catch { }
-        finally
-        {
-            _isFetchingCovers = false;
-        }
-    }
-
     private async Task FindMissingLyricsAsync(Track track)
     {
+        string sArtist = SanitizeUnknown(track.Artist);
+        string sTitle = SanitizeUnknown(track.Title);
+        string sAlbum = SanitizeUnknown(track.Album);
+        if (string.IsNullOrEmpty(sArtist) && string.IsNullOrEmpty(sTitle)) 
+        {
+            DispatcherQueue.TryEnqueue(() => ShowPlainLyrics(Models.Strings.Current.IsFr ? "Paroles introuvables." : "Lyrics not found."));
+            return;
+        }
+
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-        var lyricsTask = App.Lyrics.SearchAsync(track.Artist, track.Title, track.Album, track.Duration);
-        var autoTagTask = AutoTagService.LookupAsync(track.Artist, track.Title, track.Duration, track.FilePath);
+        var lyricsTask = App.Lyrics.SearchAsync(sArtist, sTitle, sAlbum, track.Duration);
+        var autoTagTask = AutoTagService.LookupAsync(sArtist, sTitle, track.Duration, track.FilePath);
 
         var result = new LyricsResult();
         try { result = await lyricsTask.WaitAsync(cts.Token); }
@@ -2503,8 +2560,44 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
     private TextBlock? _infoTrackArtist;
     private TextBlock? _infoContent;
 
+    private double _previousVolume = 50;
+
+    private void VolumeMuteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (VolumeSlider.Value > 0)
+        {
+            _previousVolume = VolumeSlider.Value;
+            VolumeSlider.Value = 0;
+        }
+        else
+        {
+            VolumeSlider.Value = _previousVolume > 0 ? _previousVolume : 50;
+        }
+    }
+
+    private void VolumeSlider_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(VolumeSlider).Properties.MouseWheelDelta;
+        double change = delta > 0 ? 5 : -5;
+        double newValue = VolumeSlider.Value + change;
+        VolumeSlider.Value = Math.Max(0, Math.Min(100, newValue));
+        e.Handled = true;
+    }
+
     private void VolumeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
+        if (VolumeIcon != null)
+        {
+            if (VolumeSlider.Value <= 0)
+                VolumeIcon.Glyph = "\xE74F"; // Mute
+            else if (VolumeSlider.Value < 33)
+                VolumeIcon.Glyph = "\xE992"; // Low
+            else if (VolumeSlider.Value < 66)
+                VolumeIcon.Glyph = "\xE993"; // Medium
+            else
+                VolumeIcon.Glyph = "\xE767"; // High (standard)
+        }
+
         if (App.AudioEngine != null)
         {
             App.AudioEngine.SetUserVolume((float)(VolumeSlider.Value / 100.0));
@@ -3441,7 +3534,8 @@ private async Task LoadPlaylistSubItemsAsync(MenuFlyoutSubItem parent, List<Trac
 					PlayTrack(_queue[_queueIndex], _queue);
 					break;
 				case PlaybackMode.Shuffle:
-					PlayTrack(PickRandomTrack(), _queue);
+					if (_playbackFuture.Count > 0) PlayTrack(_playbackFuture.Pop(), _queue, false, true);
+					else PlayTrack(PickRandomTrack(), _queue);
 					break;
 				case PlaybackMode.RepeatAll:
 					PlayTrack(_queue[(_queueIndex + 1) % _queue.Count], _queue);
@@ -3662,7 +3756,8 @@ private async Task LoadPlaylistSubItemsAsync(MenuFlyoutSubItem parent, List<Trac
 		{
 			if (_playbackMode == PlaybackMode.Shuffle)
 			{
-				PlayTrack(PickRandomTrack(), _queue);
+				if (_playbackFuture.Count > 0) PlayTrack(_playbackFuture.Pop(), _queue, false, true);
+				else PlayTrack(PickRandomTrack(), _queue);
 			}
 			else if (_queueIndex < _queue.Count - 1)
 			{

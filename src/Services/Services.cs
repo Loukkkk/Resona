@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  Services.cs  Ã¢â‚¬â€  Resona
 //  Fusion de : CoverArtService, LyricsService, PlaylistM3uService,
 //              SettingsService, LibraryScannerService, LibraryCacheService,
@@ -118,15 +118,25 @@ public class CoverArtService
         catch { return null; }
     }
 
-    public async Task<string?> FindAndCacheCoverAsync(string trackId, string artist, string album)
+    public async Task<string?> FindAndCacheCoverAsync(string trackId, string artist, string album, string title = "")
     {
         string cachePath = Path.Combine(_cacheDir, $"{trackId}.jpg");
         if (System.IO.File.Exists(cachePath)) return cachePath;
 
+        string safeArtist = artist ?? "";
+        string safeAlbum = album ?? "";
+        string safeTitle = title ?? "";
+
+        if (safeAlbum.ToLowerInvariant().Contains("inconnu") || safeAlbum.ToLowerInvariant().Contains("unknown")) safeAlbum = "";
+        if (safeArtist.ToLowerInvariant().Contains("inconnu") || safeArtist.ToLowerInvariant().Contains("unknown")) safeArtist = "";
+        
+        string searchContext = string.IsNullOrWhiteSpace(safeAlbum) ? safeTitle : safeAlbum;
+        if (string.IsNullOrWhiteSpace(safeArtist) && string.IsNullOrWhiteSpace(searchContext)) return null;
+
         string? imageBytes = null;
         try
         {
-            string term = Uri.EscapeDataString($"{artist} {album}");
+            string term = Uri.EscapeDataString($"{safeArtist} {searchContext}".Trim());
             var response = await _http.GetFromJsonAsync<ItunesResponse>($"https://itunes.apple.com/search?term={term}&entity=album&limit=3");
             var artworkUrl = response?.Results.Length > 0 ? response.Results[0].ArtworkUrl100 : null;
             if (!string.IsNullOrEmpty(artworkUrl))
@@ -138,7 +148,7 @@ public class CoverArtService
         {
             try
             {
-                string term = Uri.EscapeDataString($"{artist} {album}");
+                string term = Uri.EscapeDataString($"{safeArtist} {searchContext}".Trim());
                 var deezerResp = await _http.GetFromJsonAsync<DeezerAlbumSearchResponse>($"https://api.deezer.com/search/album?q={term}&limit=3");
                 if (deezerResp?.data?.Count > 0 && !string.IsNullOrEmpty(deezerResp.data[0].cover_medium))
                     imageBytes = deezerResp.data[0].cover_medium!.Replace("250x250", "500x500");
@@ -476,7 +486,8 @@ public class LibraryScannerService
                 TrackNumber  = (int)tag.Track,
                 Year         = (int)tag.Year,
                 Genre        = tag.Genres.Length > 0 ? string.Join(", ", tag.Genres) : string.Empty,
-                LastModified = System.IO.File.GetLastWriteTimeUtc(filePath)
+                LastModified = System.IO.File.GetLastWriteTimeUtc(filePath),
+                DateAdded = new DateTime(Math.Min(System.IO.File.GetCreationTimeUtc(filePath).Ticks, System.IO.File.GetLastWriteTimeUtc(filePath).Ticks))
             };
             if (t.Duration == TimeSpan.Zero)
             {
@@ -546,7 +557,8 @@ public class LibraryScannerService
                     Artist       = Models.Strings.Current.CS_ArtisteInconnu,
                     Album        = Models.Strings.Current.CS_AlbumInconnu,
                     Duration     = duration,
-                    LastModified = System.IO.File.GetLastWriteTimeUtc(filePath)
+                    LastModified = System.IO.File.GetLastWriteTimeUtc(filePath),
+                    DateAdded = new DateTime(Math.Min(System.IO.File.GetCreationTimeUtc(filePath).Ticks, System.IO.File.GetLastWriteTimeUtc(filePath).Ticks))
                 };
             }
             catch { return null; }
@@ -674,7 +686,7 @@ public class LibraryCacheService
                 TrackNumber=excluded.TrackNumber, Year=excluded.Year, Genre=excluded.Genre,
                 CoverArtPath=excluded.CoverArtPath, Lyrics=excluded.Lyrics,
                 LyricsSynced=excluded.LyricsSynced, NormalizationGainDb=excluded.NormalizationGainDb,
-                IsAnalyzed=excluded.IsAnalyzed, LastModified=excluded.LastModified;
+                IsAnalyzed=excluded.IsAnalyzed, DateAdded=excluded.DateAdded, LastModified=excluded.LastModified;
             """;
         cmd.Parameters.AddWithValue("$id",          track.Id);
         cmd.Parameters.AddWithValue("$path",        track.FilePath);
@@ -717,7 +729,7 @@ public class LibraryCacheService
                 TrackNumber=excluded.TrackNumber, Year=excluded.Year, Genre=excluded.Genre,
                 CoverArtPath=excluded.CoverArtPath, Lyrics=excluded.Lyrics,
                 LyricsSynced=excluded.LyricsSynced, NormalizationGainDb=excluded.NormalizationGainDb,
-                IsAnalyzed=excluded.IsAnalyzed, LastModified=excluded.LastModified;
+                IsAnalyzed=excluded.IsAnalyzed, DateAdded=excluded.DateAdded, LastModified=excluded.LastModified;
             """;
 
         var pId = cmd.Parameters.Add("$id", SqliteType.Text);

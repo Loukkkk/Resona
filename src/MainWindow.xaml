@@ -1,4 +1,4 @@
-<Window
+﻿<Window
     x:Class="Resona.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -175,7 +175,8 @@
                 <Border x:Name="NowPlayingCoverBorder" CornerRadius="8" Width="48" Height="48"
                         Background="#10FFFFFF"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Tapped="NowPlayingCover_Tapped">
+                        Tapped="NowPlayingCover_Tapped"
+                        RightTapped="NowPlayingCoverBorder_RightTapped">
                     <Border.RenderTransform>
                         <TranslateTransform x:Name="NowPlayingCoverTransform" Y="0" />
                     </Border.RenderTransform>
@@ -187,7 +188,7 @@
                                VerticalAlignment="Center" />
                     </Grid>
                 </Border>
-                <StackPanel x:Name="NowPlayingTextContainer" VerticalAlignment="Center" Width="228">
+                <StackPanel x:Name="NowPlayingTextContainer" VerticalAlignment="Center" Width="228" RightTapped="NowPlayingInfo_RightTapped">
                     <StackPanel.RenderTransform>
                         <TranslateTransform x:Name="NowPlayingTextTransform" X="0" />
                     </StackPanel.RenderTransform>

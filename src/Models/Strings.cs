@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 
 using System.Runtime.CompilerServices;
 using Resona;
@@ -211,6 +211,38 @@ public class Strings : INotifyPropertyChanged
     public string CS_Pages => IsFr ? "Page(s)" : "Page(s)";
     public string CS_Play => IsFr ? "Lire" : "Play";
     public string CS_Rename => IsFr ? "Renommer" : "Rename";
+    public string CS_RemoveFromApp => IsFr ? "Retirer de l'application" : "Remove from app";
+    public string CS_DeleteFilePermanently => IsFr ? "Supprimer le fichier définitivement" : "Delete file permanently";
+    public string CS_DeleteTrackTitle => IsFr ? "Supprimer ce son ?" : "Delete this track?";
+    
+    public string SettingsPage_Text_DataCache => IsFr ? "Données & Cache" : "Data & Cache";
+    public string SettingsPage_Text_ApplyMetadata => IsFr ? "Appliquer les métadonnées aux fichiers" : "Apply metadata to files";
+    public string SettingsPage_Text_ApplyMetadataDesc => IsFr ? "Enregistre définitivement les tags et pochettes dans les fichiers originaux." : "Saves tags and covers permanently to the original files.";
+    public string SettingsPage_Text_ApplyMetadataButton => IsFr ? "Appliquer" : "Apply";
+    public string SettingsPage_Text_ClearCache => IsFr ? "Vider le cache" : "Clear cache";
+    public string SettingsPage_Text_ClearCacheDesc => IsFr ? "Libère de l'espace en supprimant les pochettes et paroles mises en cache." : "Frees up space by deleting cached covers and lyrics.";
+    public string SettingsPage_Text_ClearCacheButton => IsFr ? "Vider" : "Clear";
+    
+    public string CS_ClearCacheDialogTitle => IsFr ? "Vider le cache" : "Clear cache";
+    public string CS_ClearCacheDialogCovers => IsFr ? "Pochettes" : "Covers";
+    public string CS_ClearCacheDialogLyrics => IsFr ? "Paroles" : "Lyrics";
+    
+    
+    public string CS_ClearCacheNormalization => IsFr ? "Normalisation" : "Normalization";
+    public string CS_ClearCacheVisuallyModified => IsFr ? "Tags modifiés visuellement" : "Visually modified tags";
+    public string CS_ClearCacheScannedSounds => IsFr ? "Sons scannés (bibliothèque)" : "Scanned sounds (library)";
+    public string CS_ClearCacheAppSettings => IsFr ? "Paramètres de l'application" : "App settings";
+    public string CS_ClearCacheAll => IsFr ? "Tout effacer (supprime le cache complet)" : "Clear all (deletes entire cache folder)";
+
+    public string CS_RestartRequiredTitle => IsFr ? "Redémarrage requis" : "Restart required";
+    public string CS_RestartRequiredBody => IsFr ? "Veuillez relancer l'application pour appliquer ces changements." : "Please restart the application to apply these changes.";
+public string CS_ApplyMetadataDialogTitle => IsFr ? "Appliquer les métadonnées" : "Apply metadata";
+    public string CS_ApplyMetadataDialogTags => IsFr ? "Tags (Titre, Artiste, etc.)" : "Tags (Title, Artist, etc.)";
+    public string CS_ApplyMetadataDialogProgress => IsFr ? "Traitement en cours..." : "Processing...";
+public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete these tracks?";
+    public string CS_DeleteTrackBody => IsFr ? "Choisissez comment supprimer ce son." : "Choose how to delete this track.";
+    public string CS_DeleteTracksBody => IsFr ? "Choisissez comment supprimer ces {0} sons." : "Choose how to delete these {0} tracks.";
+    public string CS_NowPlayingOptions => IsFr ? "Options du son en cours" : "Now playing options";
     public string CS_Delete => IsFr ? "Supprimer" : "Delete";
     public string CS_NoPlaylistInCategory => IsFr ? "Aucune playlist. Importez un fichier .m3u/.m3u8 ou créez une playlist manuellement." : "No playlist. Import an .m3u/.m3u8 file or create a playlist manually.";
 
@@ -355,7 +387,7 @@ public class Strings : INotifyPropertyChanged
     public string SettingsPage_Text_Apparence => IsFr ? "Apparence" : "Appearance";
     public string SettingsPage_Text_AssistantPrompt => IsFr ? "Assistant Prompt" : "Prompt Assistant";
     public string SettingsPage_Text_Bibliothquemusicale => IsFr ? "Bibliothèque musicale" : "Music Library";
-    public string SettingsPage_Text_Catgoriesaffichesdan => IsFr ? "Catégories affichées dans..." : "Categories shown in...";
+    public string SettingsPage_Text_Catgoriesaffichesdan => IsFr ? "Catégories affichées" : "Displayed categories";
     public string SettingsPage_Text_Codecoptionnel => IsFr ? "Codec (optionnel)" : "Codec (optional)";
     public string SettingsPage_Text_Couleurduthme => IsFr ? "Couleur du thème" : "Theme color";
     public string SettingsPage_Text_DonneResonauna => IsFr ? "Donne à Resona un accès exclusif au périphérique audio (contourne le mixeur de volume de Windows, ce qui peut bloquer le son des autres applications)." : "Gives Resona exclusive access to the audio device (bypasses Windows volume mixer, which may prevent other apps from playing sound).";

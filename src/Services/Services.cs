@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  Services.cs  Ã¢â‚¬â€  Resona
 //  Fusion de : CoverArtService, LyricsService, PlaylistM3uService,
 //              SettingsService, LibraryScannerService, LibraryCacheService,
@@ -101,13 +101,349 @@ public class CoverArtService
         Directory.CreateDirectory(_cacheDir);
     }
 
-    private class ItunesResponse
+    public string BuildCoverSearchQuery(string title, string artist, string album)
     {
-        [JsonPropertyName("results")] public ItunesResult[] Results { get; set; } = Array.Empty<ItunesResult>();
+        string safeTitle = title ?? "";
+        string safeArtist = artist ?? "";
+        string safeAlbum = album ?? "";
+
+        // Remove unknown keywords
+        if (safeArtist.ToLowerInvariant().Contains("inconnu") || safeArtist.ToLowerInvariant().Contains("unknown")) safeArtist = "";
+        if (safeAlbum.ToLowerInvariant().Contains("inconnu") || safeAlbum.ToLowerInvariant().Contains("unknown")) safeAlbum = "";
+
+        // Clean title
+        safeTitle = System.Text.RegularExpressions.Regex.Replace(safeTitle, @"(?i)\(?(official|lyrics|audio|video|music video|hd|1080p|hq)[^\)]*\)?", "").Trim();
+        safeTitle = System.Text.RegularExpressions.Regex.Replace(safeTitle, @"(?i)\[(official|lyrics|audio|video|music video|hd|1080p|hq)[^\]]*\]", "").Trim();
+        
+        var parts = new System.Collections.Generic.List<string> { safeTitle };
+        if (!string.IsNullOrWhiteSpace(safeArtist)) parts.Add(safeArtist);
+
+        string query = string.Join(" ", parts);
+        query = System.Text.RegularExpressions.Regex.Replace(query, @"\s+", " ").Trim();
+        return string.IsNullOrWhiteSpace(query) ? "" : query + " music";
     }
-    private class ItunesResult
+
+    
+    
+    public async Task<System.Collections.Generic.List<string>> SearchMusicBrainzImagesAsync(string query, int count = 5)
     {
-        [JsonPropertyName("artworkUrl100")] public string? ArtworkUrl100 { get; set; }
+        var results = new System.Collections.Generic.List<string>();
+        try
+        {
+            var url = $"https://musicbrainz.org/ws/2/release/?query={Uri.EscapeDataString(query)}&fmt=json&limit={count * 2}";
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "Resona/2.2 (https://github.com/Resona)");
+            var json = await client.GetStringAsync(url);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("releases", out var releases))
+            {
+                foreach (var release in releases.EnumerateArray())
+                {
+                    if (results.Count >= count) break;
+                    if (release.TryGetProperty("id", out var idProp))
+                    {
+                        string mbid = idProp.GetString() ?? "";
+                        if (!string.IsNullOrEmpty(mbid))
+                        {
+                            // Try CoverArtArchive
+                            string coverUrl = $"https://coverartarchive.org/release/{mbid}/front-500";
+                            results.Add(coverUrl);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("MusicBrainz Search Error: " + ex.Message);
+        }
+        return results;
+    }
+public async Task<System.Collections.Generic.List<string>> SearchAppleMusicImagesAsync(string query, int count = 5)
+    {
+        var results = new System.Collections.Generic.List<string>();
+        try
+        {
+            var url = $"https://itunes.apple.com/search?term={Uri.EscapeDataString(query)}&entity=album&limit={count * 2}";
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+            var json = await client.GetStringAsync(url);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("results", out var items))
+            {
+                foreach (var item in items.EnumerateArray())
+                {
+                    if (results.Count >= count) break;
+                    if (item.TryGetProperty("artworkUrl100", out var artUrl))
+                    {
+                        string highResUrl = artUrl.GetString()?.Replace("100x100bb", "600x600bb") ?? "";
+                        if (!string.IsNullOrEmpty(highResUrl) && !results.Contains(highResUrl))
+                        {
+                            results.Add(highResUrl);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("Apple Music Search Error: " + ex.Message);
+        }
+        return results;
+    }
+public async Task<System.Collections.Generic.List<string>> SearchGoogleImagesAsync(string query, int count = 5)
+    {
+        // Recherche Google Images reelle (tbm=isch), filtree sur les images carrees (ratio 1:1 via tbs=iar:s),
+        // avec repli automatique sur Bing Images si Google echoue (blocage, captcha, structure changee...).
+        var results = await SearchGoogleImagesInternalAsync(query, count);
+        if (results.Count == 0)
+        {
+            try { results = await SearchBingImagesAsync(query, count); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine("Bing Images fallback error: " + ex.Message); }
+        }
+        return results;
+    }
+
+    private static readonly string[] DesktopUserAgents =
+    {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0",
+    };
+
+    private static string PickUserAgent()
+    {
+        int idx = Random.Shared.Next(DesktopUserAgents.Length);
+        return DesktopUserAgents[idx];
+    }
+
+    private async Task<System.Collections.Generic.List<string>> SearchGoogleImagesInternalAsync(string query, int count)
+    {
+        var results = new System.Collections.Generic.List<string>();
+        try
+        {
+            // tbm=isch = recherche d'images ; tbs=iar:s = ratio carre (square) uniquement ;
+            // safe=active pour eviter le contenu inapproprie ; gl/hl=en pour eviter les variantes locales.
+            var url = "https://www.google.com/search"
+                + $"?q={Uri.EscapeDataString(query)}"
+                + "&tbm=isch"
+                + "&tbs=iar:s"
+                + "&safe=active"
+                + "&gl=us"
+                + "&hl=en"
+                + "&pws=0";
+
+            using var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+                UseCookies = true,
+                CookieContainer = new System.Net.CookieContainer()
+            };
+            // Cookies de consentement pre-acceptes pour eviter la page d'interstitiel RGPD (frequente en UE),
+            // qui sinon remplace la page de resultats et fait echouer totalement l'extraction (0 image trouvee).
+            handler.CookieContainer.Add(new Uri("https://www.google.com"), new System.Net.Cookie("CONSENT", "YES+cb", "/", ".google.com"));
+            handler.CookieContainer.Add(new Uri("https://www.google.com"), new System.Net.Cookie("SOCS", "CAESHAgBEhJnd3NfMjAyNDAxMDEtMF9SQzIaAmVuIAEaBgiA_LyaBg", "/", ".google.com"));
+
+            using var client = new HttpClient(handler);
+            client.Timeout = TimeSpan.FromSeconds(8);
+            client.DefaultRequestHeaders.Add("User-Agent", PickUserAgent());
+            client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+
+            var html = await client.GetStringAsync(url);
+
+            System.Diagnostics.Debug.WriteLine($"Google Images: HTML length={html.Length} for '{query}'");
+
+            // Google embarque les resultats sous forme de tableaux JSON dans le HTML plutot que dans des balises
+            // <img src=...> exploitables directement. Selon le contexte, les URLs apparaissent soit echappees (\/)
+            // soit non echappees (/) dans ce JSON brut : on matche les deux formes. On exclut les assets statiques
+            // propres a Google (gstatic, favicon, logos...).
+            var candidates = new System.Collections.Generic.List<string>();
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                html,
+                "\"(https?:(?:\\\\/\\\\/|//)[^\"\\\\]+?\\.(?:jpg|jpeg|png|webp))\"",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                string raw = m.Groups[1].Value.Replace("\\/", "/");
+                string imgUrl;
+                try { imgUrl = System.Text.RegularExpressions.Regex.Unescape(raw); }
+                catch { imgUrl = raw; }
+
+                if (IsUnwantedImageHost(imgUrl)) continue;
+                if (!candidates.Contains(imgUrl)) candidates.Add(imgUrl);
+            }
+
+            // Repli : variante de template ou les URLs sont dans des attributs data-src/data-iurl non JSON.
+            if (candidates.Count == 0)
+            {
+                var altMatches = System.Text.RegularExpressions.Regex.Matches(
+                    html,
+                    "(?:data-src|data-iurl)=\"(https?://[^\"]+?\\.(?:jpg|jpeg|png|webp)[^\"]*)\"",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                foreach (System.Text.RegularExpressions.Match m in altMatches)
+                {
+                    string imgUrl = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value);
+                    if (IsUnwantedImageHost(imgUrl)) continue;
+                    if (!candidates.Contains(imgUrl)) candidates.Add(imgUrl);
+                }
+            }
+
+            System.Diagnostics.Debug.WriteLine($"Google Images: {candidates.Count} candidats trouves pour '{query}'");
+
+            foreach (var imgUrl in candidates)
+            {
+                if (results.Count >= count) break;
+                results.Add(imgUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("Google Images Search Error: " + ex.Message);
+        }
+        return results;
+    }
+
+    private async Task<System.Collections.Generic.List<string>> SearchBingImagesAsync(string query, int count)
+    {
+        var results = new System.Collections.Generic.List<string>();
+        try
+        {
+            // qft=+filterui:aspect-square force les resultats carres cote Bing.
+            // setlang/cc=us + mkt=en-US pour eviter les variantes locales et certains blocages regionaux.
+            var url = "https://www.bing.com/images/search"
+                + $"?q={Uri.EscapeDataString(query)}"
+                + "&qft=+filterui:aspect-square"
+                + "&form=IRFLTR"
+                + "&setlang=en-US"
+                + "&mkt=en-US"
+                + "&cc=US";
+
+            using var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+                UseCookies = true,
+                CookieContainer = new System.Net.CookieContainer()
+            };
+            using var client = new HttpClient(handler);
+            client.Timeout = TimeSpan.FromSeconds(8);
+            // Un jeu de headers plus complet (Accept, Sec-Fetch-*, etc.) reduit fortement le risque de reponse
+            // "bot-safe" allegee de Bing qui ne contient aucun resultat exploitable.
+            client.DefaultRequestHeaders.Add("User-Agent", PickUserAgent());
+            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+            client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+            client.DefaultRequestHeaders.Add("Sec-Fetch-Mode", "navigate");
+            client.DefaultRequestHeaders.Add("Sec-Fetch-Dest", "document");
+            client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
+
+            var html = await client.GetStringAsync(url);
+
+            System.Diagnostics.Debug.WriteLine($"Bing Images: HTML length={html.Length} for '{query}'");
+
+            var candidates = new System.Collections.Generic.List<string>();
+
+            // Bing expose l'URL de l'image source dans l'attribut murl des balises <a class="iusc" m='{"murl":"..."}'>
+            var matches = System.Text.RegularExpressions.Regex.Matches(html, "\"murl\":\"([^\"]+)\"");
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                string imgUrl;
+                try { imgUrl = System.Text.RegularExpressions.Regex.Unescape(m.Groups[1].Value); }
+                catch { imgUrl = m.Groups[1].Value; }
+
+                if (IsUnwantedImageHost(imgUrl)) continue;
+                if (!candidates.Contains(imgUrl)) candidates.Add(imgUrl);
+            }
+
+            // Repli : Bing encode parfois l'URL reelle dans le parametre mediaurl= d'un lien th?id=... plutot
+            // que dans le blob JSON "murl" (variante de rendu selon le marche/A-B test).
+            if (candidates.Count == 0)
+            {
+                var altMatches = System.Text.RegularExpressions.Regex.Matches(
+                    html,
+                    "mediaurl=([^&\"]+)",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                foreach (System.Text.RegularExpressions.Match m in altMatches)
+                {
+                    string imgUrl = Uri.UnescapeDataString(m.Groups[1].Value);
+                    if (IsUnwantedImageHost(imgUrl)) continue;
+                    if (!candidates.Contains(imgUrl)) candidates.Add(imgUrl);
+                }
+            }
+
+            System.Diagnostics.Debug.WriteLine($"Bing Images: {candidates.Count} candidats trouves pour '{query}'");
+
+            foreach (var imgUrl in candidates)
+            {
+                if (results.Count >= count) break;
+                results.Add(imgUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("Bing Images Search Error: " + ex.Message);
+        }
+        return results;
+    }
+
+    private static bool IsUnwantedImageHost(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return true;
+        string lower = url.ToLowerInvariant();
+        // On exclut les assets d'interface des moteurs de recherche eux-memes (logos, icones UI),
+        // qui n'ont rien a voir avec des pochettes d'album.
+        return lower.Contains("gstatic.com/images") ||
+               lower.Contains("google.com/logos") ||
+               lower.Contains("bing.com/rp/") ||
+               lower.Contains("th.bing.com/th/id/or") ||
+               lower.Contains("/favicon") ||
+               lower.EndsWith(".svg") ||
+               lower.EndsWith(".gif");
+    }
+
+    public async Task<string?> FindAndCacheCoverAsync(string trackId, string artist, string album, string title = "", string? filePath = null)
+    {
+        string cachePath = Path.Combine(_cacheDir, $"{trackId}.jpg");
+        if (System.IO.File.Exists(cachePath)) return cachePath;
+
+        string query = BuildCoverSearchQuery(title, artist, album);
+        if (string.IsNullOrWhiteSpace(query)) return null;
+
+        string? imageUrl = null;
+        
+        if (!string.IsNullOrEmpty(filePath) && System.IO.File.Exists(filePath))
+        {
+            var fpResult = await AutoTagService.FingerprintLookupAsync(filePath);
+            if (fpResult != null && !string.IsNullOrEmpty(fpResult.CoverPath))
+            {
+                imageUrl = fpResult.CoverPath;
+            }
+        }
+
+        if (string.IsNullOrEmpty(imageUrl))
+        {
+            try
+            {
+                var results = await SearchGoogleImagesAsync(query, 1);
+                if (results != null && results.Count > 0)
+                {
+                    imageUrl = results[0];
+                }
+            }
+            catch { }
+        }
+
+        if (!string.IsNullOrEmpty(imageUrl))
+        {
+            try
+            {
+                var bytes = await _http.GetByteArrayAsync(imageUrl);
+                await System.IO.File.WriteAllBytesAsync(cachePath, bytes);
+                return cachePath;
+            }
+            catch { }
+        }
+        return null;
     }
 
     public async Task<string?> SaveEmbeddedCoverAsync(string trackId, byte[] imageBytes)
@@ -118,135 +454,159 @@ public class CoverArtService
         catch { return null; }
     }
 
-    public async Task<string?> FindAndCacheCoverAsync(string trackId, string artist, string album, string title = "")
-    {
-        string cachePath = Path.Combine(_cacheDir, $"{trackId}.jpg");
-        if (System.IO.File.Exists(cachePath)) return cachePath;
+    
 
-        string safeArtist = artist ?? "";
-        string safeAlbum = album ?? "";
-        string safeTitle = title ?? "";
+    } 
 
-        if (safeAlbum.ToLowerInvariant().Contains("inconnu") || safeAlbum.ToLowerInvariant().Contains("unknown")) safeAlbum = "";
-        if (safeArtist.ToLowerInvariant().Contains("inconnu") || safeArtist.ToLowerInvariant().Contains("unknown")) safeArtist = "";
-        
-        string searchContext = string.IsNullOrWhiteSpace(safeAlbum) ? safeTitle : safeAlbum;
-        if (string.IsNullOrWhiteSpace(safeArtist) && string.IsNullOrWhiteSpace(searchContext)) return null;
-
-        string? imageBytes = null;
-        try
-        {
-            string term = Uri.EscapeDataString($"{safeArtist} {searchContext}".Trim());
-            var response = await _http.GetFromJsonAsync<ItunesResponse>($"https://itunes.apple.com/search?term={term}&entity=album&limit=3");
-            var artworkUrl = response?.Results.Length > 0 ? response.Results[0].ArtworkUrl100 : null;
-            if (!string.IsNullOrEmpty(artworkUrl))
-                imageBytes = artworkUrl.Replace("100x100bb", "1200x1200bb");
-        }
-        catch { }
-
-        if (string.IsNullOrEmpty(imageBytes))
-        {
-            try
-            {
-                string term = Uri.EscapeDataString($"{safeArtist} {searchContext}".Trim());
-                var deezerResp = await _http.GetFromJsonAsync<DeezerAlbumSearchResponse>($"https://api.deezer.com/search/album?q={term}&limit=3");
-                if (deezerResp?.data?.Count > 0 && !string.IsNullOrEmpty(deezerResp.data[0].cover_medium))
-                    imageBytes = deezerResp.data[0].cover_medium!.Replace("250x250", "500x500");
-            }
-            catch { }
-        }
-
-        if (string.IsNullOrEmpty(imageBytes)) return null;
-        try
-        {
-            byte[] bytes = await _http.GetByteArrayAsync(imageBytes);
-            await System.IO.File.WriteAllBytesAsync(cachePath, bytes);
-            return cachePath;
-        }
-        catch { return null; }
-    }
-
-    private class DeezerAlbumSearchResponse
-    {
-        public List<DeezerAlbumData>? data { get; set; }
-    }
-    private class DeezerAlbumData
-    {
-        public string? cover_medium { get; set; }
-    }
-}
-
-public class LyricsResult
-{
-    public string? PlainLyrics { get; set; }
-    public string? SyncedLyrics { get; set; }
-    public bool Found => !string.IsNullOrWhiteSpace(PlainLyrics) || !string.IsNullOrWhiteSpace(SyncedLyrics);
-}
+public class LyricsResult { public string? PlainLyrics { get; set; } public string? SyncedLyrics { get; set; } public bool Found => !string.IsNullOrWhiteSpace(PlainLyrics) || !string.IsNullOrWhiteSpace(SyncedLyrics); } 
 
 public class LyricsService
 {
     private readonly HttpClient _http;
+    
+    public LyricsService(HttpClient http) 
+    { 
+        _http = http; 
+    } 
+    
+    private class LrcLibResponse 
+    { 
+        [System.Text.Json.Serialization.JsonPropertyName("trackName")]
+        public string? TrackName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("artistName")]
+        public string? ArtistName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("plainLyrics")] 
+        public string? PlainLyrics { get; set; } 
+        
+        [System.Text.Json.Serialization.JsonPropertyName("syncedLyrics")] 
+        public string? SyncedLyrics { get; set; } 
+        
+        [System.Text.Json.Serialization.JsonPropertyName("duration")] 
+        public double? Duration { get; set; } 
+    } 
 
-    public LyricsService(HttpClient http)
+    private string CleanMetadata(string input)
     {
-        _http = http;
-        _http.BaseAddress ??= new Uri("https://lrclib.net/api/");
-        _http.DefaultRequestHeaders.UserAgent.TryParseAdd("Resona/1.0");
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+        string output = input;
+        var pattern = @"(?i)[\(\[][^\)\]]*(official|video|audio|lyric|visualizer|live|remaster|edit|ft\.|feat\.|featuring|version|mv|vocal)[^\)\]]*[\)\]]";
+        output = System.Text.RegularExpressions.Regex.Replace(output, pattern, "");
+        var pattern2 = @"(?i)(official video|official music video|official audio|lyrics|lyric video|audio|visualizer|official)";
+        output = System.Text.RegularExpressions.Regex.Replace(output, pattern2, "");
+        output = System.Text.RegularExpressions.Regex.Replace(output, @"\s+", " ");
+        return output.Trim(' ', '-', '_');
     }
 
-    private class LrcLibResponse
+    private bool IsMatch(string? qArtist, string? qTitle, string? rArtist, string? rTitle)
     {
-        [JsonPropertyName("plainLyrics")]  public string? PlainLyrics  { get; set; }
-        [JsonPropertyName("syncedLyrics")] public string? SyncedLyrics { get; set; }
-        [JsonPropertyName("duration")]     public double? Duration     { get; set; }
+        var qa = (qArtist ?? "").ToLowerInvariant().Trim();
+        var qt = (qTitle ?? "").ToLowerInvariant().Trim();
+        var ra = (rArtist ?? "").ToLowerInvariant().Trim();
+        var rt = (rTitle ?? "").ToLowerInvariant().Trim();
+
+        if (string.IsNullOrEmpty(qt)) return false;
+
+        var rgx = new System.Text.RegularExpressions.Regex("[^a-z0-9 ]");
+        qa = rgx.Replace(qa, "");
+        qt = rgx.Replace(qt, "");
+        ra = rgx.Replace(ra, "");
+        rt = rgx.Replace(rt, "");
+
+        bool titleMatch = rt.Contains(qt) || qt.Contains(rt);
+        bool artistMatch = string.IsNullOrEmpty(qa) || string.IsNullOrEmpty(ra) || ra.Contains(qa) || qa.Contains(ra);
+
+        return titleMatch && artistMatch;
     }
 
     public async Task<LyricsResult> SearchAsync(string artist, string title, string? album = null, TimeSpan? duration = null)
     {
+        string cArtist = CleanMetadata(artist);
+        string cTitle = CleanMetadata(title);
+        
+        // 1. LRCLIB Search
         try
         {
-            string query = $"search?q={Uri.EscapeDataString(artist + " " + title)}";
-            var results = await _http.GetFromJsonAsync<List<LrcLibResponse>>(query);
-            if (results != null && results.Count > 0)
+            string query = $"https://lrclib.net/api/search?q={Uri.EscapeDataString(cArtist + " " + cTitle)}";
+            var request = new HttpRequestMessage(HttpMethod.Get, query);
+            request.Headers.UserAgent.TryParseAdd("Resona/2.2");
+            
+            var response = await _http.SendAsync(request);
+            if (response.IsSuccessStatusCode)
             {
-                var validResults = results.Where(r => !string.IsNullOrWhiteSpace(r.PlainLyrics) || !string.IsNullOrWhiteSpace(r.SyncedLyrics)).ToList();
-                if (validResults.Count > 0)
+                var results = await response.Content.ReadFromJsonAsync<List<LrcLibResponse>>();
+                if (results != null && results.Count > 0)
                 {
-                    LrcLibResponse bestMatch = validResults[0];
-                    if (duration.HasValue)
+                    var validResults = results
+                        .Where(r => (!string.IsNullOrWhiteSpace(r.PlainLyrics) || !string.IsNullOrWhiteSpace(r.SyncedLyrics)) 
+                                    && IsMatch(cArtist, cTitle, r.ArtistName, r.TrackName))
+                        .ToList();
+                        
+                    if (validResults.Count > 0)
                     {
-                        double targetSec = duration.Value.TotalSeconds;
-                        bestMatch = validResults.OrderBy(r => r.Duration.HasValue ? Math.Abs(r.Duration.Value - targetSec) : double.MaxValue).First();
+                        LrcLibResponse bestMatch = validResults[0];
+                        if (duration.HasValue)
+                        {
+                            double targetSec = duration.Value.TotalSeconds;
+                            bestMatch = validResults.OrderBy(r => r.Duration.HasValue ? Math.Abs(r.Duration.Value - targetSec) : double.MaxValue).First();
+                        }
+                        return new LyricsResult { PlainLyrics = bestMatch.PlainLyrics, SyncedLyrics = bestMatch.SyncedLyrics };
                     }
-                    return new LyricsResult { PlainLyrics = bestMatch.PlainLyrics, SyncedLyrics = bestMatch.SyncedLyrics };
                 }
             }
         }
         catch { }
 
+        // 2. Netease Fallback
         try
         {
-            string searchQuery = Uri.EscapeDataString($"{artist} {title}");
+            string searchQuery = Uri.EscapeDataString($"{cArtist} {cTitle}");
             using var netease = new HttpClient();
             netease.DefaultRequestHeaders.UserAgent.TryParseAdd("Mozilla/5.0");
             var searchResp = System.Text.Encoding.UTF8.GetString(await netease.GetByteArrayAsync($"https://music.163.com/api/search/pc?s={searchQuery}&offset=0&limit=5&type=1"));
             var doc = System.Text.Json.JsonDocument.Parse(searchResp);
+            
             if (doc.RootElement.TryGetProperty("result", out var resultElem) &&
                 resultElem.TryGetProperty("songs", out var songs) &&
                 songs.GetArrayLength() > 0)
             {
-                long songId = songs[0].GetProperty("id").GetInt64();
-                var lyricResp = System.Text.Encoding.UTF8.GetString(await netease.GetByteArrayAsync($"https://music.163.com/api/song/lyric?id={songId}&lv=-1&kv=-1&tv=-1"));
-                var lyricDoc = System.Text.Json.JsonDocument.Parse(lyricResp);
-                string? lrc = null, plain = null;
-                if (lyricDoc.RootElement.TryGetProperty("lrc", out var lrcElem) &&
-                    lrcElem.TryGetProperty("lyric", out var lrcText))
-                    lrc = lrcText.GetString();
-                if (lyricDoc.RootElement.TryGetProperty("klyric", out var kElem) &&
-                    kElem.TryGetProperty("lyric", out var kText))
-                    plain = kText.GetString();
-                if (!string.IsNullOrWhiteSpace(lrc) || !string.IsNullOrWhiteSpace(plain))
-                    return new LyricsResult { PlainLyrics = plain ?? lrc, SyncedLyrics = lrc };
+                bool foundMatch = false;
+                long songId = 0;
+                
+                // Find best matching song in top 5 results
+                foreach (var song in songs.EnumerateArray())
+                {
+                    string rTitle = song.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                    string rArtist = "";
+                    if (song.TryGetProperty("artists", out var artists) && artists.GetArrayLength() > 0)
+                    {
+                        rArtist = artists[0].TryGetProperty("name", out var an) ? an.GetString() ?? "" : "";
+                    }
+                    
+                    if (IsMatch(cArtist, cTitle, rArtist, rTitle))
+                    {
+                        songId = song.GetProperty("id").GetInt64();
+                        foundMatch = true;
+                        break;
+                    }
+                }
+
+                if (foundMatch)
+                {
+                    var lyricResp = System.Text.Encoding.UTF8.GetString(await netease.GetByteArrayAsync($"https://music.163.com/api/song/lyric?id={songId}&lv=-1&kv=-1&tv=-1"));
+                    var lyricDoc = System.Text.Json.JsonDocument.Parse(lyricResp);
+                    string? lrc = null, plain = null;
+                    if (lyricDoc.RootElement.TryGetProperty("lrc", out var lrcElem) &&
+                        lrcElem.TryGetProperty("lyric", out var lrcText))
+                        lrc = lrcText.GetString();
+                    if (lyricDoc.RootElement.TryGetProperty("klyric", out var kElem) &&
+                        kElem.TryGetProperty("lyric", out var kText))
+                        plain = kText.GetString();
+                    
+                    if (!string.IsNullOrWhiteSpace(lrc) || !string.IsNullOrWhiteSpace(plain))
+                        return new LyricsResult { PlainLyrics = plain ?? lrc, SyncedLyrics = lrc };
+                }
             }
         }
         catch { }
@@ -310,7 +670,7 @@ public class PlaylistM3uService
 public class SettingsService
 {
     private readonly string _filePath;
-    public AppSettings Current { get; private set; } = new();
+    public AppSettings Current { get; set; } = new();
     public event EventHandler? SettingsChanged;
 
     public SettingsService(string appDataDir)
@@ -592,7 +952,24 @@ public class LibraryCacheService
         _connectionString = $"Data Source={dbPath}";
     }
 
-    public async Task InitializeAsync()
+        public async Task ClearLyricsCacheAsync()
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Tracks SET Lyrics = NULL, LyricsSynced = 0";
+        await cmd.ExecuteNonQueryAsync();
+    }
+    
+    public async Task ClearCoversCacheAsync()
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Tracks SET CoverArtPath = NULL";
+        await cmd.ExecuteNonQueryAsync();
+    }
+public async Task InitializeAsync()
     {
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
@@ -625,7 +1002,24 @@ public class LibraryCacheService
         catch { /* Column probably already exists */ }
     }
 
-    public async Task ClearAnalysisAsync()
+        public async Task ClearVisuallyModifiedTagsAsync()
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Tracks SET Title = NULL, Artist = NULL, Album = NULL, Genre = NULL, Year = NULL, TrackNumber = NULL";
+        await cmd.ExecuteNonQueryAsync();
+    }
+    
+    public async Task ClearAllDataAsync()
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM Tracks; DELETE FROM Playlists;";
+        await cmd.ExecuteNonQueryAsync();
+    }
+public async Task ClearAnalysisAsync()
     {
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
@@ -2202,7 +2596,7 @@ public class AutoTagResult
 public static class AutoTagService
 {
     private static readonly HttpClient _http = new();
-    private const string UserAgent = "Resona/1.0 (https://github.com/Resona)";
+    private const string UserAgent = "Resona/2.2 (https://github.com/Resona)";
 
     static AutoTagService()
     {
@@ -2323,91 +2717,94 @@ public static class AutoTagService
 
     public static async Task<AutoTagResult?> LookupAsync(string artist, string title, TimeSpan? duration = null, string? filePath = null)
     {
-        // DEBUG: Log what we receive and what we send
-        string debugLog = $"[{DateTime.Now:HH:mm:ss}] LookupAsync called\n  artist={artist}\n  title={title}\n  filePath={filePath}\n";
-
-        // Always prefer filename for search Ã¢â‚¬â€ metadata titles are often incomplete or wrong
-        if (!string.IsNullOrEmpty(filePath))
+        // Step 1: Try AcoustID audio fingerprint first — it's never wrong, only absent.
+        if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
         {
-            title = CleanTitle(System.IO.Path.GetFileNameWithoutExtension(filePath));
-            if (!string.IsNullOrWhiteSpace(artist) && !artist.Contains("inconnu", StringComparison.OrdinalIgnoreCase) && !artist.Contains("unknown", StringComparison.OrdinalIgnoreCase) && !title.Contains(artist, StringComparison.OrdinalIgnoreCase))
+            var fpResult = await FingerprintLookupAsync(filePath);
+            // Ne plus forcer Score=1.0 ici : FingerprintLookupAsync renvoie deja un score fiable,
+            // proportionnel a la confiance reelle d'AcoustID (voir MinAcoustIdScore la-bas). Un match
+            // fingerprint a faible confiance ne doit pas etre traite comme une certitude absolue.
+            if (fpResult != null)
             {
-                title = $"{title} {artist}";
+                return fpResult;
             }
         }
-        else
-        {
-            title = CleanTitle(title);
-        }
 
-        debugLog += $"  cleanedTitle={title}\n";
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "autotag_debug.log"), debugLog); } catch { }
+        // Step 2: Fingerprint found nothing — fall back to text-based sources in parallel.
+        string cleanedTitle = CleanTitle(!string.IsNullOrEmpty(filePath)
+            ? System.IO.Path.GetFileNameWithoutExtension(filePath)
+            : title);
 
         string searchArtist = (artist ?? "").Split(new[] { ',', ';', '/', '&', '|', '\\', '+' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim())
             .FirstOrDefault(s => s.Length > 0) ?? "";
 
         if (searchArtist.Contains("inconnu", StringComparison.OrdinalIgnoreCase) || searchArtist.Contains("unknown", StringComparison.OrdinalIgnoreCase))
-        {
             searchArtist = "";
-        }
 
-        // 1. Fetch from Apple Music Web (No IP Ban)
-        var appleWebTask = AppleMusicWebLookupAsync(searchArtist, title, duration);
+        // On ne concatene plus systematiquement l'artiste dans cleanedTitle : ca polluait le titre de
+        // reference utilise ensuite par IsResultValid (le titre trouve, souvent court, etait compare a
+        // un "titre" contenant en realite titre + artiste + parfois du bruit comme un nom de chaine TV,
+        // ce qui faisait chuter le ratio de mots communs sous le seuil et rejetait des resultats corrects).
+        // L'artiste reste utilise separement comme parametre de recherche pour les moteurs qui l'acceptent.
+        string searchQueryTitle = !string.IsNullOrWhiteSpace(searchArtist) && !cleanedTitle.Contains(searchArtist, StringComparison.OrdinalIgnoreCase)
+            ? $"{cleanedTitle} {searchArtist}"
+            : cleanedTitle;
 
-        // 1. Priority to iTunes
-        var itunesTask = ItunesLookupAsync(searchArtist, title, title, searchArtist, duration);
+        var appleWebTask = AppleMusicWebLookupAsync(searchArtist, searchQueryTitle, duration);
+        var itunesTask   = ItunesLookupAsync(searchArtist, searchQueryTitle, cleanedTitle, searchArtist, duration);
+        var mbTask       = MusicBrainzLookupAsync(searchArtist, searchQueryTitle, duration);
+        var deezerTask   = DeezerLookupAsync(searchArtist, searchQueryTitle, duration);
 
-        // 2. Fallbacks
-        var mbTask = MusicBrainzLookupAsync(searchArtist, title, duration);
-        var deezerTask = DeezerLookupAsync(searchArtist, title, duration);
-        
-        Task<AutoTagResult?> fpTask = Task.FromResult<AutoTagResult?>(null);
-        if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
-        {
-            fpTask = FingerprintLookupAsync(filePath);
-        }
+        System.Diagnostics.Debug.WriteLine($"AutoTag texte: titre original='{title}', titre nettoye='{cleanedTitle}', artiste recherche='{searchArtist}'");
 
-        var tasks = new List<Task<AutoTagResult?>> { appleWebTask, itunesTask, mbTask, deezerTask, fpTask };
-        var timeoutTask = Task.Delay(10000); // 10 secondes maximum
-        
+        var tasks = new List<Task<AutoTagResult?>> { appleWebTask, itunesTask, mbTask, deezerTask };
+        var timeoutTask = Task.Delay(10000);
+
         var candidates = new List<AutoTagResult>();
         while (tasks.Count > 0)
         {
             var finished = await Task.WhenAny(tasks.Concat(new Task[] { timeoutTask }));
             if (finished == timeoutTask) break;
-            
+
             tasks.Remove((Task<AutoTagResult?>)finished);
             var res = ((Task<AutoTagResult?>)finished).Result;
-            
-            if (res != null && IsResultValid(res, title, searchArtist))
-            {
-                if (finished == fpTask)
-                {
-                    double textScore = Math.Max(JaroWinkler($"{res.Artist} {res.Title}".ToLower(), $"{searchArtist} {title}".ToLower()), JaroWinkler(res.Title?.ToLower() ?? "", title.ToLower()) * 0.6 + JaroWinkler(res.Artist?.ToLower() ?? "", searchArtist.ToLower()) * 0.4);
-                    res.Score = 0.7 + textScore * 0.3;
-                }
 
-                candidates.Add(res);
-                if (res.Score >= 0.8) return res; // EARLY EXIT for max speed!
+            string sourceName = finished == appleWebTask ? "AppleMusicWeb" : finished == itunesTask ? "iTunes" : finished == mbTask ? "MusicBrainz" : "Deezer";
+            if (res != null)
+            {
+                bool valid = IsResultValid(res, cleanedTitle, searchArtist);
+                System.Diagnostics.Debug.WriteLine($"AutoTag texte [{sourceName}]: trouve '{res.Title}' - '{res.Artist}' (album='{res.Album}'), score={res.Score:F3}, valide={valid}");
+                if (valid)
+                {
+                    candidates.Add(res);
+                    if (res.Score >= 0.8) { System.Diagnostics.Debug.WriteLine($"AutoTag texte: acceptation immediate de [{sourceName}] (score >= 0.8)"); return res; }
+                }
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"AutoTag texte [{sourceName}]: aucun resultat.");
             }
         }
 
         var best = candidates.OrderByDescending(c => c.Score).FirstOrDefault();
-        var allText = $"{title} {searchArtist}".Trim();
+        if (best != null)
+        {
+            System.Diagnostics.Debug.WriteLine($"AutoTag texte: meilleur candidat retenu = '{best.Title}' - '{best.Artist}' (score={best.Score:F3})");
+            return best;
+        }
+
+        // Step 3: Last chance fallback
+        var allText = $"{cleanedTitle} {searchArtist}".Trim();
         var words = allText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (words.Length > 1)
         {
-            var fallbackFull = await ItunesLookupAsync("", allText, title, searchArtist, duration);
-            if (fallbackFull != null && IsResultValid(fallbackFull, title, searchArtist) && fallbackFull.Score >= 0.4) return fallbackFull;
+            var fallbackFull = await ItunesLookupAsync("", allText, cleanedTitle, searchArtist, duration);
+            if (fallbackFull != null && IsResultValid(fallbackFull, cleanedTitle, searchArtist) && fallbackFull.Score >= 0.72) return fallbackFull;
 
             string keywordQuery = string.Join(" ", words.Take(3));
-            var fallbackItunes = await ItunesLookupAsync("", keywordQuery, title, searchArtist, duration);
-            if (fallbackItunes != null && IsResultValid(fallbackItunes, title, searchArtist) && fallbackItunes.Score >= 0.4) return fallbackItunes;
-            
-            string artistQuery = string.Join(" ", words.Take(2));
-            var fallbackItunes2 = await ItunesLookupAsync("", artistQuery, title, searchArtist, duration);
-            if (fallbackItunes2 != null && IsResultValid(fallbackItunes2, title, searchArtist) && fallbackItunes2.Score >= 0.3) return fallbackItunes2;
+            var fallbackItunes = await ItunesLookupAsync("", keywordQuery, cleanedTitle, searchArtist, duration);
+            if (fallbackItunes != null && IsResultValid(fallbackItunes, cleanedTitle, searchArtist) && fallbackItunes.Score >= 0.72) return fallbackItunes;
         }
 
         return null;
@@ -2641,7 +3038,11 @@ public static class AutoTagService
         string s = raw.Trim();
         // Only strip actual audio file extensions, not arbitrary dots
         s = System.Text.RegularExpressions.Regex.Replace(s, @"\.(mp3|flac|wav|ogg|m4a|aac|wma|opus|aiff|alac)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        
+
+        // Retire les guillemets typographiques qui encadrent souvent le vrai titre dans les noms de
+        // fichiers d'evenements (ex: Le magnifique "Nightcall" par ... -> on les neutralise en espaces
+        // pour ne pas casser le mot lui-meme).
+        s = System.Text.RegularExpressions.Regex.Replace(s, "[\u201C\u201D\u00AB\u00BB\uFF02\u201E\u2033\"]+", " ");
 
         // Remplacer les caracteres de parentheses/crochets/japonais par des espaces
         s = System.Text.RegularExpressions.Regex.Replace(s, @"[\(\)\[\]\{\}]+", " ");
@@ -2653,7 +3054,25 @@ public static class AutoTagService
         {
             s = System.Text.RegularExpressions.Regex.Replace(s, $@"(?i)\b{r}\b", "");
         }
-        
+
+        // Retire les formules d'introduction et de contexte d'evenement frequentes sur les rips de
+        // captations live/cerimonies (ex: "JO PARIS 2024 - Le magnifique Nightcall par X au Stade de
+        // France"). Ces mots noient le vrai titre/artiste et faussent le matching texte plus loin.
+        string[] eventPhrases = {
+            @"\bJO\s*PARIS\s*20\d{2}\b", @"\bJEUX\s+OLYMPIQUES\b", @"\bLE\s+MAGNIFIQUE\b",
+            @"\bAU\s+STADE\s+DE\s+FRANCE\b", @"\bCEREMONIE\s+D['\u2019]OUVERTURE\b",
+            @"\bCEREMONIE\s+DE\s+CLOTURE\b", @"\bLIVE\s+PERFORMANCE\b"
+        };
+        foreach (var p in eventPhrases)
+        {
+            s = System.Text.RegularExpressions.Regex.Replace(s, p, " ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        // "par X, Y et Z" est une formule d'attribution d'artistes frequente sur les rips d'evenements ;
+        // elle casse le matching car "par" et "et" polluent le sac de mots. On la neutralise en gardant
+        // les noms mais en retirant les connecteurs.
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"(?i)\bpar\b", " ");
+
         s = System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
 
         return s;
@@ -2678,8 +3097,8 @@ public static class AutoTagService
         string resFull = $"{result.Title} {result.Artist}".ToLowerInvariant();
         
         var stopWords = new HashSet<string> { "the", "and", "for", "with", "from", "feat", "ft", "music", "audio", "official", "video", "lyrics", "clip" };
-        var origWords = origFull.Split(new[] { ' ', '-', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
-                                .Where(w => w.Length > 2 && !stopWords.Contains(w)).ToList();
+        var origWords = origFull.Split(new[] { ' ', '-', '(', ')', '[', ']', ',', '“', '”', '＂', '"' }, StringSplitOptions.RemoveEmptyEntries)
+                                .Where(w => !stopWords.Contains(w)).ToList();
         
         if (origWords.Count > 0)
         {
@@ -2687,8 +3106,8 @@ public static class AutoTagService
             double ratio = (double)matches / origWords.Count;
             if (ratio < 0.20) return false;
             
-            var origTitleWords = originalTitle.ToLowerInvariant().Split(new[] { ' ', '-', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
-                                              .Where(w => w.Length > 2 && !stopWords.Contains(w)).ToList();
+            var origTitleWords = originalTitle.ToLowerInvariant().Split(new[] { ' ', '-', '(', ')', '[', ']', ',', '“', '”', '＂', '"' }, StringSplitOptions.RemoveEmptyEntries)
+                                              .Where(w => !stopWords.Contains(w)).ToList();
             if (origTitleWords.Count > 0)
             {
                 string resTitleLower = result.Title.ToLowerInvariant();
@@ -2791,8 +3210,8 @@ public static class AutoTagService
     private static readonly string FpcalcDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Resona", "fpcalc");
-    private static readonly string FpcalcExe = Path.Combine(FpcalcDir, "fpcalc.exe");
-    private const string AcoustIdApiKey = "8XazkMEWCk";
+    private static readonly string FpcalcExe = Path.Combine(FpcalcDir, "chromaprint-fpcalc-1.5.1-windows-x86_64", "fpcalc.exe");
+    private const string AcoustIdApiKey = "ZmBZcnuMkk";
 
     public static async Task<AutoTagResult?> FingerprintLookupAsync(string filePath)
     {
@@ -2829,26 +3248,70 @@ public static class AutoTagService
             if (string.IsNullOrEmpty(fingerprint) || duration == null || duration == 0)
                 return null;
 
+            System.Diagnostics.Debug.WriteLine($"AcoustID: fpcalc OK pour '{filePath}' -- duration={duration}s, fingerprint length={fingerprint.Length} chars, fingerprint(head)={fingerprint.Substring(0, Math.Min(60, fingerprint.Length))}...");
+
             string acUrl = $"https://api.acoustid.org/v2/lookup?client={AcoustIdApiKey}" +
                            $"&meta=recordings+releasegroups+compress&duration={duration}" +
                            $"&fingerprint={Uri.EscapeDataString(fingerprint)}";
-            var acResp = await _http.GetFromJsonAsync<AcoustIdResponse>(acUrl);
-            if (acResp?.results == null || acResp.results.Count == 0) return null;
+            string acRawJson;
+            try
+            {
+                acRawJson = await _http.GetStringAsync(acUrl);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"AcoustID: requete HTTP echouee -- {ex.Message}");
+                return null;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"AcoustID: reponse brute (tronquee) = {acRawJson.Substring(0, Math.Min(1000, acRawJson.Length))}");
+
+            var acResp = System.Text.Json.JsonSerializer.Deserialize<AcoustIdResponse>(acRawJson);
+            if (acResp?.results == null || acResp.results.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("AcoustID: aucun resultat dans la reponse.");
+                return null;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"AcoustID: {acResp.results.Count} resultat(s) recu(s). Scores = [{string.Join(", ", acResp.results.Select(r => r.score?.ToString("F3") ?? "null"))}]");
+
+            // Seuil minimum recommande par AcoustID pour considerer un match fiable : en dessous, le
+            // fingerprint est trop peu similaire pour etre une identification sure (bruit, extrait court,
+            // piste voisine dans l'album...). Sans ce filtre, on acceptait n'importe quel score et on
+            // forcait Score=1.0 ensuite, ce qui faisait passer des matchs foireux pour des identifications
+            // certaines.
+            const double MinAcoustIdScore = 0.5;
 
             var bestResult = acResp.results
+                .Where(r => (r.score ?? 0) >= MinAcoustIdScore && r.recordings?.Count > 0)
                 .OrderByDescending(r => r.score ?? 0)
-                .FirstOrDefault(r => r.recordings?.Count > 0);
+                .FirstOrDefault();
             if (bestResult?.recordings == null || bestResult.recordings.Count == 0) return null;
 
+            // Parmi les recordings retournes pour ce fingerprint (souvent le meme enregistrement audio
+            // reference plusieurs fois : single, album, reedition...), on ne peut pas deviner lequel est
+            // le "bon" sans info supplementaire. On prend le plus riche en metadonnees (releasegroups)
+            // comme avant, mais desormais seulement apres avoir garanti que le score global est fiable.
             var bestRecording = bestResult.recordings
                 .OrderByDescending(r => r.releasegroups?.Count ?? 0)
                 .FirstOrDefault();
             if (bestRecording == null) return null;
 
+            // Le score final propage la vraie confiance AcoustID (remise a l'echelle 0.5-1.0 pour rester
+            // coherent avec MinScoreThreshold/HighConfidenceThreshold utilises ailleurs dans le pipeline),
+            // au lieu d'etre force a 1.0 : si jamais le resultat texte-matche mal ensuite, IsResultValid
+            // garde une chance de le rejeter plutot que de le traiter comme une certitude absolue.
+            double acoustIdConfidence = bestResult.score ?? MinAcoustIdScore;
+            double propagatedScore = 0.5 + (Math.Clamp(acoustIdConfidence, MinAcoustIdScore, 1.0) - MinAcoustIdScore) / (1.0 - MinAcoustIdScore) * 0.5;
+
             if (!string.IsNullOrEmpty(bestRecording.id))
             {
                 var mbResult = await MusicBrainzLookupByMbidAsync(bestRecording.id);
-                if (mbResult != null) return mbResult;
+                if (mbResult != null)
+                {
+                    mbResult.Score = propagatedScore;
+                    return mbResult;
+                }
             }
 
             var artist = bestRecording.artists?.FirstOrDefault()?.name ?? "";
@@ -2857,7 +3320,7 @@ public static class AutoTagService
 
             return new AutoTagResult
             {
-                Title = title, Artist = artist, Album = album, Score = bestResult.score ?? 0.5
+                Title = title, Artist = artist, Album = album, Score = propagatedScore
             };
         }
         catch { return null; }
@@ -2902,12 +3365,13 @@ public static class AutoTagService
             return new AutoTagResult
             {
                 Title = recording.title,
-                Artist = recording.artistCredit?.FirstOrDefault()?.name,
+                Artist = recording.artistCredit?.FirstOrDefault()?.name ?? recording.artistCredit?.FirstOrDefault()?.artist?.name,
                 Album = firstRelease?.title,
                 Year = firstRelease?.date is string d && d.Length >= 4
                        && int.TryParse(d[..4], out var y) ? y : null,
                 TrackCount = firstRelease?.trackCount,
                 Genre = tag?.name,
+                CoverPath = firstRelease?.id != null ? $"https://coverartarchive.org/release/{firstRelease.id}/front" : null,
                 Score = 0.95
             };
         }
@@ -2978,10 +3442,17 @@ public static class AutoTagService
     {
         public string? id { get; set; }
         public string? title { get; set; }
-        public List<ArtistCredit>? artistCredit { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("artist-credit")]
+        public List<ArtistCreditWrapper>? artistCredit { get; set; }
         public List<Release>? releases { get; set; }
         public List<Tag>? tags { get; set; }
         public int? length { get; set; }
+    }
+
+    private class ArtistCreditWrapper
+    {
+        public ArtistCredit? artist { get; set; }
+        public string? name { get; set; }
     }
 
     private class ArtistCredit
@@ -2991,8 +3462,10 @@ public static class AutoTagService
 
     private class Release
     {
+        public string? id { get; set; }
         public string? title { get; set; }
         public string? date { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("track-count")]
         public int? trackCount { get; set; }
     }
 
@@ -3033,6 +3506,7 @@ public static class LyricsTranslatorService
         catch { return text; }
     }
 }
+
 
 
 

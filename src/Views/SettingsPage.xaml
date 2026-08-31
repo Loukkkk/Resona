@@ -196,77 +196,6 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== EGALISEUR ===================== -->
-            <StackPanel Spacing="12">
-                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_galiseur, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                <Grid Style="{StaticResource CardStyle}">
-                    <StackPanel Spacing="16">
-                        <ToggleSwitch x:Name="EqualizerSwitch"
-                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Activerlgaliseur, Mode=OneWay}"
-                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
-                                      Toggled="EqualizerSwitch_Toggled"
-                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
-                            <ToggleSwitch.HeaderTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
-                                </DataTemplate>
-                            </ToggleSwitch.HeaderTemplate>
-                        </ToggleSwitch>
-                        <StackPanel x:Name="EqualizerBandsPanel" Visibility="Collapsed" Spacing="8">
-                            <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_AjustelegaindBdechaq, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                            <StackPanel x:Name="EqualizerPresetsContainer" Orientation="Vertical" Margin="0,0,0,8" Spacing="4" />
-                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                                <ItemsControl x:Name="EqualizerSliders">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                </ItemsControl>
-                            </ScrollViewer>
-                        </StackPanel>
-                    </StackPanel>
-                </Grid>
-            </StackPanel>
-
-            <!-- ===================== ASSISTANT PROMPT ===================== -->
-            <StackPanel Spacing="12">
-                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_AssistantPrompt, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                <Grid Style="{StaticResource CardStyle}">
-                    <StackPanel Spacing="16">
-                        <ToggleSwitch x:Name="AIEnabledSwitch"
-                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Activerleboutondelas, Mode=OneWay}"
-                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
-                                      Toggled="AIEnabledSwitch_Toggled"
-                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
-                            <ToggleSwitch.HeaderTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
-                                </DataTemplate>
-                            </ToggleSwitch.HeaderTemplate>
-                        </ToggleSwitch>
-                        <Button x:Name="AIRestoreBackupBtn" Content="{x:Bind models:Strings.Current.SettingsPage_Content_Restaurerlesancienst, Mode=OneWay}" Click="AIRestoreBackupBtn_Click" Margin="0,0,0,0" Style="{StaticResource AccentButtonStyle}" />
-                        
-                        
-                    </StackPanel>
-                </Grid>
-            </StackPanel>
-
-            <!-- ===================== PLAYLISTS ===================== -->
-            <StackPanel Spacing="12">
-                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Playlists, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                <Grid Style="{StaticResource CardStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="{x:Bind models:Strings.Current.SettingsPage_Content_Importeruneplaylistm, Mode=OneWay}" Click="ImportPlaylist_Click" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        <Button Content="{x:Bind models:Strings.Current.SettingsPage_Content_Exporterlabibliothqu, Mode=OneWay}" Click="ExportPlaylist_Click" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                    </StackPanel>
-                </Grid>
-            </StackPanel>
-
             <!-- ===================== BIBLIOTHEQUE ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Bibliothquemusicale, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
@@ -341,6 +270,53 @@
                                 </DataTemplate>
                             </CheckBox.ContentTemplate>
                         </CheckBox>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+            <!-- ===================== EGALISEUR ===================== -->
+            <StackPanel Spacing="12">
+                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_galiseur, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Grid Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="16">
+                        <ToggleSwitch x:Name="EqualizerSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Activerlgaliseur, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="EqualizerSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <StackPanel x:Name="EqualizerBandsPanel" Visibility="Collapsed" Spacing="8">
+                            <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_AjustelegaindBdechaq, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <StackPanel x:Name="EqualizerPresetsContainer" Orientation="Vertical" Margin="0,0,0,8" Spacing="4" />
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="EqualizerSliders">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+            <!-- ===================== PLAYLISTS ===================== -->
+            <StackPanel Spacing="12">
+                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Playlists, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Grid Style="{StaticResource CardStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="{x:Bind models:Strings.Current.SettingsPage_Content_Importeruneplaylistm, Mode=OneWay}" Click="ImportPlaylist_Click" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <Button Content="{x:Bind models:Strings.Current.SettingsPage_Content_Exporterlabibliothqu, Mode=OneWay}" Click="ExportPlaylist_Click" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -436,6 +412,30 @@
                 </Grid>
             </StackPanel>
 
+            <!-- ===================== ASSISTANT PROMPT ===================== -->
+            <StackPanel Spacing="12">
+                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_AssistantPrompt, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Grid Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="16">
+                        <ToggleSwitch x:Name="AIEnabledSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Activerleboutondelas, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="AIEnabledSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        
+                        
+                        
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
             <!-- ===================== APPARENCE ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Apparence, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
@@ -483,12 +483,47 @@
                     </StackPanel>
                 </Grid>
             
+                
+                <!-- Data & Cache -->
+                <StackPanel Margin="0,20,0,0" Spacing="16">
+                    <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_DataCache, Mode=OneWay}"
+                               FontSize="18" FontWeight="SemiBold" VerticalAlignment="Top"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    <Grid Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="20">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadata, Mode=OneWay}" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadataDesc, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12" />
+                            </StackPanel>
+                            <Button Grid.Column="1" VerticalAlignment="Center" Click="ApplyMetadata_Click" Content="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadataButton, Mode=OneWay}" />
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCache, Mode=OneWay}" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCacheDesc, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12" />
+                            </StackPanel>
+                            <Button Grid.Column="1" VerticalAlignment="Center" Click="ClearCache_Click" Content="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCacheButton, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+                </StackPanel>
+                
                 <!-- Updates -->
                 <StackPanel Margin="0,20,0,0" Spacing="16">
                     <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Updates, Mode=OneWay}"
                                FontSize="18" FontWeight="SemiBold" VerticalAlignment="Top"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                    <StackPanel  Spacing="20">
+                    <Grid Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="20">
                         <StackPanel Spacing="8">
                             <ToggleSwitch x:Name="AutoUpdateSwitch" 
                                           Header="{x:Bind models:Strings.Current.SettingsPage_Text_AutoUpdate, Mode=OneWay}"
@@ -506,14 +541,13 @@
                                     Click="CheckUpdateButton_Click" Margin="0,10,0,0" />
                         </StackPanel>
                     </StackPanel>
+                </Grid>
                 </StackPanel>
 </StackPanel>
 
         </StackPanel>
     </ScrollViewer>
 </Page>
-
-
 
 
 

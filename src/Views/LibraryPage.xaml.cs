@@ -88,6 +88,7 @@ public sealed partial class LibraryPage : Page
 					DisplayLimitCombo.SelectedItem = sel;
 				}
 				UpdateTotalTracksHint();
+				UpdateSortButtonText();
 			});
 		};
 	}
@@ -204,6 +205,10 @@ public sealed partial class LibraryPage : Page
 
 	private void SyncNowPlayingId()
 	{
+		foreach (var track in _allTracks)
+		{
+			track.IsPlaying = !string.IsNullOrEmpty(App.NowPlayingFilePath) && string.Equals(track.FilePath, App.NowPlayingFilePath, System.StringComparison.OrdinalIgnoreCase);
+		}
 	}
 
 	protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -247,6 +252,24 @@ public sealed partial class LibraryPage : Page
 
 	private void UpdateRmsBars()
 	{
+		if (App.AudioEngine.State != NAudio.Wave.PlaybackState.Playing && _smoothedRms < 0.01f) { _smoothedRms = 0f; return; }
+		
+        var track = _currentFilteredList.FirstOrDefault(t => t.IsPlaying);
+        _activeIndicatorGrid = null;
+        if (track != null)
+        {
+            int idx = FilteredTracks.IndexOf(track);
+            if (idx >= 0)
+            {
+                if (TrackListView.ContainerFromIndex(idx) is ListViewItem container)
+                {
+                    _activeIndicatorGrid = FindChildByName<Grid>(container, "CoverGridContainer");
+                }
+            }
+        }
+
+		if (_activeIndicatorGrid == null) return;
+
 		if (App.AudioEngine.State != NAudio.Wave.PlaybackState.Playing && _smoothedRms < 0.01f) { _smoothedRms = 0; return; }
 		if (!(_activeIndicatorGrid == null))
 		{
@@ -595,6 +618,14 @@ public sealed partial class LibraryPage : Page
 		}
 		catch
 		{
+		}
+	}
+
+	private void CoverGrid_Loaded(object sender, RoutedEventArgs e)
+	{
+		if (sender is Grid grid && grid.DataContext is Track track && track.IsPlaying)
+		{
+			UpdateCoverIndicator(grid, true, isHovered: false);
 		}
 	}
 

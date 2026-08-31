@@ -26,7 +26,8 @@ using Windows.UI;
 using WinRT;
 using WinRT.Interop;
 
-namespace Resona.Views;
+namespace Resona.Views
+{
 
 public sealed partial class SettingsPage : Page
 {
@@ -936,78 +937,6 @@ public sealed partial class SettingsPage : Page
 		App.Settings.SaveAsync();
 	}
 
-		private async void AIRestoreBackupBtn_Click(object sender, RoutedEventArgs e)
-	{
-		ContentDialog dialog = new ContentDialog
-		{
-			Content = new StackPanel
-			{
-				Spacing = 20,
-				HorizontalAlignment = HorizontalAlignment.Center,
-				VerticalAlignment = VerticalAlignment.Center,
-				Children = 
-				{
-					new TextBlock { Text = Models.Strings.Current.IsFr ? "Patientez..." : "Please wait...", HorizontalAlignment = HorizontalAlignment.Center, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
-					new ProgressRing { IsActive = true, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0), Width = 40, Height = 40 }
-				}
-			},
-			XamlRoot = base.XamlRoot
-		};
-		_ = dialog.ShowAsync();
-		await Task.Delay(100);
-
-		try 
-		{
-			var tracks = await App.Cache.LoadAllTracksAsync();
-			await Task.Run(async () => 
-			{
-				foreach(var track in tracks) 
-				{
-					var fileMeta = App.Scanner.ExtractMetadata(track.FilePath, out _);
-					if (fileMeta != null) 
-					{
-						track.Title = fileMeta.Title;
-						track.Artist = fileMeta.Artist;
-						track.Album = fileMeta.Album;
-						track.Genre = fileMeta.Genre;
-						track.DateAdded = fileMeta.DateAdded;
-						await App.Cache.UpsertTrackAsync(track);
-					}
-				}
-			});
-			dialog.Hide();
-			await Task.Delay(500);
-
-			ContentDialog successDialog = new ContentDialog
-			{
-				Title = Models.Strings.Current.IsFr ? "Succès" : "Success",
-				Content = Models.Strings.Current.IsFr ? "Les données d'affichage ont été réinitialisées avec les tags originaux des fichiers." : "Display data has been restored with original file tags.",
-				CloseButtonText = "OK",
-				XamlRoot = base.XamlRoot
-			};
-			await successDialog.ShowAsync();
-
-			if (App.MainWindowInstance != null)
-			{
-			    await App.MainWindowInstance.ReloadLibraryFromCacheAsync();
-			    App.MainWindowInstance.TriggerLibraryRescan();
-			}
-		}
-		catch (Exception ex)
-		{
-			dialog.Hide();
-			await Task.Delay(500);
-			ContentDialog errDialog = new ContentDialog
-			{
-				Title = Models.Strings.Current.IsFr ? "Erreur" : "Error",
-				Content = ex.Message,
-				CloseButtonText = "OK",
-				XamlRoot = base.XamlRoot
-			};
-			await errDialog.ShowAsync();
-		}
-	}
-	
     
 	private void AutoUpdateSwitch_Toggled(object sender, RoutedEventArgs e)
     {
@@ -1019,6 +948,174 @@ public sealed partial class SettingsPage : Page
     private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e)
     {
         await UpdateManager.CheckForUpdatesAsync(this.Content.XamlRoot, true);
+    }
+
+
+
+
     
+    private async void ClearCache_Click(object sender, RoutedEventArgs e)
+    {
+        var cbCovers = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheDialogCovers, IsChecked = false };
+        var cbLyrics = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheDialogLyrics, IsChecked = false };
+        var cbNorm = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheNormalization, IsChecked = false };
+        var cbVis = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheVisuallyModified, IsChecked = false };
+        var cbScan = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheScannedSounds, IsChecked = false };
+        var cbSettings = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheAppSettings, IsChecked = false };
+        var cbAll = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheAll, IsChecked = false, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.IndianRed) };
+
+        cbAll.Checked += (s, ev) => { cbCovers.IsEnabled = cbLyrics.IsEnabled = cbNorm.IsEnabled = cbVis.IsEnabled = cbScan.IsEnabled = cbSettings.IsEnabled = false; };
+        cbAll.Unchecked += (s, ev) => { cbCovers.IsEnabled = cbLyrics.IsEnabled = cbNorm.IsEnabled = cbVis.IsEnabled = cbScan.IsEnabled = cbSettings.IsEnabled = true; };
+
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(cbCovers);
+        panel.Children.Add(cbLyrics);
+        panel.Children.Add(cbNorm);
+        panel.Children.Add(cbVis);
+        panel.Children.Add(cbScan);
+        panel.Children.Add(cbSettings);
+        panel.Children.Add(new MenuFlyoutSeparator { Margin = new Thickness(0, 8, 0, 8) });
+        panel.Children.Add(cbAll);
+
+        var dialog = new ContentDialog
+        {
+            Title = Resona.Models.Strings.Current.CS_ClearCacheDialogTitle,
+            Content = panel,
+            PrimaryButtonText = Resona.Models.Strings.Current.CS_Delete,
+            CloseButtonText = Resona.Models.Strings.Current.CS_Annuler,
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            bool restart = false;
+            string restartTitle = Resona.Models.Strings.Current.CS_RestartRequiredTitle;
+            string restartBody = Resona.Models.Strings.Current.CS_RestartRequiredBody;
+            string restartLanguage = App.Settings.Current.AppLanguage;
+            if (cbAll.IsChecked == true)
+            {
+                await App.Cache.ClearAllDataAsync();
+                App.Settings.Current = new Resona.Models.AppSettings();
+                App.Settings.SaveSync();
+                try {
+                    string coversDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "Covers");
+                    if (System.IO.Directory.Exists(coversDir)) System.IO.Directory.Delete(coversDir, true);
+                } catch {}
+                restart = true;
+            }
+            else
+            {
+                if (cbLyrics.IsChecked == true) await App.Cache.ClearLyricsCacheAsync();
+                if (cbNorm.IsChecked == true) await App.Cache.ClearAnalysisAsync();
+                if (cbVis.IsChecked == true) await App.Cache.ClearVisuallyModifiedTagsAsync();
+                if (cbScan.IsChecked == true)
+                {
+                    await App.Cache.ClearAllDataAsync();
+                    App.Settings.Current.MusicFolders.Clear();
+                    App.Settings.SaveSync();
+                    restart = true;
+                }
+                if (cbSettings.IsChecked == true)
+                {
+                    App.Settings.Current = new Resona.Models.AppSettings();
+                    App.Settings.SaveSync();
+                    restart = true;
+                }
+                if (cbCovers.IsChecked == true)
+                {
+                    await App.Cache.ClearCoversCacheAsync();
+                    try {
+                        string coversDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "Covers");
+                        if (System.IO.Directory.Exists(coversDir)) {
+                            foreach (var file in System.IO.Directory.GetFiles(coversDir)) System.IO.File.Delete(file);
+                        }
+                    } catch {}
+                }
+            }
+
+            if (restart)
+            {
+                if (App.Settings.Current.AppLanguage == null && restartLanguage != null) {
+                    App.Settings.Current.AppLanguage = restartLanguage;
+                    App.Settings.SaveSync();
+                }
+                var rDialog = new ContentDialog
+                {
+                    Title = restartTitle,
+                    Content = restartBody,
+                    PrimaryButtonText = "OK",
+                    XamlRoot = this.XamlRoot
+                };
+                await rDialog.ShowAsync();
+                Application.Current.Exit();
+            }
+        }
+    }
+
+
+    private async void ApplyMetadata_Click(object sender, RoutedEventArgs e)
+    {
+        var cbTags = new CheckBox { Content = Resona.Models.Strings.Current.CS_ApplyMetadataDialogTags, IsChecked = true };
+        var cbCovers = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheDialogCovers, IsChecked = true };
+        
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(cbTags);
+        panel.Children.Add(cbCovers);
+
+        var dialog = new ContentDialog
+        {
+            Title = Resona.Models.Strings.Current.CS_ApplyMetadataDialogTitle,
+            Content = panel,
+            PrimaryButtonText = Resona.Models.Strings.Current.SettingsPage_Text_ApplyMetadataButton,
+            CloseButtonText = Resona.Models.Strings.Current.CS_Annuler,
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            bool applyTags = cbTags.IsChecked == true;
+            bool applyCovers = cbCovers.IsChecked == true;
+            if (!applyTags && !applyCovers) return;
+
+            var progressDialog = new ContentDialog
+            {
+                Title = Resona.Models.Strings.Current.CS_ApplyMetadataDialogProgress,
+                Content = new ProgressRing { IsActive = true, HorizontalAlignment = HorizontalAlignment.Center },
+                XamlRoot = this.XamlRoot
+            };
+            _ = progressDialog.ShowAsync();
+
+            var tracks = await App.Cache.LoadAllTracksAsync();
+            await Task.Run(() => {
+                foreach (var track in tracks)
+                {
+                    var data = new Resona.Services.AutoTagResult();
+                    if (applyTags)
+                    {
+                        data.Title = track.Title;
+                        data.Artist = track.Artist;
+                        data.Album = track.Album;
+                        data.Genre = track.Genre;
+                        data.Year = track.Year > 0 ? track.Year : null;
+                        data.TrackNumber = track.TrackNumber > 0 ? track.TrackNumber : null;
+                    }
+                    if (applyCovers && !string.IsNullOrEmpty(track.CoverArtPath) && System.IO.File.Exists(track.CoverArtPath))
+                    {
+                        data.CoverPath = track.CoverArtPath;
+                    }
+
+                    if (applyTags || (applyCovers && data.CoverPath != null))
+                    {
+                        Resona.Services.AutoTagService.WriteMetadata(track.FilePath, data);
+                    }
+                }
+            });
+
+            progressDialog.Hide();
+        }
+    }
 }
+
 }

@@ -25,7 +25,7 @@ public sealed partial class AlbumsPage : Page
         {
             if (!string.IsNullOrEmpty(track.Album) && mapping.TryGetValue(track.Album.Trim(), out var newAlbum))
             {
-                track.Album = newAlbum;
+                App.Settings.Current.AlbumMappings[track.Album] = newAlbum;
             }
         }, () => {
             _builtLibraryHash = 0; // Force reload
@@ -49,7 +49,7 @@ public sealed partial class ArtistsPage : Page
         {
             if (!string.IsNullOrEmpty(track.Artist) && mapping.TryGetValue(track.Artist.Trim(), out var newArtist))
             {
-                track.Artist = newArtist;
+                App.Settings.Current.ArtistMappings[track.Artist] = newArtist;
             }
         }, () => {
             _builtLibraryHash = 0; // Force reload
@@ -67,7 +67,7 @@ public sealed partial class GenresPage : Page
         {
             if (mapping.TryGetValue($"{track.Artist} - {track.Title}".Trim(), out var newGenre))
             {
-                track.Genre = newGenre;
+                App.Settings.Current.GenreMappings[track.Genre] = newGenre;
             }
         }, () => {
             _builtLibraryHash = 0; // Force reload
@@ -185,12 +185,7 @@ public static class AIHelper
                     await Task.Run(async () => 
                     {
                         foreach (var track in tracksToModify) { applyMapping(track, mapping); }
-                        if (App.Cache != null) 
-                        {
-                            foreach(var t in tracksToModify) {
-                                await App.Cache.UpsertTrackAsync(t);
-                            }
-                        }
+                        // Do not save Tracks to DB, the AI mappings are stored in AppSettings!
                     });
                 }
                 loadingDialog.Hide();

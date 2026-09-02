@@ -38,10 +38,16 @@ public class Track : INotifyPropertyChanged
     public string Title { get => _title; set { if (_title != value) { _title = value; Raise(); } } }
 
     private string _artist = "Artiste inconnu";
-    public string Artist { get => (_artist == "Artiste inconnu" || _artist == "Unknown artist" || string.IsNullOrWhiteSpace(_artist)) ? Strings.Current.CS_ArtisteInconnu : _artist; set { if (_artist != value) { _artist = value; Raise(); } } }
+    public string Artist { get => (_artist == "Artiste inconnu" || _artist == "Unknown artist" || string.IsNullOrWhiteSpace(_artist)) ? Strings.Current.CS_ArtisteInconnu : _artist; set { if (_artist != value) { _artist = value; Raise(); Raise(nameof(DisplayArtist)); } } }
+    
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayArtist { get { var a = Artist; return Resona.App.Settings.Current.ArtistMappings.TryGetValue(a, out var m) ? m : a; } }
 
     private string _album = "Album inconnu";
-    public string Album { get => (_album == "Album inconnu" || _album == "Unknown album" || string.IsNullOrWhiteSpace(_album)) ? Strings.Current.CS_AlbumInconnu : _album; set { if (_album != value) { _album = value; Raise(); } } }
+    public string Album { get => (_album == "Album inconnu" || _album == "Unknown album" || string.IsNullOrWhiteSpace(_album)) ? Strings.Current.CS_AlbumInconnu : _album; set { if (_album != value) { _album = value; Raise(); Raise(nameof(DisplayAlbum)); } } }
+    
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayAlbum { get { var a = Album; return Resona.App.Settings.Current.AlbumMappings.TryGetValue(a, out var m) ? m : a; } }
 
     private string _albumArtist = string.Empty;
     public string AlbumArtist { get => _albumArtist; set { if (_albumArtist != value) { _albumArtist = value; Raise(); } } }
@@ -72,7 +78,10 @@ public class Track : INotifyPropertyChanged
     public int Year { get => _year; set { if (_year != value) { _year = value; Raise(); } } }
 
     private string _genre = string.Empty;
-    public string Genre { get => _genre; set { if (_genre != value) { _genre = value; Raise(); } } }
+    public string Genre { get => _genre; set { if (_genre != value) { _genre = value; Raise(); Raise(nameof(DisplayGenre)); } } }
+    
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayGenre { get { var a = Genre; return Resona.App.Settings.Current.GenreMappings.TryGetValue(a, out var m) ? m : a; } }
 
     private string? _coverArtPath;
     public string? CoverArtPath
@@ -188,7 +197,11 @@ public class AppSettings
     public bool AutoOpenNowPlaying    { get; set; } = false;
 
     // IA
+    public List<string> SavedQueueIds { get; set; } = new();
     public bool AIEnabled { get; set; } = false;
+    public Dictionary<string, string> ArtistMappings { get; set; } = new();
+    public Dictionary<string, string> AlbumMappings { get; set; } = new();
+    public Dictionary<string, string> GenreMappings { get; set; } = new();
     
     // Apparence
     public AppBackdropStyle Backdrop                   { get; set; } = AppBackdropStyle.Solid;

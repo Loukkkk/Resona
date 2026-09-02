@@ -132,7 +132,7 @@ public class CoverArtService
         {
             var url = $"https://musicbrainz.org/ws/2/release/?query={Uri.EscapeDataString(query)}&fmt=json&limit={count * 2}";
             using var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("User-Agent", "Resona/2.2 (https://github.com/Resona)");
+            client.DefaultRequestHeaders.Add("User-Agent", "Resona/2.3 (https://github.com/Resona)");
             var json = await client.GetStringAsync(url);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("releases", out var releases))
@@ -530,7 +530,7 @@ public class LyricsService
         {
             string query = $"https://lrclib.net/api/search?q={Uri.EscapeDataString(cArtist + " " + cTitle)}";
             var request = new HttpRequestMessage(HttpMethod.Get, query);
-            request.Headers.UserAgent.TryParseAdd("Resona/2.2");
+            request.Headers.UserAgent.TryParseAdd("Resona/2.3");
             
             var response = await _http.SendAsync(request);
             if (response.IsSuccessStatusCode)
@@ -2596,7 +2596,7 @@ public class AutoTagResult
 public static class AutoTagService
 {
     private static readonly HttpClient _http = new();
-    private const string UserAgent = "Resona/2.2 (https://github.com/Resona)";
+    private const string UserAgent = "Resona/2.3 (https://github.com/Resona)";
 
     static AutoTagService()
     {

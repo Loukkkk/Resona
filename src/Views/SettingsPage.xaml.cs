@@ -1116,6 +1116,23 @@ public sealed partial class SettingsPage : Page
             progressDialog.Hide();
         }
     }
-}
 
+	private async void RestoreAITagsBtn_Click(object sender, RoutedEventArgs e)
+	{
+		App.Settings.Current.ArtistMappings.Clear();
+		App.Settings.Current.AlbumMappings.Clear();
+		App.Settings.Current.GenreMappings.Clear();
+		
+		App.MainWindowInstance?.TriggerLibraryRescan();
+
+		var successDialog = new ContentDialog
+		{
+			Title = Models.Strings.Current.IsFr ? "Restauration terminée" : "Restoration complete",
+			Content = Models.Strings.Current.IsFr ? "L'affichage superficiel de l'IA a été effacé." : "AI superficial display has been cleared.",
+			CloseButtonText = "OK",
+			XamlRoot = this.XamlRoot
+		};
+		await successDialog.ShowAsync();
+	}
+}
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 
 
@@ -881,7 +881,7 @@ public sealed partial class ArtistsPage : Page
 
 
 
-			if (track != null && _artistBadges.TryGetValue(track.Artist, out Border value))
+			if (track != null && _artistBadges.TryGetValue(track.DisplayArtist, out Border value))
 
 
 

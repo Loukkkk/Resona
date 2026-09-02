@@ -1599,6 +1599,7 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
     {
         await App.Cache.InitializeAsync();
         _library = await App.Cache.LoadAllTracksAsync();
+        RestoreManualQueue();
         _libraryPageInstance?.SetTracks(_library);
         _albumsPageInstance?.LoadData(_library);
         _artistsPageInstance?.LoadData(_library);
@@ -2860,12 +2861,59 @@ private async void UpdateSMTCInfo(Track track, bool isPlaying)
     {
         _manualQueue.Add(track);
         _queuePageInstance?.SetQueue(_manualQueue);
+        SaveManualQueue();
     }
 
     public void RemoveFromQueue(Track track)
     {
         _manualQueue.Remove(track);
         _queuePageInstance?.SetQueue(_manualQueue);
+        SaveManualQueue();
+    }
+
+        public void EnableContinuousPlaybackIfOff()
+    {
+        if (_playbackMode == PlaybackMode.Off)
+        {
+            _playbackMode = PlaybackMode.RepeatAll;
+            App.Settings.Current.SavedPlaybackMode = (int)_playbackMode;
+            RepeatIcon.Glyph = "";
+            ((Microsoft.UI.Xaml.Controls.IconElement)RepeatIcon).Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["SystemControlHighlightAccentBrush"];
+            Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip((Microsoft.UI.Xaml.DependencyObject)RepeatButton, Models.Strings.Current.IsFr ? "Répéter la liste" : "Repeat all");
+        }
+    }
+    private void RestoreManualQueue()
+    {
+        _manualQueue.Clear();
+        if (App.Settings.Current.SavedQueueIds != null && _library != null)
+        {
+            foreach (var id in App.Settings.Current.SavedQueueIds)
+            {
+                var track = _library.FirstOrDefault(t => t.Id == id);
+                if (track != null) _manualQueue.Add(track);
+            }
+        }
+        _queuePageInstance?.SetQueue(_manualQueue);
+    }
+
+    private void SaveManualQueue()
+    {
+        App.Settings.Current.SavedQueueIds = _manualQueue.Select(t => t.Id).ToList();
+        _ = App.Settings.SaveAsync();
+    }
+public void ClearQueue()
+    {
+        _manualQueue.Clear();
+        _queuePageInstance?.SetQueue(_manualQueue);
+        SaveManualQueue();
+    }
+
+    public void UpdateQueue(List<Track> newQueue)
+    {
+        _manualQueue.Clear();
+        _manualQueue.AddRange(newQueue);
+        _queuePageInstance?.SetQueue(_manualQueue);
+        SaveManualQueue();
     }
 
     public void NavigateToArtist(string artist)
@@ -3171,7 +3219,7 @@ public async Task<bool> ShowAutoTagDialogAsync(Track track)
                     if (coverPath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                     {
                         using var hc = new System.Net.Http.HttpClient();
-                        hc.DefaultRequestHeaders.Add("User-Agent", "Resona/2.2");
+                        hc.DefaultRequestHeaders.Add("User-Agent", "Resona/2.3");
                         var imgBytes = await hc.GetByteArrayAsync(coverPath);
                         await System.IO.File.WriteAllBytesAsync(coverDest, imgBytes);
                         

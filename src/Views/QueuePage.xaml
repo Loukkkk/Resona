@@ -23,10 +23,18 @@
             <TextBlock x:Name="CountHint" VerticalAlignment="Center" Margin="0,8,0,0" Text=" "
                         FontSize="13"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            
+            <Button x:Name="ClearAllBtn" 
+                    Content="{x:Bind models:Strings.Current.QueuePage_Btn_ClearAll, Mode=OneWay}" 
+                    Click="ClearAllBtn_Click" 
+                    Margin="12,4,0,0" 
+                    VerticalAlignment="Center" />
         </StackPanel>
 
         <ListView x:Name="TrackListView" Grid.Row="1"
                   ItemsSource="{x:Bind DisplayedTracks, Mode=OneWay}"
+                  CanReorderItems="True" AllowDrop="True" CanDragItems="True" DragItemsStarting="TrackListView_DragItemsStarting"
+                  DragItemsCompleted="TrackListView_DragItemsCompleted"
                   DoubleTapped="TrackListView_DoubleTapped"
                   RightTapped="TrackListView_RightTapped"
                   SelectionChanged="TrackListView_SelectionChanged"
@@ -48,15 +56,21 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListViewItem">
-                                <Grid x:Name="RootGrid" CornerRadius="8" Background="Transparent">
-                                    <ContentPresenter
-                                        x:Name="ContentPresenter"
-                                        Content="{TemplateBinding Content}"
-                                        ContentTemplate="{TemplateBinding ContentTemplate}"
-                                        HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                        Margin="0" />
-                                </Grid>
+                                <ListViewItemPresenter
+                                    ContentTransitions="{TemplateBinding ContentTransitions}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    PointerOverBackground="Transparent"
+                                    SelectedBackground="Transparent"
+                                    SelectedPointerOverBackground="Transparent"
+                                    SelectedPressedBackground="Transparent"
+                                    PressedBackground="Transparent"
+                                    CheckBrush="Transparent"
+                                    CheckBoxBrush="Transparent"
+                                    DragBackground="{ThemeResource ControlFillColorDefaultBrush}"
+                                    DragForeground="{ThemeResource TextFillColorPrimaryBrush}"
+                                    FocusBorderBrush="Transparent"
+                                    PlaceholderBackground="Transparent" />
                             </ControlTemplate>
                         </Setter.Value>
                     </Setter>
@@ -86,6 +100,7 @@
                                 <ColumnDefinition Width="180" />
                                 <ColumnDefinition Width="56" />
                             </Grid.ColumnDefinitions>
+                            
                             <Grid Grid.Column="0" Width="40" Height="40" CornerRadius="5"
                                   PointerEntered="CoverGrid_PointerEntered" PointerExited="CoverGrid_PointerExited">
                                 <FontIcon Glyph="&#xE8D6;" FontSize="18" Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />

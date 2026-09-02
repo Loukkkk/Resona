@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 
 
@@ -685,7 +685,7 @@ public sealed partial class AlbumsPage : Page
 
 
 
-			if (track != null && _albumBadges.TryGetValue(track.Album, out Border value))
+			if (track != null && _albumBadges.TryGetValue(track.DisplayAlbum, out Border value))
 
 
 

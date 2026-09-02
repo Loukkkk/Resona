@@ -430,8 +430,20 @@
                             </ToggleSwitch.HeaderTemplate>
                         </ToggleSwitch>
                         
-                        
-                        
+                        <Grid ColumnSpacing="16" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_RestoreAITags, Mode=OneWay}" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_RestoreAITagsDesc, Mode=OneWay}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" VerticalAlignment="Center"
+                                    Content="{x:Bind models:Strings.Current.SettingsPage_RestoreAITagsBtn, Mode=OneWay}" Click="RestoreAITagsBtn_Click" />
+                        </Grid>
                     </StackPanel>
                 </Grid>
             </StackPanel>

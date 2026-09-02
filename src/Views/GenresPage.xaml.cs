@@ -326,7 +326,7 @@ public sealed partial class GenresPage : Page
 
 
 
-			string key = (string.IsNullOrWhiteSpace(track.Genre) ? "Genre inconnu" : track.Genre);
+			string key = (string.IsNullOrWhiteSpace(track.DisplayGenre) ? "Genre inconnu" : track.DisplayGenre);
 
 
 
@@ -570,7 +570,7 @@ public sealed partial class GenresPage : Page
 
 
 
-			return t.Genre;
+			return t.DisplayGenre;
 
 
 

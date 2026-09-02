@@ -188,6 +188,7 @@ public sealed partial class PlaylistDetailPage : Page
 		if (_tracks.Count > 0)
 		{
 			App.MainWindowInstance?.PlayTrack(_tracks[0], _tracks);
+			App.MainWindowInstance?.EnableContinuousPlaybackIfOff();
 		}
 	}
 

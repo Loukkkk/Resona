@@ -2748,11 +2748,7 @@ public sealed partial class PlaylistsPage : Page
 
 
 			App.MainWindowInstance?.PlayTrack(_opentracks[0], _opentracks);
-
-
-
-
-
+			App.MainWindowInstance?.EnableContinuousPlaybackIfOff();
 		}
 
 

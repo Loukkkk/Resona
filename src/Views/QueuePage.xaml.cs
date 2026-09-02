@@ -427,10 +427,19 @@ public sealed partial class QueuePage : Page
             App.MainWindowInstance?.NavigateToAlbum(album);
         }
     }
+
+	private void TrackListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+	{
+		e.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+	}
+
+	private void TrackListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+	{
+		App.MainWindowInstance?.UpdateQueue(DisplayedTracks.ToList());
+	}
+
+	private void ClearAllBtn_Click(object sender, RoutedEventArgs e)
+	{
+		App.MainWindowInstance?.ClearQueue();
+	}
 }
-
-
-
-
-
-

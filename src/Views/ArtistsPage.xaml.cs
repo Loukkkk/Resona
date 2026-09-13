@@ -105,14 +105,41 @@ public sealed partial class ArtistsPage : Page
 	private List<Track> _library = new List<Track>();
 	private string _currentSort = "name_asc";
 
+	private void UpdateSortButton()
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		bool isAsc = parts.Length > 1 && parts[1] == "asc";
+
+		string sortName = field switch
+		{
+			"name" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name,
+			"count" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Count,
+			_ => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name
+		};
+		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "" : "";
+	}
+
 	private void SortArtistsMenu_Click(object sender, RoutedEventArgs e)
 	{
-		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string sort)
+		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string field)
 		{
-			_currentSort = sort;
-			SortButtonLabel.Text = item.Text;
+			string dir = (field == "count") ? "desc" : "asc";
+			_currentSort = $"{field}_{dir}";
+			UpdateSortButton();
 			BuildUIBatched(SearchBox.Text);
 		}
+	}
+
+	private void SortDirection_Click(object sender, RoutedEventArgs e)
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
+		_currentSort = $"{field}_{dir}";
+		UpdateSortButton();
+		BuildUIBatched(SearchBox.Text);
 	}
 
 
@@ -935,7 +962,9 @@ public sealed partial class ArtistsPage : Page
 		
 		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
 		{
+			"name_asc" => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase),
 			"name_desc" => listQuery.OrderByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"count_asc" => listQuery.OrderBy(g => g.Count()),
 			"count_desc" => listQuery.OrderByDescending(g => g.Count()),
 			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
 		};

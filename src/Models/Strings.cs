@@ -28,7 +28,20 @@ public class Strings : INotifyPropertyChanged
 
     private static Strings? _current;
 
-    public static Strings Current => _current ??= new Strings();
+    
+    public string MainWindow_Tooltip_Restore => IsFr ? "Restaurer" : "Restore";
+    public string MainWindow_Tooltip_MiniPlayer => IsFr ? "Mini Lecteur" : "Mini Player";
+
+    // Favoris
+    public string CS_AddToFavorites => IsFr ? "Ajouter aux favoris" : "Add to favorites";
+    public string CS_RemoveFromFavorites => IsFr ? "Retirer des favoris" : "Remove from favorites";
+    public string MainWindow_Tooltip_Favorites => IsFr ? "Favoris" : "Favorites";
+
+    // Presets d'egaliseur (flyout rapide de la PlayerBar)
+    public string MainWindow_Tooltip_Equalizer => IsFr ? "Presets d'\u00e9galiseur" : "Equalizer presets";
+    public string CS_EqualizerPresetsTitle => IsFr ? "Presets d'\u00e9galiseur" : "Equalizer presets";
+    public string CS_OpenFullEqualizer => IsFr ? "Ouvrir l'\u00e9galiseur complet" : "Open full equalizer";
+public static Strings Current => _current ??= new Strings();
 
 
 
@@ -112,7 +125,7 @@ public class Strings : INotifyPropertyChanged
 
     public string CS_Stats_PlaysSuffix => IsFr ? "{0} écoutes" : "{0} plays";
 
-    public string FormatTracksCount(int count) => count == 0 ? (IsFr ? "Vide" : "Empty") : (IsFr ? $"{count} morceau{(count > 1 ? "x" : "")}" : $"{count} track{(count > 1 ? "s" : "")}");
+    public string FormatTracksCount(int count) => IsFr ? $"{count} morceau{(count > 1 ? "x" : "")}" : $"{count} track{(count != 1 ? "s" : "")}";
     public string FormatAlbumsCount(int count) => count == 0 ? (IsFr ? "Vide" : "Empty") : (IsFr ? $"{count} album{(count > 1 ? "s" : "")}" : $"{count} album{(count > 1 ? "s" : "")}");
     public string CS_Stats_TracksSuffix => IsFr ? "{0} morceaux" : "{0} tracks";
 
@@ -380,7 +393,7 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string SettingsPage_Header_Normalisationduvolum => IsFr ? "Normalisation du volume" : "Volume normalization";
     public string SettingsPage_Header_Rduiredanslabarredes => IsFr ? "Réduire dans la barre des tâches" : "Minimize to taskbar";
     public string SettingsPage_Header_Rechercheautomatique => IsFr ? "Recherche automatique de pochettes" : "Automatic cover search";
-    public string SettingsPage_Text_RechercheautomatiqueDesc => IsFr ? "Télécharge automatiquement les pochettes manquantes depuis Internet lors de l'ajout de nouveaux morceaux." : "Automatically downloads missing cover art from the internet when adding new tracks.";
+    public string SettingsPage_Text_RechercheautomatiqueDesc => IsFr ? "Télécharge automatiquement les pochettes manquantes depuis Internet." : "Automatically downloads missing cover art from the internet.";
     public string SettingsPage_Header_Traductiondesparoles => IsFr ? "Traduction des paroles" : "Lyrics translation";
     public string SettingsPage_Text_Ajusteautomatiquemen => IsFr ? "Ajuste automatiquement le volume pour que tous les morceaux soient au même niveau sonore." : "Automatically adjusts the volume so all tracks are at the same audio level.";
     public string SettingsPage_Text_AjustelegaindBdechaq => IsFr ? "Ajuste le gain (dB) de chaque bande de fréquence pour modifier le rendu sonore." : "Adjusts the gain (dB) of each frequency band to change the sound output.";
@@ -410,7 +423,7 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string SettingsPage_Text_Styledefonddefentre => IsFr ? "Style de fond de fenêtre" : "Window background style";
     public string SettingsPage_Text_Systme => IsFr ? "Système" : "System";
     public string SettingsPage_Text_Tlchargement => IsFr ? "Téléchargement" : "Download";
-    public string SettingsPage_Text_Traduitautomatiqueme => IsFr ? "Traduit automatiquement les paroles dans votre langue si elles sont dans une autre langue." : "Automatically translates lyrics into your language if they are in another language.";
+    public string SettingsPage_Text_Traduitautomatiqueme => IsFr ? "Nécessite d'activer le bouton Paroles." : "Requires the Lyrics button to be enabled.";
     public string SettingsPage_Text_galiseur => IsFr ? "Égaliseur" : "Equalizer";
     public string SettingsPage_Text_qualitdbitcible => IsFr ? "Qualité / Débit cible" : "Quality / Target bitrate";
     public string StatisticsPage_Text_Statistiques => IsFr ? "Statistiques" : "Statistics";
@@ -425,5 +438,60 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string Update_Close => IsFr ? "Fermer" : "Close";
     public string Update_UpToDate_Title => IsFr ? "Vous êtes à jour" : "You are up to date";
     public string Update_UpToDate_Message => IsFr ? "Vous possédez déjà la dernière version de Resona." : "You already have the latest version of Resona.";
+
+
+    public string AlbumsPage_Sort_Artist => IsFr ? "Artiste (A-Z)" : "Artist (A-Z)";
+    public string AlbumsPage_Sort_Recent => IsFr ? "Ajout récent" : "Recently added";
+
+
+    public string FormatAlbumDuration(TimeSpan t)
+    {
+        if (t.TotalHours >= 1)
+            return IsFr ? $"{(int)t.TotalHours} h {t.Minutes} min {t.Seconds} s" : $"{(int)t.TotalHours} h {t.Minutes} m {t.Seconds} s";
+        else
+            return IsFr ? $"{t.Minutes} min {t.Seconds} s" : $"{t.Minutes} m {t.Seconds} s";
+    }
+
+
+    public string SettingsPage_Header_SaveWindowPosition => IsFr ? "Mémoriser la position de la fenêtre" : "Remember window position";
+    public string SettingsPage_Header_SaveWindowSize => IsFr ? "Mémoriser la taille de la fenêtre" : "Remember window size";
+
+
+    public string LibraryPage_Sort_Title => IsFr ? "Titre" : "Title";
+    public string LibraryPage_Sort_Artist => IsFr ? "Artiste" : "Artist";
+    public string LibraryPage_Sort_Album => IsFr ? "Album" : "Album";
+    public string LibraryPage_Sort_Duration => IsFr ? "Durée" : "Duration";
+    public string LibraryPage_Sort_DateAdded => IsFr ? "Date d'ajout" : "Date added";
+    public string PlaylistsPage_Sort_Name => IsFr ? "Nom" : "Name";
+    public string PlaylistsPage_Sort_Count => IsFr ? "Nombre de sons" : "Track count";
+
+
+	public string SettingsPage_UpNextPanel => IsFr ? "Afficher le panneau À venir " : "Show Up Next panel";
+	public string MainWindow_UpNext_Header => IsFr ? "À venir" : "Up next";
+	public string MainWindow_UpNext_Playing => IsFr ? "En cours de lecture" : "Currently playing";
+	public string MainWindow_UpNext_FromAlbum => IsFr ? "Depuis l'album :" : "From album:";
+	public string MainWindow_UpNext_FromPlaylist => IsFr ? "Depuis la playlist :" : "From playlist:";
+	public string MainWindow_UpNext_FromArtist => IsFr ? "Depuis l'artiste :" : "From artist:";
+	public string MainWindow_UpNext_FromLibrary => IsFr ? "Depuis la bibliothèque" : "From library";
+	public string MainWindow_UpNext_ManualQueue => IsFr ? "File d'attente manuelle" : "Manual queue";
+
+    public string SettingsPage_Text_TraitementAudio => IsFr ? "Traitement Audio" : "Audio Processing";
+    public string SettingsPage_Header_EnableCrossfade => IsFr ? "Activer le fondu enchaîné" : "Enable crossfade";
+    public string SettingsPage_Header_CrossfadeDuration => IsFr ? "Durée du fondu (millisecondes)" : "Crossfade duration (milliseconds)";
+    public string Discord_Idle => IsFr ? "Inactif" : "Idle";
+    public string Discord_Browsing => IsFr ? "Parcours la bibliothèque" : "Browsing library";
+    public string SettingsPage_Header_EnableDiscord => IsFr ? "Activer Discord Rich Presence" : "Enable Discord Rich Presence";
+    public string SettingsPage_Header_ShowMiniPlayer => IsFr ? "Activer le bouton Mini Lecteur" : "Enable Mini Player button";
+
+    public string SettingsPage_Text_PlayerButtons => IsFr ? "Boutons du lecteur" : "Player buttons";
+    public string SettingsPage_Header_MiniPlayerAlwaysOnTop => IsFr ? "Toujours au premier plan" : "Always on top";
+    public string SettingsPage_Header_UpNextButton => IsFr ? "À venir" : "Up Next";
+    public string SettingsPage_Header_LyricsButton => IsFr ? "Paroles" : "Lyrics";
+    public string SettingsPage_Header_MiniPlayerButton => IsFr ? "Mini lecteur" : "Mini player";
+    public string SettingsPage_Header_AIAssistantButton => IsFr ? "Assistant IA" : "AI assistant";
+
+
+    public string SettingsPage_Text_MiniPlayerAlwaysOnTopDesc => IsFr ? "Nécessite d'activer le bouton Mini lecteur." : "Requires the Mini player button to be enabled.";
+    public string SettingsPage_Text_DiscordDesc => IsFr ? "Affiche la musique que vous écoutez sur votre profil Discord." : "Displays the music you are listening to on your Discord profile.";
 
 }

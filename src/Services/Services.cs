@@ -132,7 +132,7 @@ public class CoverArtService
         {
             var url = $"https://musicbrainz.org/ws/2/release/?query={Uri.EscapeDataString(query)}&fmt=json&limit={count * 2}";
             using var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("User-Agent", "Resona/2.3 (https://github.com/Resona)");
+            client.DefaultRequestHeaders.Add("User-Agent", "Resona/2.4 (https://github.com/Resona)");
             var json = await client.GetStringAsync(url);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("releases", out var releases))
@@ -401,9 +401,28 @@ public async Task<System.Collections.Generic.List<string>> SearchGoogleImagesAsy
                lower.EndsWith(".gif");
     }
 
+    /// <summary>
+    /// Clé de cache stable pour une pochette, basée sur artiste+album quand ils sont connus
+    /// (identique entre deux scans, donc pas de doublons ni de fichiers orphelins accumulés
+    /// sur le disque), avec repli sur trackId si artiste/album sont vides.
+    /// </summary>
+    public static string GetAlbumCacheKey(string? artist, string? album, string fallbackTrackId)
+    {
+        string a = (artist ?? "").Trim().ToLowerInvariant();
+        string b = (album ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(a) && string.IsNullOrEmpty(b))
+        {
+            return fallbackTrackId;
+        }
+        using var md5 = System.Security.Cryptography.MD5.Create();
+        byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes(a + "|" + b));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
     public async Task<string?> FindAndCacheCoverAsync(string trackId, string artist, string album, string title = "", string? filePath = null)
     {
-        string cachePath = Path.Combine(_cacheDir, $"{trackId}.jpg");
+        string cacheKey = GetAlbumCacheKey(artist, album, trackId);
+        string cachePath = Path.Combine(_cacheDir, $"{cacheKey}.jpg");
         if (System.IO.File.Exists(cachePath)) return cachePath;
 
         string query = BuildCoverSearchQuery(title, artist, album);
@@ -446,10 +465,14 @@ public async Task<System.Collections.Generic.List<string>> SearchGoogleImagesAsy
         return null;
     }
 
-    public async Task<string?> SaveEmbeddedCoverAsync(string trackId, byte[] imageBytes)
+    public async Task<string?> SaveEmbeddedCoverAsync(string cacheKey, byte[] imageBytes)
     {
         if (imageBytes.Length == 0) return null;
-        string cachePath = Path.Combine(_cacheDir, $"{trackId}.jpg");
+        string cachePath = Path.Combine(_cacheDir, $"{cacheKey}.jpg");
+        // Si le fichier existe déjà (même clé album, ex. un autre track du même album
+        // traité juste avant), on réutilise le fichier existant au lieu de le réécrire :
+        // évite les accès disque inutiles et les doublons.
+        if (System.IO.File.Exists(cachePath)) return cachePath;
         try { await System.IO.File.WriteAllBytesAsync(cachePath, imageBytes); return cachePath; }
         catch { return null; }
     }
@@ -530,7 +553,7 @@ public class LyricsService
         {
             string query = $"https://lrclib.net/api/search?q={Uri.EscapeDataString(cArtist + " " + cTitle)}";
             var request = new HttpRequestMessage(HttpMethod.Get, query);
-            request.Headers.UserAgent.TryParseAdd("Resona/2.3");
+            request.Headers.UserAgent.TryParseAdd("Resona/2.4");
             
             var response = await _http.SendAsync(request);
             if (response.IsSuccessStatusCode)
@@ -612,6 +635,82 @@ public class LyricsService
         catch { }
 
         return new LyricsResult();
+    }
+}
+
+public static class LocalLyricsService
+{
+    private static readonly string[] LyricsSubfolderNames = { "Lyrics", "lyrics" };
+
+    public class LocalLyricsResult
+    {
+        public string Text { get; set; } = "";
+        public bool IsSynced { get; set; }
+    }
+
+    public static LocalLyricsResult? FindLocalLyrics(string filePath)
+    {
+        try
+        {
+            using var file = TagLib.File.Create(filePath);
+            string? embedded = file.Tag.Lyrics;
+            if (!string.IsNullOrWhiteSpace(embedded))
+            {
+                return new LocalLyricsResult { Text = embedded, IsSynced = LooksLikeLrc(embedded) };
+            }
+        }
+        catch { }
+
+        string? dir = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrEmpty(dir)) return null;
+        string baseName = Path.GetFileNameWithoutExtension(filePath);
+
+        var sidecarResult = TryReadLyricsPair(dir, baseName);
+        if (sidecarResult != null) return sidecarResult;
+
+        foreach (string sub in LyricsSubfolderNames)
+        {
+            string subDir = Path.Combine(dir, sub);
+            var subResult = TryReadLyricsPair(subDir, baseName);
+            if (subResult != null) return subResult;
+        }
+
+        return null;
+    }
+
+    private static LocalLyricsResult? TryReadLyricsPair(string dir, string baseName)
+    {
+        try
+        {
+            if (!Directory.Exists(dir)) return null;
+
+            string lrcPath = Path.Combine(dir, baseName + ".lrc");
+            if (System.IO.File.Exists(lrcPath))
+            {
+                string text = System.IO.File.ReadAllText(lrcPath);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return new LocalLyricsResult { Text = text, IsSynced = true };
+                }
+            }
+
+            string txtPath = Path.Combine(dir, baseName + ".txt");
+            if (System.IO.File.Exists(txtPath))
+            {
+                string text = System.IO.File.ReadAllText(txtPath);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return new LocalLyricsResult { Text = text, IsSynced = LooksLikeLrc(text) };
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static bool LooksLikeLrc(string text)
+    {
+        return System.Text.RegularExpressions.Regex.IsMatch(text, @"\[\d{1,2}:\d{2}([.:]\d{1,3})?\]");
     }
 }
 
@@ -1000,6 +1099,38 @@ public async Task InitializeAsync()
             await alterCmd.ExecuteNonQueryAsync();
         }
         catch { /* Column probably already exists */ }
+
+        // Migrate existing databases for IsSystem (playlist protegee, ex. Favoris)
+        try
+        {
+            var alterCmd2 = conn.CreateCommand();
+            alterCmd2.CommandText = "ALTER TABLE Playlists ADD COLUMN IsSystem INTEGER NOT NULL DEFAULT 0;";
+            await alterCmd2.ExecuteNonQueryAsync();
+        }
+        catch { /* Column probably already exists */ }
+
+        // Cree la playlist systeme Favoris si elle n'existe pas encore, toujours en base des
+        // le premier lancement qui touche cette methode, pour qu'elle soit disponible partout.
+        try
+        {
+            var checkCmd = conn.CreateCommand();
+            checkCmd.CommandText = "SELECT COUNT(*) FROM Playlists WHERE Id = $id";
+            checkCmd.Parameters.AddWithValue("$id", Models.Playlist.FavoritesId);
+            long count = (long)(await checkCmd.ExecuteScalarAsync() ?? 0L);
+            if (count == 0)
+            {
+                var insertCmd = conn.CreateCommand();
+                insertCmd.CommandText = """
+                    INSERT INTO Playlists (Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified, IsSystem)
+                    VALUES ($id, $name, '[]', NULL, $created, $created, 1);
+                    """;
+                insertCmd.Parameters.AddWithValue("$id", Models.Playlist.FavoritesId);
+                insertCmd.Parameters.AddWithValue("$name", Models.Strings.Current.IsFr ? "Favoris" : "Favorites");
+                insertCmd.Parameters.AddWithValue("$created", DateTime.UtcNow.ToString("o"));
+                await insertCmd.ExecuteNonQueryAsync();
+            }
+        }
+        catch { /* best effort */ }
     }
 
         public async Task ClearVisuallyModifiedTagsAsync()
@@ -1223,7 +1354,7 @@ public async Task ClearAnalysisAsync()
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified FROM Playlists ORDER BY DateCreated DESC";
+        cmd.CommandText = "SELECT Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified, IsSystem FROM Playlists ORDER BY DateCreated DESC";
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -1236,9 +1367,17 @@ public async Task ClearAnalysisAsync()
                 TrackIds     = ids,
                 CoverImagePath = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
                 DateCreated  = DateTime.Parse(reader.GetString(4)),
-                DateModified = DateTime.Parse(reader.GetString(5))
+                DateModified = DateTime.Parse(reader.GetString(5)),
+                IsSystem     = !reader.IsDBNull(6) && reader.GetInt32(6) == 1
             });
         }
+        // La playlist systeme (Favoris) est toujours affichee en premier, quelle que soit sa
+        // date de creation.
+        list.Sort((a, b) =>
+        {
+            if (a.IsSystem != b.IsSystem) return a.IsSystem ? -1 : 1;
+            return b.DateCreated.CompareTo(a.DateCreated);
+        });
         return list;
     }
 
@@ -1248,11 +1387,12 @@ public async Task ClearAnalysisAsync()
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO Playlists (Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified)
-            VALUES ($id, $name, $json, $cover, $created, $modified)
+            INSERT INTO Playlists (Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified, IsSystem)
+            VALUES ($id, $name, $json, $cover, $created, $modified, $isSystem)
             ON CONFLICT(Id) DO UPDATE SET
-                Name=excluded.Name, TrackIdsJson=excluded.TrackIdsJson,
-                CoverImagePath=excluded.CoverImagePath,
+                Name=CASE WHEN Playlists.IsSystem = 1 THEN Playlists.Name ELSE excluded.Name END,
+                TrackIdsJson=excluded.TrackIdsJson,
+                CoverImagePath=CASE WHEN Playlists.IsSystem = 1 THEN Playlists.CoverImagePath ELSE excluded.CoverImagePath END,
                 DateModified=excluded.DateModified;
             """;
         cmd.Parameters.AddWithValue("$id",       playlist.Id);
@@ -1261,11 +1401,15 @@ public async Task ClearAnalysisAsync()
         cmd.Parameters.AddWithValue("$cover",    string.IsNullOrEmpty(playlist.CoverImagePath) ? (object)DBNull.Value : playlist.CoverImagePath);
         cmd.Parameters.AddWithValue("$created",  playlist.DateCreated.ToString("o"));
         cmd.Parameters.AddWithValue("$modified", playlist.DateModified.ToString("o"));
+        cmd.Parameters.AddWithValue("$isSystem", playlist.IsSystem ? 1 : 0);
         await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task DeletePlaylistAsync(string playlistId)
     {
+        // La playlist systeme (Favoris) ne peut jamais etre supprimee, meme si un appelant
+        // oublie de verifier IsSystem avant d'appeler cette methode.
+        if (playlistId == Models.Playlist.FavoritesId) return;
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
@@ -1549,6 +1693,7 @@ public class AudioEngineService : IDisposable
     public PlaybackState State            => _output?.PlaybackState ?? PlaybackState.Stopped;
     public TimeSpan      CurrentPosition  => _fileReader?.CurrentTime ?? _opusReader?.CurrentTime ?? TimeSpan.Zero;
     public TimeSpan      TotalDuration    => _fileReader?.TotalTime   ?? _opusReader?.TotalTime   ?? TimeSpan.Zero;
+    public Track?        CurrentTrack     { get; private set; }
 
     private float  _userVolume         = 1.0f;
     private double _normalizationGainDb = 0;
@@ -1561,12 +1706,16 @@ public class AudioEngineService : IDisposable
     private DateTime                  _lastPrewarmUtc = DateTime.MinValue;
     private const double PrewarmDebounceMs = 300;
 
-    public async Task PlayAsync(Track track, bool preferExclusive = false, double initialGainDb = 0, Action<string>? onDownloadProgress = null)
+    public async Task PlayAsync(Track track, bool preferExclusive = false, double initialGainDb = 0, Action<string>? onDownloadProgress = null, int crossfadeMs = 0)
     {
         await _playLock.WaitAsync();
         try
         {
-            Stop();
+            if (crossfadeMs > 0 && !IsExclusiveMode)
+                DetachAndFadeOut(crossfadeMs);
+            else
+                Stop();
+            CurrentTrack = track;
 
             _normalizationGainDb = initialGainDb; 
             ISampleProvider? sampleProvider = null;
@@ -1884,13 +2033,79 @@ public class AudioEngineService : IDisposable
         _equalizer?.SetBand(index, gainDb);
     }
 
-    public void Pause()  => _output?.Pause();
-    public void Resume() => _output?.Play();
+    public void Pause()
+    {
+        if (_output == null || _volumeProvider == null || _output.PlaybackState != PlaybackState.Playing) return;
+        
+        if (!App.Settings.Current.EnableCrossfade)
+        {
+            _output?.Pause();
+            return;
+        }
+
+        System.Threading.Tasks.Task.Run(async () => {
+            float startVol = _volumeProvider.Volume;
+            for(int i=0; i<10; i++) {
+                await System.Threading.Tasks.Task.Delay(15);
+                try { _volumeProvider.Volume = startVol * (1f - (i+1)/10f); } catch { }
+            }
+            try { _output?.Pause(); } catch { }
+            try { _volumeProvider.Volume = ComputeLinearGain(); } catch { }
+        });
+    }
+
+    public void Resume()
+    {
+        if (_output == null || _volumeProvider == null) return;
+        
+        if (!App.Settings.Current.EnableCrossfade)
+        {
+            _output?.Play();
+            return;
+        }
+
+        float targetVol = ComputeLinearGain();
+        _volumeProvider.Volume = 0f;
+        _output?.Play();
+        
+        System.Threading.Tasks.Task.Run(async () => {
+            for(int i=0; i<10; i++) {
+                await System.Threading.Tasks.Task.Delay(15);
+                try { _volumeProvider.Volume = targetVol * ((i+1)/10f); } catch { }
+            }
+            try { _volumeProvider.Volume = targetVol; } catch { }
+        });
+    }
 
     public void Seek(TimeSpan position)
     {
-        if (_fileReader != null) _fileReader.CurrentTime = position;
-        if (_opusReader != null) _opusReader.CurrentTime = position;
+        TimeSpan total = TotalDuration;
+        if (total > TimeSpan.Zero)
+        {
+            TimeSpan maxSeekable = total - TimeSpan.FromMilliseconds(200);
+            if (maxSeekable < TimeSpan.Zero) maxSeekable = TimeSpan.Zero;
+            if (position > maxSeekable) position = maxSeekable;
+        }
+        if (position < TimeSpan.Zero) position = TimeSpan.Zero;
+        try
+        {
+            if (_fileReader != null) _fileReader.CurrentTime = position;
+            if (_opusReader != null) _opusReader.CurrentTime = position;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Certains décodeurs refusent un seek trop proche de la fin réelle du flux
+            // (durée déclarée légèrement supérieure à la durée décodable). On retente
+            // avec une marge de sécurité plus large plutôt que de laisser planter la lecture.
+            try
+            {
+                TimeSpan safePosition = position - TimeSpan.FromSeconds(1);
+                if (safePosition < TimeSpan.Zero) safePosition = TimeSpan.Zero;
+                if (_fileReader != null) _fileReader.CurrentTime = safePosition;
+                if (_opusReader != null) _opusReader.CurrentTime = safePosition;
+            }
+            catch { }
+        }
     }
 
     public void Stop()
@@ -1908,6 +2123,84 @@ public class AudioEngineService : IDisposable
         _finalProvider = null;
 
         DiscardPrewarmLocked();
+    }
+
+    // Crossfade support
+    private System.Threading.Timer? _fadeTimer;
+    private float _fadeStartVolume;
+    private int _fadeStepsRemaining;
+    private const int FadeTotalSteps = 20;
+
+    public bool IsFadingOut { get; private set; }
+
+    public void StartFadeOut(int durationMs)
+    {
+        if (IsFadingOut || _volumeProvider == null) return;
+        IsFadingOut = true;
+        _fadeStartVolume = _volumeProvider.Volume;
+        _fadeStepsRemaining = FadeTotalSteps;
+        int interval = durationMs / FadeTotalSteps;
+
+        _fadeTimer = new System.Threading.Timer(_ =>
+        {
+            _fadeStepsRemaining--;
+            if (_fadeStepsRemaining <= 0)
+            {
+                if (_volumeProvider != null) _volumeProvider.Volume = 0;
+                _fadeTimer?.Dispose();
+                _fadeTimer = null;
+                IsFadingOut = false;
+                return;
+            }
+            if (_volumeProvider != null)
+            {
+                _volumeProvider.Volume = _fadeStartVolume * ((float)_fadeStepsRemaining / FadeTotalSteps);
+            }
+        }, null, interval, interval);
+    }
+
+        public void DetachAndFadeOut(int durationMs)
+    {
+        if (_output == null || _volumeProvider == null || IsExclusiveMode) 
+        {
+            Stop();
+            return;
+        }
+        
+        var oldOut = _output;
+        var oldVol = _volumeProvider;
+        var oldReader1 = _fileReader;
+        var oldReader2 = _opusReader;
+        
+        _output = null;
+        _volumeProvider = null;
+        _fileReader = null;
+        _opusReader = null;
+        _rmsCapture = null;
+        _equalizer = null;
+        _finalProvider = null;
+        
+        System.Threading.Tasks.Task.Run(async () => {
+            int steps = 20;
+            int delay = durationMs / steps;
+            float startVol = oldVol.Volume;
+            for(int i=0; i<steps; i++) {
+                await System.Threading.Tasks.Task.Delay(delay);
+                try { oldVol.Volume = startVol * (1f - (i + 1f)/steps); } catch { }
+            }
+            try { oldOut.Stop(); } catch { }
+            try { oldOut.Dispose(); } catch { }
+            try { oldReader1?.Dispose(); } catch { }
+            try { oldReader2?.Dispose(); } catch { }
+        });
+    }
+
+    public void CancelFade()
+    {
+        _fadeTimer?.Dispose();
+        _fadeTimer = null;
+        IsFadingOut = false;
+        if (_volumeProvider != null) _volumeProvider.Volume = ComputeLinearGain();
     }
 
     public void Dispose() => Stop();
@@ -2080,7 +2373,20 @@ public class RmsCaptureSampleProvider : ISampleProvider
 
     public int Read(float[] buffer, int offset, int count)
     {
-        int read = _source.Read(buffer, offset, count);
+        int read;
+        try
+        {
+            read = _source.Read(buffer, offset, count);
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Le décodeur sous-jacent peut refuser de lire après un seek en fin de flux
+            // (durée déclarée vs durée réelle). On retourne un buffer silencieux plutôt
+            // que de laisser l'exception remonter et faire planter la lecture.
+            Array.Clear(buffer, offset, count);
+            CurrentRms = 0f;
+            return count;
+        }
         if (read > 0)
         {
             double sum = 0;
@@ -2596,7 +2902,7 @@ public class AutoTagResult
 public static class AutoTagService
 {
     private static readonly HttpClient _http = new();
-    private const string UserAgent = "Resona/2.3 (https://github.com/Resona)";
+    private const string UserAgent = "Resona/2.4 (https://github.com/Resona)";
 
     static AutoTagService()
     {

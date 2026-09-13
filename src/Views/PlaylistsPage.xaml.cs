@@ -1,4 +1,5 @@
-﻿using Microsoft.UI.Text;
+﻿using Windows.UI;
+using Microsoft.UI.Text;
 
 
 
@@ -1204,18 +1205,23 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-		if (!string.IsNullOrEmpty(playlist.CoverImagePath))
-
-
-
-
-
+		if (playlist.IsSystem)
 		{
-
-
-
-
-
+			// Icone dediee (coeur plein) pour la playlist systeme Favoris, pour la distinguer
+			// visuellement des autres playlists (comme "Titres likes" sur Spotify), au lieu
+			// d'une pochette ou d'une mosaique classique.
+			grid2.Background = (Brush)Application.Current.Resources["AppAccentBrush"];
+			grid2.Children.Add(new FontIcon
+			{
+				Glyph = "\ue00b",
+				FontSize = 56.0,
+				Foreground = new SolidColorBrush(Colors.White),
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center
+			});
+		}
+		else if (!string.IsNullOrEmpty(playlist.CoverImagePath))
+		{
 			grid2.Children.Add(new Image
 			{
 				Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(playlist.CoverImagePath)) { DecodePixelHeight = 320 },
@@ -1223,35 +1229,10 @@ public sealed partial class PlaylistsPage : Page
 				HorizontalAlignment = HorizontalAlignment.Center,
 				VerticalAlignment = VerticalAlignment.Center
 			});
-
-
-
-
-
 		}
-
-
-
-
-
 		else
-
-
-
-
-
 		{
-
-
-
-
-
 			grid2.Children.Add(BuildCoverMosaic(tracks, 160.0, 160.0));
-
-
-
-
-
 		}
 
 
@@ -2489,6 +2470,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 
+		UpdateDetailCover(playlist, _opentracks);
+
+
+
+
+
 		
 
 
@@ -2502,6 +2489,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 		
+
+
+
+
+
+		_ = ApplyFavoriteStatesAsync(_opentracks);
 
 
 
@@ -2524,6 +2517,43 @@ public sealed partial class PlaylistsPage : Page
 
 
 
+
+	private void UpdateDetailCover(Playlist playlist, List<Track> tracks)
+	{
+		DetailCoverImage.Visibility = Visibility.Collapsed;
+		DetailCoverIcon.Visibility = Visibility.Collapsed;
+		// Retire une eventuelle mosaique posee lors d'un appel precedent (element additionnel
+		// au-dela des deux enfants statiques du Grid defini en XAML).
+		var grid = (Grid)DetailCoverBorder.Child;
+		while (grid.Children.Count > 2)
+		{
+			grid.Children.RemoveAt(grid.Children.Count - 1);
+		}
+
+		if (playlist.IsSystem)
+		{
+			DetailCoverIcon.Visibility = Visibility.Visible;
+		}
+		else if (!string.IsNullOrEmpty(playlist.CoverImagePath) && System.IO.File.Exists(playlist.CoverImagePath))
+		{
+			DetailCoverImage.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(playlist.CoverImagePath)) { DecodePixelHeight = 64 };
+			DetailCoverImage.Visibility = Visibility.Visible;
+		}
+		else
+		{
+			grid.Children.Add(BuildCoverMosaic(tracks, 32.0, 32.0));
+		}
+	}
+
+	private async Task ApplyFavoriteStatesAsync(List<Track> tracks)
+	{
+		if (App.MainWindowInstance == null) return;
+		var favoriteIds = await App.MainWindowInstance.GetFavoriteTrackIdsAsync();
+		foreach (var t in tracks)
+		{
+			t.IsFavorite = favoriteIds.Contains(t.Id);
+		}
+	}
 
 	private List<Track> ResolvePlaylisttracks(Playlist playlist)
 
@@ -2604,6 +2634,15 @@ public sealed partial class PlaylistsPage : Page
 
 
     }
+
+	private async void FavoriteHeartBtn_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Button btn2 && btn2.Tag is Resona.Models.Track track2 && App.MainWindowInstance != null)
+		{
+			bool nowFavorite = await App.MainWindowInstance.ToggleFavoriteAsync(track2);
+			track2.IsFavorite = nowFavorite;
+		}
+	}
 
 
 
@@ -2747,7 +2786,7 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-			App.MainWindowInstance?.PlayTrack(_opentracks[0], _opentracks);
+			App.MainWindowInstance?.PlayTrack(_opentracks[0], _opentracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + (_openPlaylist?.Name ?? ""));
 			App.MainWindowInstance?.EnableContinuousPlaybackIfOff();
 		}
 
@@ -3067,175 +3106,7 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-	private void SortPlaylistsMenu_Click(object sender, RoutedEventArgs e)
-
-
-
-
-
-	{
-
-
-
-
-
-		if (sender is MenuFlyoutItem item && item.Tag is string tag)
-
-
-
-
-
-		{
-
-
-
-
-
-			SortButtonLabel.Text = (Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + item.Text;
-
-
-
-
-
-			if (tag == "name_asc")
-
-
-
-
-
-			{
-
-
-
-
-
-				_playlists = _playlists.OrderBy(p => p.Name).ToList();
-
-
-
-
-
-			}
-
-
-
-
-
-			else if (tag == "name_desc")
-
-
-
-
-
-			{
-
-
-
-
-
-				_playlists = _playlists.OrderByDescending(p => p.Name).ToList();
-
-
-
-
-
-			}
-
-
-
-
-
-			else if (tag == "date_desc")
-
-
-
-
-
-			{
-
-
-
-
-
-				_playlists = _playlists.OrderByDescending(p => p.DateCreated).ToList();
-
-
-
-
-
-			}
-
-
-
-
-
-			else if (tag == "count_desc")
-
-
-
-
-
-			{
-
-
-
-
-
-				_playlists = _playlists.OrderByDescending(p => p.TrackIds?.Count ?? 0).ToList();
-
-
-
-
-
-			}
-
-
-
-
-
-
-
-
-
-
-
-			PlaylistsGrid.Items.Clear();
-
-
-
-
-
-			foreach (Playlist playlist in _playlists)
-
-
-
-
-
-			{
-
-
-
-
-
-				PlaylistsGrid.Items.Add(BuildFolderCard(playlist));
-
-
-
-
-
-			}
-
-
-
-
-
-		}
-
-
-
-
-
-	}
+		
 
 
 
@@ -3595,7 +3466,8 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-							string coverPath = await App.CoverArt.SaveEmbeddedCoverAsync(track.Id, embeddedCoverBytes);
+							string cacheKey = Resona.Services.CoverArtService.GetAlbumCacheKey(!string.IsNullOrEmpty(track.AlbumArtist) ? track.AlbumArtist : track.Artist, track.Album, track.Id);
+																											string coverPath = await App.CoverArt.SaveEmbeddedCoverAsync(cacheKey, embeddedCoverBytes);
 
 
 
@@ -4040,12 +3912,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 	private async Task RenamePlaylistAsync(Playlist playlist, TextBlock? nameDisplay)
-
-
-
-
-
 	{
+		// La playlist systeme (Favoris) n'est jamais renommable.
+		if (playlist.IsSystem)
+		{
+			return;
+		}
 
 
 
@@ -4202,12 +4074,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 	private async Task DeletePlaylistAsync(Playlist playlist)
-
-
-
-
-
 	{
+		// La playlist systeme (Favoris) n'est jamais supprimable.
+		if (playlist.IsSystem)
+		{
+			return;
+		}
 
 
 
@@ -4705,7 +4577,7 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-			if (selectedPlaylists.Count <= 1)
+			if (selectedPlaylists.Count <= 1 && !playlist.IsSystem)
 
 
 
@@ -4747,7 +4619,7 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-						App.MainWindowInstance?.PlayTrack(tracks[0], tracks);
+						App.MainWindowInstance?.PlayTrack(tracks[0], tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + playlist.Name);
 
 
 
@@ -4975,6 +4847,10 @@ public sealed partial class PlaylistsPage : Page
 
 
 
+							// La playlist systeme (Favoris) n'est jamais supprimee, meme lors d'une
+							// suppression multiple.
+							if (pl.IsSystem) continue;
+
 							await App.Cache.DeletePlaylistAsync(pl.Id);
 
 
@@ -5083,6 +4959,13 @@ public sealed partial class PlaylistsPage : Page
 
 
 
+			// Sur un clic droit simple sur la playlist systeme (Favoris), l'option Supprimer
+			// n'a aucun sens et n'est pas proposee.
+			if (selectedPlaylists.Count <= 1 && playlist.IsSystem)
+			{
+				menuFlyout.Items.Remove(deleteItem);
+			}
+
 
 
 
@@ -5114,12 +4997,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 	private async Task ChooseLocalCoverAsync(Playlist playlist)
-
-
-
-
-
 	{
+		// La pochette de la playlist systeme (Favoris) n'est jamais modifiable.
+		if (playlist.IsSystem)
+		{
+			return;
+		}
 
 
 
@@ -5306,12 +5189,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 	private async Task SearchOnlineCoverAsync(Playlist playlist)
-
-
-
-
-
 	{
+		// La pochette de la playlist systeme (Favoris) n'est jamais modifiable.
+		if (playlist.IsSystem)
+		{
+			return;
+		}
 
 
 
@@ -6481,6 +6364,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 
+			if (frameworkElement.FindName("FavoriteHeartBtn") is Button heartBtn)
+			{
+				bool isFav = frameworkElement.DataContext is Track t && t.IsFavorite;
+				((UIElement)heartBtn).Opacity = isFav ? 1.0 : 0.0;
+			}
+
 		}
 
 
@@ -6523,7 +6412,7 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-			App.MainWindowInstance?.PlayTrack(track, _opentracks);
+			App.MainWindowInstance?.PlayTrack(track, _opentracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + (_openPlaylist?.Name ?? ""));
 
 
 
@@ -6847,6 +6736,12 @@ public sealed partial class PlaylistsPage : Page
 
 
 
+			if (frameworkElement.FindName("FavoriteHeartBtn") is Button heartBtn) ((UIElement)heartBtn).Opacity = 1.0;
+
+
+
+
+
 		}
 
 
@@ -6895,7 +6790,7 @@ public sealed partial class PlaylistsPage : Page
 
 
 
-			App.MainWindowInstance?.PlayTrack(track, _opentracks);
+			App.MainWindowInstance?.PlayTrack(track, _opentracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + (_openPlaylist?.Name ?? ""));
 
 
 
@@ -7030,159 +6925,75 @@ public sealed partial class PlaylistsPage : Page
 }
 
 
+
+	private string _currentSort = "name_asc";
+
+	private void UpdateSortButton()
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		bool isAsc = parts.Length > 1 && parts[1] == "asc";
+
+		string sortName = field switch
+		{
+			"name" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name,
+			"date" => Resona.Models.Strings.Current.LibraryPage_Sort_DateAdded,
+			"count" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Count,
+			_ => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name
+		};
+		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "" : "";
+	}
+
+	private void SortPlaylistsMenu_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string field)
+		{
+			string dir = (field == "date" || field == "count") ? "desc" : "asc";
+			_currentSort = $"{field}_{dir}";
+			ApplySortAndFilter();
+		}
+	}
+
+	private void SortDirection_Click(object sender, RoutedEventArgs e)
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
+		_currentSort = $"{field}_{dir}";
+		ApplySortAndFilter();
+	}
+	
+	private void ApplySortAndFilter()
+	{
+		UpdateSortButton();
+		if (_currentSort == "name_asc")
+			_playlists = _playlists.OrderBy(p => p.Name).ToList();
+		else if (_currentSort == "name_desc")
+			_playlists = _playlists.OrderByDescending(p => p.Name).ToList();
+		else if (_currentSort == "date_asc")
+			_playlists = _playlists.OrderBy(p => p.DateCreated).ToList();
+		else if (_currentSort == "date_desc")
+			_playlists = _playlists.OrderByDescending(p => p.DateCreated).ToList();
+		else if (_currentSort == "count_asc")
+			_playlists = _playlists.OrderBy(p => p.TrackIds.Count).ToList();
+		else if (_currentSort == "count_desc")
+			_playlists = _playlists.OrderByDescending(p => p.TrackIds.Count).ToList();
+
+		// La playlist systeme (Favoris) reste toujours en tete, quel que soit le tri applique
+		// par l'utilisateur (comme LoadAllPlaylistsAsync le fait deja au chargement initial).
+		if (_playlists.Any(p => p.IsSystem))
+		{
+			_playlists = _playlists.OrderByDescending(p => p.IsSystem).ToList();
+		}
+
+		if (PlaylistsGrid != null)
+		{
+			PlaylistsGrid.Items.Clear();
+			foreach (Playlist playlist in _playlists)
+			{
+				PlaylistsGrid.Items.Add(BuildFolderCard(playlist));
+			}
+		}
+	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

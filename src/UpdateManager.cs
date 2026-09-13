@@ -22,7 +22,7 @@ namespace Resona
                 {
                     string latestTag = tagElem.GetString() ?? "";
                     
-                    string currentTag = "v2.3";
+                    string currentTag = "v3.0";
                     bool hasUpdate = latestTag != currentTag && !string.IsNullOrEmpty(latestTag) && latestTag != "v1.0";
                     
                     if (hasUpdate)

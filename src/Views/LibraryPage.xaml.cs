@@ -200,6 +200,11 @@ public sealed partial class LibraryPage : Page
 			{
 				rectangle.Opacity = 0.0;
 			}
+			if (frameworkElement.FindName("FavoriteHeartBtn") is Button heartBtn)
+			{
+				bool isFav = frameworkElement.DataContext is Track t && t.IsFavorite;
+				((UIElement)heartBtn).Opacity = isFav ? 1.0 : 0.0;
+			}
 		}
 	}
 
@@ -211,10 +216,30 @@ public sealed partial class LibraryPage : Page
 		}
 	}
 
+	private async void SyncFavoriteStates()
+	{
+		if (App.MainWindowInstance == null) return;
+		var favoriteIds = await App.MainWindowInstance.GetFavoriteTrackIdsAsync();
+		foreach (var track in _allTracks)
+		{
+			track.IsFavorite = favoriteIds.Contains(track.Id);
+		}
+	}
+
+	private async void FavoriteHeartBtn_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Button btn && btn.Tag is Track track && App.MainWindowInstance != null)
+		{
+			bool nowFavorite = await App.MainWindowInstance.ToggleFavoriteAsync(track);
+			track.IsFavorite = nowFavorite;
+		}
+	}
+
 	protected override void OnNavigatedTo(NavigationEventArgs e)
 	{
 		base.OnNavigatedTo(e);
 		SyncNowPlayingId();
+		SyncFavoriteStates();
 		if (e.Parameter is ValueTuple<string, string, List<Track>> tuple)
 		{
 			_collectionTitle = tuple.Item1;
@@ -339,6 +364,7 @@ public sealed partial class LibraryPage : Page
 		{
 			allTrack.IsPlaying = !string.IsNullOrEmpty(App.NowPlayingFilePath) && string.Equals(allTrack.FilePath, App.NowPlayingFilePath, StringComparison.OrdinalIgnoreCase);
 		}
+		SyncFavoriteStates();
 		_currentPage = 0;
 		ApplyFilter(SearchBox?.Text ?? string.Empty);
 		UpdateTotalTracksHint();
@@ -355,17 +381,21 @@ public sealed partial class LibraryPage : Page
 	
 	private void UpdateSortButtonText()
 	{
-		string sortName = _currentSort switch
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		bool isAsc = parts.Length > 1 && parts[1] == "asc";
+
+		string sortName = field switch
 		{
-			"title_asc" => Resona.Models.Strings.Current.LibraryPage_Text_TitreAgtZ,
-			"artist_asc" => Resona.Models.Strings.Current.LibraryPage_Text_ArtisteAgtZ,
-			"album_asc" => Resona.Models.Strings.Current.LibraryPage_Text_AlbumAgtZ,
-			"duration_asc" => Resona.Models.Strings.Current.LibraryPage_Text_Durecroissant,
-			"duration_desc" => Resona.Models.Strings.Current.LibraryPage_Text_Duredcroissant,
-			"added_desc" => Resona.Models.Strings.Current.LibraryPage_Text_Ajoutrcentdabord,
-			_ => Resona.Models.Strings.Current.LibraryPage_Text_ArtisteAgtZ
+			"title" => Resona.Models.Strings.Current.LibraryPage_Sort_Title,
+			"artist" => Resona.Models.Strings.Current.LibraryPage_Sort_Artist,
+			"album" => Resona.Models.Strings.Current.LibraryPage_Sort_Album,
+			"duration" => Resona.Models.Strings.Current.LibraryPage_Sort_Duration,
+			"added" => Resona.Models.Strings.Current.LibraryPage_Sort_DateAdded,
+			_ => Resona.Models.Strings.Current.LibraryPage_Sort_Artist
 		};
-		SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "" : "";
 	}
 	private void RefreshHeaderText()
 	{
@@ -447,10 +477,14 @@ public sealed partial class LibraryPage : Page
 		List<Track> list = (_currentSort switch
 		{
 			"title_asc" => enumerable.OrderBy<Track, string>((Track t) => t.Title, StringComparer.OrdinalIgnoreCase), 
+			"title_desc" => enumerable.OrderByDescending<Track, string>((Track t) => t.Title, StringComparer.OrdinalIgnoreCase),
 			"artist_asc" => enumerable.OrderBy<Track, string>((Track t) => t.Artist, StringComparer.OrdinalIgnoreCase).ThenBy((Track t) => t.Album).ThenBy((Track t) => t.TrackNumber), 
+			"artist_desc" => enumerable.OrderByDescending<Track, string>((Track t) => t.Artist, StringComparer.OrdinalIgnoreCase).ThenByDescending((Track t) => t.Album).ThenByDescending((Track t) => t.TrackNumber),
 			"album_asc" => enumerable.OrderBy<Track, string>((Track t) => t.Album, StringComparer.OrdinalIgnoreCase).ThenBy((Track t) => t.TrackNumber), 
+			"album_desc" => enumerable.OrderByDescending<Track, string>((Track t) => t.Album, StringComparer.OrdinalIgnoreCase).ThenByDescending((Track t) => t.TrackNumber),
 			"duration_asc" => enumerable.OrderBy((Track t) => t.Duration), 
 			"duration_desc" => enumerable.OrderByDescending((Track t) => t.Duration), 
+			"added_asc" => enumerable.OrderBy((Track t) => t.DateAdded), 
 			"added_desc" => enumerable.OrderByDescending((Track t) => t.DateAdded), 
 			_ => enumerable, 
 		}).ToList();
@@ -478,7 +512,16 @@ public sealed partial class LibraryPage : Page
 		{
 			PageTitleText.Text = _collectionTitle;
 		}
-		TotalTracksHint.Text = ((_allTracks.Count > 0) ? Resona.Models.Strings.Current.FormatTracksCount(_allTracks.Count) : " ");
+		
+		string hintText = ((_allTracks.Count > 0) ? Resona.Models.Strings.Current.FormatTracksCount(_allTracks.Count) : " ");
+		bool isLibrary = _collectionTitle == Resona.Models.Strings.Current.LibraryPage_Text_BIBLIOTHQUE;
+		if (!isLibrary && _allTracks.Count > 0)
+		{
+			var totalTime = TimeSpan.FromTicks(_allTracks.Sum(t => t.Duration.Ticks));
+			hintText += $" - {Resona.Models.Strings.Current.FormatAlbumDuration(totalTime)}";
+		}
+		TotalTracksHint.Text = hintText;
+
 		if (PageSubtitleText != null)
 		{
 			PageSubtitleText.Text = (string.IsNullOrWhiteSpace(_collectionSubtitle) ? string.Empty : _collectionSubtitle);
@@ -529,11 +572,24 @@ public sealed partial class LibraryPage : Page
 	{
 		if (sender is MenuFlyoutItem menuFlyoutItem)
 		{
-			_currentSort = menuFlyoutItem.Tag?.ToString() ?? "artist_asc";
+			string field = menuFlyoutItem.Tag?.ToString() ?? "artist";
+			string dir = (field == "added") ? "desc" : "asc";
+			_currentSort = $"{field}_{dir}";
 			App.Settings.Current.LibrarySort = _currentSort; await App.Settings.SaveAsync(); UpdateSortButtonText();
 			_currentPage = 0;
 			ApplyFilter(SearchBox.Text);
 		}
+	}
+
+	private async void SortDirection_Click(object sender, RoutedEventArgs e)
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
+		_currentSort = $"{field}_{dir}";
+		App.Settings.Current.LibrarySort = _currentSort; await App.Settings.SaveAsync(); UpdateSortButtonText();
+		_currentPage = 0;
+		ApplyFilter(SearchBox.Text);
 	}
 
 	private void ShuffleAll_Click(object sender, RoutedEventArgs e)
@@ -562,7 +618,7 @@ public sealed partial class LibraryPage : Page
 				UpdateCoverIndicator(grid, isPlaying: true, isHovered: false);
 			}
 		}
-		App.MainWindowInstance?.PlayTrack(track, _currentFilteredList);
+		App.MainWindowInstance?.PlayTrack(track, _currentFilteredList, false, false, string.IsNullOrEmpty(_collectionTitle) ? Resona.Models.Strings.Current.MainWindow_UpNext_FromLibrary : _collectionTitle);
 		TrackListView?.SelectedItems.Clear();
 	}
 
@@ -675,6 +731,10 @@ public sealed partial class LibraryPage : Page
 				rectangle.Opacity = 1.0;
 			}
 		}
+		if (frameworkElement.FindName("FavoriteHeartBtn") is Button heartBtn)
+		{
+			((UIElement)heartBtn).Opacity = 1.0;
+		}
 		if (track != null)
 		{
 			App.AudioEngine.PrewarmOpus(track.FilePath, track.Duration);
@@ -704,7 +764,7 @@ public sealed partial class LibraryPage : Page
 				_activeIndicatorGrid = grid;
 				UpdateCoverIndicator(grid, isPlaying: true, isHovered: false);
 			}
-			App.MainWindowInstance?.PlayTrack(track, _currentFilteredList);
+			App.MainWindowInstance?.PlayTrack(track, _currentFilteredList, false, false, string.IsNullOrEmpty(_collectionTitle) ? Resona.Models.Strings.Current.MainWindow_UpNext_FromLibrary : _collectionTitle);
 		}
 		if (grid != null)
 		{

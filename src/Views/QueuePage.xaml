@@ -9,6 +9,7 @@
 
     <Page.Resources>
         <converters:StringToImageBrushConverter x:Key="StringToImageBrushConverter" />
+        <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
     </Page.Resources>
 
     <Grid Padding="24,44,24,24">
@@ -98,6 +99,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="32" />
                                 <ColumnDefinition Width="56" />
                             </Grid.ColumnDefinitions>
                             
@@ -142,12 +144,23 @@
                             </Grid>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <HyperlinkButton Content="{x:Bind Title}" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Click="TrackTitle_Click" Tag="{x:Bind}" Padding="0" MinWidth="0" MinHeight="0" />
+                                <StackPanel Orientation="Horizontal" Spacing="4">
                                 <HyperlinkButton Content="{x:Bind Artist}" Click="Artist_Click" Tag="{x:Bind Artist}" Opacity="0.7" FontSize="12"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" Padding="0" MinWidth="0" MinHeight="0" />
+                                <TextBlock Text="{x:Bind YearAndGenreDisplay, Mode=OneWay}" Opacity="0.4" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
                             </StackPanel>
                             <HyperlinkButton Content="{x:Bind Album}" Click="Album_Click" Tag="{x:Bind Album}" Grid.Column="2" VerticalAlignment="Center" Opacity="0.8"
                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" Padding="0" MinWidth="0" MinHeight="0" />
-                            <TextBlock Text="{x:Bind DurationDisplay, Mode=OneWay}" Grid.Column="3" VerticalAlignment="Center"
+                            <Button x:Name="FavoriteHeartBtn" Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Background="Transparent" BorderThickness="0" Width="28" Height="28" Padding="0" Margin="6,0,0,0"
+                                    Opacity="{x:Bind IsFavorite, Mode=OneWay, Converter={StaticResource BoolToOpacityConverter}}"
+                                    Tag="{x:Bind}" Click="FavoriteHeartBtn_Click">
+                                <FontIcon Glyph="{x:Bind FavoriteGlyph, Mode=OneWay}" FontSize="14"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            </Button>
+                            <TextBlock Text="{x:Bind DurationDisplay, Mode=OneWay}" Grid.Column="4" VerticalAlignment="Center"
                                        Opacity="0.6" TextAlignment="Right"
                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </Grid>

@@ -26,6 +26,7 @@ public partial class App : Application
     public static LyricsService Lyrics { get; private set; } = null!;
     public static CoverArtService CoverArt { get; private set; } = null!;
     public static PlaylistM3uService PlaylistIO { get; private set; } = null!;
+    public static DiscordRpcService DiscordRpc { get; private set; } = null!;
     public static LibraryCacheService Cache { get; private set; } = null!;
     public static LibraryScannerService Scanner { get; private set; } = null!;
     public static SettingsService Settings { get; private set; } = null!;
@@ -53,9 +54,11 @@ public partial class App : Application
         Lyrics = new LyricsService(httpClient);
         CoverArt = new CoverArtService(httpClient, Path.Combine(appData, "Covers"));
         PlaylistIO = new PlaylistM3uService();
+        DiscordRpc = new DiscordRpcService();
         Cache = new LibraryCacheService(appData);
         Scanner = new LibraryScannerService();
         Settings = new SettingsService(appData);
+        DiscordRpc.Initialize();
 
         // IMPORTANT : ne JAMAIS attendre une Task ici, avant la création/activation
         // de la fenêtre. À ce stade du démarrage, le thread UI qui exécute ce code

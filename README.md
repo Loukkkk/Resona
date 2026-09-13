@@ -6,26 +6,35 @@ A modern Windows local music player designed for seamless library management, mu
 
 * 🎨 **Modern Design:** Beautiful WinUI 3 interface with support for 3 backdrop materials: Solid Color, Acrylic, and Mica.
 * 🎧 **Bit-perfect Playback:** Uses NAudio (with an option to activate WASAPI Exclusive mode to bypass the Windows mixer for pure, unaltered sound).
-* 🎛️ **Equalizer:** Built-in 10-band graphic equalizer with presets to fine-tune your audio experience.
+* 🎛️ **Audio Processing:** Built-in 10-band graphic equalizer with presets to fine-tune your audio experience, and seamless crossfading between tracks.
+* 🖼️ **Mini Player:** A compact, always-on-top mini player mode for controlling playback while you work.
 * 🔊 **Normalization:** ReplayGain-style RMS/peak volume analysis. Gain is applied only during playback, ensuring your original files are never modified.
 * 🎤 **Synchronized Lyrics:** Automatically fetches and caches synchronized lyrics via [LRCLib](https://lrclib.net), complete with a built-in translation option.
 * 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality covers using the iTunes Search API.
 * 📖 **Artist Biographies:** Automatically fetches and displays artist biographies and information directly from Wikipedia.
 * 🔍 **Auto-Tagging:** Automatically identifies unknown tracks using acoustic fingerprinting (Chromaprint/fpcalc) to fetch accurate metadata (artist, title) from MusicBrainz.
 * 📝 **Playlist Management:** Full support for M3U and M3U8 import/export.
+* 🎮 **Discord Rich Presence:** Automatically showcase the track you are currently listening to on your Discord profile.
 * 🤖 **AI DJ:** Provides prompts to AI models to generate smart playlists, suggest tracks, and offer deep insights into your music collection.
 * 🌍 **Language:** Available in English and French. The interface auto-adapts to your OS language.
 
 ---
 
-## 🗑️ Uninstall
+## ⚠️ Disclaimer
 
-Resona does not have an installer — to fully remove it:
+This application was fully coded by AI. Since no other audio player on the market currently offers this blend of modern design, and all these handy features, this AI-generated solution fills the gap.
 
-1. Exit Resona (right-click the tray icon → **Quit** or close the app).
-2. Delete the application folder containing the `.exe` file.
-3. Delete the following cache/settings folder:
-   - `%LOCALAPPDATA%\Resona`
+> [!NOTE]
+> The day a human developer creates a similar open-source application with equivalent or superior quality, this repository will be permanently deleted.
+
+---
+
+## 🔒 Security & Permissions
+
+Since this is AI-generated code, transparency is key:
+
+* **No Administrative Privileges:** This application explicitly runs with standard user permissions (`asInvoker`). It does not require, nor will it ever ask for, Administrator privileges to run.
+* **UAC Safety Indicator:** If the application ever prompts you with a Windows UAC (User Account Control) warning asking for admin rights, close it immediately—that means the binary has been altered or compromised.
 
 ---
 
@@ -49,24 +58,6 @@ Resona does not have an installer — to fully remove it:
 
 ---
 
-## ⚠️ Disclaimer
-
-This application was fully coded by AI. Since no other audio player on the market currently offers this blend of modern design, and all these handy features, this AI-generated solution fills the gap.
-
-> [!NOTE]
-> The day a human developer creates a similar open-source application with equivalent or superior quality, this repository will be permanently deleted.
-
----
-
-## 🔒 Security & Permissions
-
-Since this is AI-generated code, transparency is key:
-
-* **No Administrative Privileges:** This application explicitly runs with standard user permissions (`asInvoker`). It does not require, nor will it ever ask for, Administrator privileges to run.
-* **UAC Safety Indicator:** If the application ever prompts you with a Windows UAC (User Account Control) warning asking for admin rights, close it immediately—that means the binary has been altered or compromised.
-
----
-
 ## 📂 File Structure
 
 ```
@@ -84,22 +75,20 @@ Resona/
     ├── Converters/            # XAML value converters (UI data binding)
     ├── Helpers/               # Utility classes (animations, UI extensions)
     ├── Models/
-    │   ├── Track.cs           # Core track metadata and state (cover, lyrics, gain)
-    │   ├── Playlist.cs        # Playlist entity
+    │   ├── Models.cs          # Core track metadata, playlist entity, settings
     │   └── Strings.cs         # Localization strings (FR/EN)
     ├── Services/
-    │   ├── AudioEngineService.cs   # NAudio/WASAPI exclusive playback engine
-    │   ├── NormalizationService.cs # Non-destructive audio gain analysis
-    │   ├── LyricsService.cs        # LRCLib fetching and parsing
-    │   ├── CoverArtService.cs      # iTunes Search API implementation
-    │   ├── PlaylistM3uService.cs   # M3U/M3U8 import & export logic
-    │   ├── LibraryCacheService.cs  # SQLite fast startup cache
-    │   └── LibraryScannerService.cs# Background disk scanning via TagLib
+    │   ├── Services.cs              # Centralized services (AudioEngine, LibraryCache, CoverArt, AutoTag, Playlist...)
+    │   ├── AIService.cs             # AI interaction and API endpoints for smart playlists
+    │   ├── DiscordRpcService.cs     # Discord Rich Presence integration
+    │   ├── TrayIconService.cs       # Windows system tray integration
+    │   └── BackupService.cs         # AI backup data management
     └── Views/
-        ├── LibraryPage.xaml(.cs)   # Main library grid
-        ├── AlbumsPage.xaml(.cs)    # Album grouping
-        ├── PlaylistsPage.xaml(.cs) # Playlist management
-        └── LyricsPage.xaml(.cs)    # Synchronized lyrics view
+        ├── LibraryPage.xaml(.cs)    # Main library grid
+        ├── AlbumsPage.xaml(.cs)     # Album grouping
+        ├── PlaylistsPage.xaml(.cs)  # Playlist management
+        ├── SettingsPage.xaml(.cs)   # Application settings
+        └── QueuePage.xaml(.cs)      # Up next queue and manual reordering
 ```
 
 ---
@@ -115,6 +104,18 @@ Resona stores its configuration, library cache, and downloaded assets inside you
 *(Equivalent to: `C:\Users\<YourUsername>\AppData\Local\Resona\`)*
 
 Inside this folder, you will find:
-- `library_cache.db`: The SQLite database allowing instantaneous app launches.
-- `Covers\`: A directory containing all the cached album art downloaded from the internet.
-- `ai_backup.json`: Backup data for AI-generated playlists and suggestions.
+- `library_cache.db`: The SQLite database that allows instantaneous app launches. It caches your library's audio metadata, custom user playlists, and all fetched synchronized lyrics to avoid redundant network requests.
+- `Covers\`: A directory containing all the cached album art. Resona generates unique album hashes to ensure only one image is saved per album (instead of one per track), saving significant disk space.
+- `settings.json`: Your saved preferences, UI states, and configuration (language, theme, equalizer presets, etc.).
+- `ai_backup.json`: Backup data for AI-generated playlists and insights.
+- `fpcalc\`: Contains the Chromaprint fingerprinting executable used for the auto-tagging feature.
+---
+
+## 🗑️ Uninstall
+
+Resona does not have an installer — to fully remove it:
+
+1. Exit Resona (right-click the tray icon → **Quit** or close the app).
+2. Delete the application folder containing the `.exe` file.
+3. Delete the following cache/settings folder:
+   - `%LOCALAPPDATA%\Resona`

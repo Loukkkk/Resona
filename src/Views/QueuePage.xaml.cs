@@ -6,6 +6,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Resona.Models;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -133,6 +134,26 @@ public sealed partial class QueuePage : Page
 		}
 		
 		UpdateDisplayedTracks(_queue);
+		_ = SyncFavoriteStatesAsync();
+	}
+
+	private async Task SyncFavoriteStatesAsync()
+	{
+		if (App.MainWindowInstance == null) return;
+		var favoriteIds = await App.MainWindowInstance.GetFavoriteTrackIdsAsync();
+		foreach (var track in _queue)
+		{
+			track.IsFavorite = favoriteIds.Contains(track.Id);
+		}
+	}
+
+	private async void FavoriteHeartBtn_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Button btn && btn.Tag is Track track && App.MainWindowInstance != null)
+		{
+			bool nowFavorite = await App.MainWindowInstance.ToggleFavoriteAsync(track);
+			track.IsFavorite = nowFavorite;
+		}
 	}
 
 	private void UpdateCoverIndicator(Grid coverGrid, bool isPlaying, bool isHovered)
@@ -201,7 +222,7 @@ public sealed partial class QueuePage : Page
 			}
 			else
 			{
-				App.MainWindowInstance?.PlayTrack(dataContext, _queue);
+				{ App.MainWindowInstance?.RemoveFromQueue(dataContext); App.MainWindowInstance?.PlayTrack(dataContext, null, false, false, null, true); }
 			}
 			if (frameworkElement is Border { Parent: Grid parent })
 			{
@@ -214,7 +235,7 @@ public sealed partial class QueuePage : Page
 	{
 		if ((e.OriginalSource as FrameworkElement)?.DataContext is Track track)
 		{
-			App.MainWindowInstance?.PlayTrack(track, _queue);
+			{ App.MainWindowInstance?.RemoveFromQueue(track); App.MainWindowInstance?.PlayTrack(track, null, false, false, null, true); }
 			TrackListView?.SelectedItems.Clear();
 		}
 	}
@@ -274,6 +295,10 @@ public sealed partial class QueuePage : Page
 			{
 				rectangle.Opacity = 1.0;
 			}
+		}
+		if (frameworkElement.FindName("FavoriteHeartBtn") is Button heartBtn)
+		{
+			((UIElement)heartBtn).Opacity = 1.0;
 		}
 		if (track != null)
 		{
@@ -379,6 +404,11 @@ public sealed partial class QueuePage : Page
 			if (frameworkElement.FindName("HoverAccentBar") is Rectangle rectangle)
 			{
 				rectangle.Opacity = 0.0;
+			}
+			if (frameworkElement.FindName("FavoriteHeartBtn") is Button heartBtn)
+			{
+				bool isFav = frameworkElement.DataContext is Track t && t.IsFavorite;
+				((UIElement)heartBtn).Opacity = isFav ? 1.0 : 0.0;
 			}
 		}
 	}

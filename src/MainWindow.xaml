@@ -5,13 +5,33 @@
     xmlns:models="using:Resona.Models"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:views="using:Resona.Views"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:Resona.Converters"
+    xmlns:tb="using:H.NotifyIcon">
 
     <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" UseLayoutRounding="True" Opacity="0" >
+        <Grid.Resources>
+            <converters:StringToImageBrushConverter x:Key="StringToImageBrushConverter" />
+        </Grid.Resources>
+        
+
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+<tb:TaskbarIcon x:Name="TrayIcon"
+                        Visibility="Collapsed"
+                        ToolTipText="Resona"
+                        IconSource="/icon.ico"
+                        DoubleTapped="TrayIcon_DoubleTapped">
+            <tb:TaskbarIcon.ContextFlyout>
+                <MenuFlyout>
+                    <MenuFlyoutItem Text="Afficher / Masquer" Click="TrayToggle_Click" />
+                    <MenuFlyoutItem Text="Quitter" Click="TrayExit_Click" />
+                </MenuFlyout>
+            </tb:TaskbarIcon.ContextFlyout>
+        </tb:TaskbarIcon>
+
 
         <Grid x:Name="AppTitleBar" Height="48" VerticalAlignment="Top" HorizontalAlignment="Stretch" Margin="64,0,160,0" Canvas.ZIndex="10" Background="Transparent" />
 
@@ -160,17 +180,19 @@
             </Rectangle>
         </Grid>
 
+        <!-- OLD PLAYERBAR REMOVED (was dead commented-out XAML, superseded by the active PlayerBar below) -->
+
         <Grid x:Name="PlayerBar" Grid.Row="2" Padding="20,12" ColumnSpacing="16"
               Canvas.ZIndex="5"
               BorderThickness="0"
               Visibility="Collapsed" Opacity="0"
               Background="{StaticResource AppSurfaceBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="320" />
-                <ColumnDefinition Width="2*" />
-                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="Auto" MinWidth="250" MaxWidth="320" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
+            <!-- LEFT: Info -->
             <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left">
                 <Border x:Name="NowPlayingCoverBorder" CornerRadius="8" Width="48" Height="48"
                         Background="#10FFFFFF"
@@ -188,7 +210,7 @@
                                VerticalAlignment="Center" />
                     </Grid>
                 </Border>
-                <StackPanel x:Name="NowPlayingTextContainer" VerticalAlignment="Center" Width="228" RightTapped="NowPlayingInfo_RightTapped">
+                <StackPanel x:Name="NowPlayingTextContainer" VerticalAlignment="Center" MaxWidth="228" RightTapped="NowPlayingInfo_RightTapped">
                     <StackPanel.RenderTransform>
                         <TranslateTransform x:Name="NowPlayingTextTransform" X="0" />
                     </StackPanel.RenderTransform>
@@ -207,92 +229,304 @@
                 </StackPanel>
             </StackPanel>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
-                    <Button x:Name="RepeatButton" Click="RepeatButton_Click" Background="Transparent" BorderThickness="0"
-                            Width="40" Height="40" Padding="0" CornerRadius="20" UseLayoutRounding="True"
-                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                            Foreground="White" Margin="0,-1,0,0"
-                            ToolTipService.ToolTip="{x:Bind models:Strings.Current.MainWindow_ToolTipService_ToolTip_Modedelecturelecture, Mode=OneWay}">
-                        <Grid>
-                            <FontIcon x:Name="RepeatIcon" Glyph="&#xE8EE;" FontSize="20" Opacity="0.5" />
-                            <TextBlock x:Name="RepeatOneBadge" Text="1" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AppAccentBrush}"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0" Visibility="Collapsed" />
-                        </Grid>
-                    </Button>
-                    <Button x:Name="PrevButton" Click="PrevButton_Click" Background="Transparent" BorderThickness="0"
-                            Width="40" Height="40" Padding="0" UseLayoutRounding="True"
-                            Foreground="White">
-                        <FontIcon Glyph="&#xE892;" />
-                    </Button>
-                    <Button x:Name="PlayPauseButton" Click="PlayPauseButton_Click"
-                            Background="{StaticResource AppAccentBrush}"
-                            Foreground="{StaticResource AppAccentForegroundBrush}"
-                            BorderThickness="0" CornerRadius="20" UseLayoutRounding="True"
-                            Width="40" Height="40" Padding="0"
-                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
-                        <Button.Resources>
-                            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
-                            <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="AppAccentBrush" />
-                            <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="AppAccentBrush" />
-                        </Button.Resources>
-                        <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="16" Margin="2,0,0,0"
-                                  Foreground="{StaticResource AppAccentForegroundBrush}" />
-                    </Button>
-                    <Button x:Name="NextButton" Click="NextButton_Click" Background="Transparent" BorderThickness="0"
-                            Width="40" Height="40" Padding="0" UseLayoutRounding="True"
-                            Foreground="White">
-                        <FontIcon Glyph="&#xE893;" />
-                    </Button>
-                </StackPanel>
-                <Grid ColumnSpacing="8">
+            <!-- Playback Controls (Center) — placed directly on PlayerBar with ColumnSpan=2 so
+                 it centers horizontally on the FULL bar width (info column + right column), not
+                 just the right column. Reacts only to PlayerBar being resized; MarginLeftOffset is
+                 nudged by UpdatePlaybackControlsCentering() so it sits slightly left of true
+                 center at the app's minimum width (avoiding the info/right columns) and moves
+                 to true center as the window widens. VerticalAlignment="Top" keeps it aligned
+                 with the old Controls Row (same height as before), instead of centering across
+                 the whole bar including the progress row below. -->
+            <StackPanel x:Name="PlaybackControlsPanel" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Height="40" Spacing="12">
+                <Button x:Name="RepeatButton" Click="RepeatButton_Click" Background="Transparent" BorderThickness="0"
+                        Width="40" Height="40" Padding="0" CornerRadius="20" UseLayoutRounding="True"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Foreground="White" Margin="0,-1,0,0"
+                        ToolTipService.ToolTip="{x:Bind models:Strings.Current.MainWindow_ToolTipService_ToolTip_Modedelecturelecture, Mode=OneWay}">
+                    <Grid>
+                        <FontIcon x:Name="RepeatIcon" Glyph="&#xE8EE;" FontSize="20" Opacity="0.5" />
+                        <TextBlock x:Name="RepeatOneBadge" Text="1" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AppAccentBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0" Visibility="Collapsed" />
+                    </Grid>
+                </Button>
+                <Button x:Name="PrevButton" Click="PrevButton_Click" Background="Transparent" BorderThickness="0"
+                        Width="40" Height="40" Padding="0" UseLayoutRounding="True"
+                        Foreground="White">
+                    <FontIcon Glyph="&#xE892;" />
+                </Button>
+                <Button x:Name="PlayPauseButton" Click="PlayPauseButton_Click"
+                        Background="{StaticResource AppAccentBrush}"
+                        Foreground="{StaticResource AppAccentForegroundBrush}"
+                        BorderThickness="0" CornerRadius="20" UseLayoutRounding="True"
+                        Width="40" Height="40" Padding="0"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="AppAccentBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="AppAccentBrush" />
+                    </Button.Resources>
+                    <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="16" 
+                              Foreground="{StaticResource AppAccentForegroundBrush}" />
+                </Button>
+                <Button x:Name="NextButton" Click="NextButton_Click" Background="Transparent" BorderThickness="0"
+                        Width="40" Height="40" Padding="0" UseLayoutRounding="True"
+                        Foreground="White">
+                    <FontIcon Glyph="&#xE893;" />
+                </Button>
+            </StackPanel>
+
+            <!-- RIGHT: Controls and Progress -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                
+                <!-- Controls Row -->
+                <!-- Playback controls now live outside this Grid (see PlaybackControlsPanel above,
+                     ColumnSpan=2 on PlayerBar) so they center on the whole bar and never react to
+                     Lyrics/UpNext/Mini Player showing or hiding. This row now only hosts the
+                     right-side controls, reserving their layout space. -->
+                <Grid Grid.Row="0" Margin="0,0,0,4" Height="40">
+                    
+                    <!-- Right Controls (Lyrics, Up Next, Volume) -->
+                    <!-- A single horizontal StackPanel with fixed Spacing, not a Grid with star
+                         columns: a StackPanel skips Collapsed children entirely when laying out
+                         spacing, so Lyrics↔UpNext and UpNext↔Mini/Volume gaps are always
+                         pixel-identical no matter which combination of buttons is visible — no
+                         column-width bookkeeping required. -->
+                    <StackPanel x:Name="PlayerBarRightGrid" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,16,0" Spacing="12">
+                        <Border x:Name="LyricsButton" Visibility="Collapsed" Width="30" Height="30" Padding="0" VerticalAlignment="Center" Background="Transparent"
+                                BorderThickness="0" CornerRadius="15" UseLayoutRounding="True" ToolTipService.ToolTip="{x:Bind models:Strings.Current.MainWindow_Text_Paroles, Mode=OneWay}"
+                                PointerEntered="LyricsButton_PointerEntered" PointerExited="LyricsButton_PointerExited" PointerPressed="LyricsButton_PointerPressed" PointerReleased="LyricsButton_PointerReleased" Tapped="LyricsButton_Tapped">
+                            <FontIcon x:Name="LyricsIcon" Glyph="&#xE8D2;" FontSize="15" Foreground="{ThemeResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        
+                        <Button x:Name="UpNextToggleBtn" Click="UpNextToggleBtn_Click" Background="Transparent" BorderThickness="0" Padding="0" Width="30" Height="30" CornerRadius="15" Visibility="Collapsed" VerticalAlignment="Center" >
+                            <FontIcon Glyph="&#xE8FD;" FontSize="16" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        </Button>
+                        
+                        <Button x:Name="MiniPlayerToggleBtn" Click="ShowMiniPlayer_Click" Background="Transparent" BorderThickness="0" Padding="0" Width="30" Height="30" CornerRadius="15" Visibility="Collapsed" VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind models:Strings.Current.MainWindow_Tooltip_MiniPlayer, Mode=OneWay}" >
+                            <FontIcon Glyph="&#xE8A7;" FontSize="15" FontWeight="Normal" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0" />
+                        </Button>
+
+                        <!-- Favoris : coeur pour le morceau en cours de lecture -->
+                        <Button x:Name="NowPlayingFavoriteButton" Click="NowPlayingFavoriteButton_Click" Background="Transparent" BorderThickness="0" Padding="0" Width="30" Height="30" CornerRadius="15" VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind models:Strings.Current.MainWindow_Tooltip_Favorites, Mode=OneWay}">
+                            <FontIcon x:Name="NowPlayingFavoriteIcon" Glyph="&#xE006;" FontSize="15" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0" />
+                        </Button>
+
+                        <!-- Egaliseur : acces rapide aux presets depuis le lecteur -->
+                        <Button x:Name="EqualizerQuickButton" Click="EqualizerQuickButton_Click" Background="Transparent" BorderThickness="0" Padding="0" Width="30" Height="30" CornerRadius="15" VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind models:Strings.Current.MainWindow_Tooltip_Equalizer, Mode=OneWay}">
+                            <FontIcon Glyph="&#xE9E9;" FontSize="15" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0" />
+                        </Button>
+                        
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" >
+                            <Button x:Name="VolumeMuteButton" Click="VolumeMuteButton_Click" Background="Transparent" BorderThickness="0" Padding="0" Width="30" Height="30" CornerRadius="15" VerticalAlignment="Center">
+                                <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            </Button>
+                            
+                            <Slider x:Name="VolumeSlider" MinWidth="80" MaxWidth="150" VerticalAlignment="Center" Minimum="0" Maximum="100"
+                                    ValueChanged="VolumeSlider_ValueChanged" PointerWheelChanged="VolumeSlider_PointerWheelChanged" UseLayoutRounding="True" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+                <!-- Progress Row -->
+                <Grid Grid.Row="1" ColumnSpacing="8" Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="CurrentTimeText" Text="{x:Bind models:Strings.Current.MainWindow_Text_000, Mode=OneWay}" Grid.Column="0" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Width="36"
-                               Foreground="White" Margin="0,3,0,0" />
-                    <Grid Grid.Column="1" VerticalAlignment="Center" Height="30" Margin="2,0">
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0,3,0,0" />
+                    <Grid Grid.Column="1" VerticalAlignment="Center" Height="30" >
                         <Grid x:Name="CustomProgressTrack" Height="4" Background="{ThemeResource ControlStrongFillColorDefaultBrush}" CornerRadius="2" VerticalAlignment="Center" Margin="9,5,9,0" />
                         <Grid x:Name="CustomProgressFill" Height="4" Background="{StaticResource AppTimecodeBrush}" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0" Margin="9,5,0,0" />
                         <Grid x:Name="CustomProgressThumb" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,5,0,0" IsHitTestVisible="False">
                             <Ellipse x:Name="CustomProgressThumbOuter" Fill="{ThemeResource SliderThumbBackground}" Width="18" Height="18" />
                             <Ellipse x:Name="CustomProgressThumbInner" Fill="{ThemeResource SystemAccentColor}" Width="10" Height="10" />
                         </Grid>
-                        <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" Opacity="0" Margin="-1,5,-1,0"
+                        <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" Opacity="0" Margin="-1,5,-1,0" SmallChange="1" LargeChange="1"
                                 ValueChanged="ProgressSlider_ValueChanged" SizeChanged="ProgressSlider_SizeChanged" StepFrequency="0.001" VerticalAlignment="Center" />
                     </Grid>
                     <TextBlock x:Name="TotalTimeText" Text="{x:Bind models:Strings.Current.MainWindow_Text_000, Mode=OneWay}" Grid.Column="2" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Width="36" TextAlignment="Right"
-                               Foreground="White" Margin="0,3,0,0" />
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0,3,0,0" />
                 </Grid>
-            </StackPanel>
-
-            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="16">
-                <Border x:Name="LyricsButton" Opacity="0" IsHitTestVisible="False" Width="110" Height="34" VerticalAlignment="Center" Background="Transparent"
-                    BorderBrush="{StaticResource AppAccentBrush}" BorderThickness="1.5" CornerRadius="16" UseLayoutRounding="True"
-                    PointerEntered="LyricsButton_PointerEntered" PointerExited="LyricsButton_PointerExited" PointerPressed="LyricsButton_PointerPressed" PointerReleased="LyricsButton_PointerReleased" Tapped="LyricsButton_Tapped">
-                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <FontIcon x:Name="LyricsIcon" Glyph="&#xE8D2;" FontSize="15" Foreground="White" />
-                    <TextBlock x:Name="LyricsText" Text="{x:Bind models:Strings.Current.MainWindow_Text_Paroles, Mode=OneWay}" FontSize="13" Foreground="White" Margin="0,0,0,1" />
-                </StackPanel>
+            </Grid>
+        </Grid>
+        
+        <!-- Up Next Overlay (Light Dismiss) -->
+        <Grid x:Name="UpNextOverlay" Grid.Row="0" Grid.RowSpan="2" Background="Transparent" Visibility="Collapsed" Canvas.ZIndex="99" PointerPressed="UpNextOverlay_PointerPressed" />
+        
+        <!-- Up Next Panel -->
+        <Grid x:Name="UpNextPanel" Grid.Row="0" Grid.RowSpan="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,90" Width="360" Height="500" CornerRadius="12" Visibility="Collapsed" Canvas.ZIndex="100">
+            <Grid.RenderTransform>
+                <TranslateTransform x:Name="UpNextTransform" Y="520" />
+            </Grid.RenderTransform>
+            <Border Background="{StaticResource AppSurfaceBrush}" Opacity="0.95" CornerRadius="12">
+                <Border.Shadow>
+                    <ThemeShadow />
+                </Border.Shadow>
             </Border>
+            <Border BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" />
+            
+            <Grid Padding="16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <!-- En cours de lecture -->
+                <TextBlock Text="{x:Bind models:Strings.Current.MainWindow_UpNext_Playing, Mode=OneWay}" FontWeight="SemiBold" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,12" />
+                
+                <Grid Grid.Row="1" Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="*"/>
+                      </Grid.ColumnDefinitions>
+                      <Border x:Name="UpNextCurrentCoverBorder" CornerRadius="6" Width="50" Height="50" Margin="0,0,12,0"></Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="UpNextCurrentTitle" FontWeight="SemiBold" FontSize="14" Foreground="{ThemeResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="UpNextCurrentArtist" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock x:Name="UpNextCurrentAlbum" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                          <TextBlock x:Name="UpNextCurrentSource" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Grid>
+                
+                <!-- A venir -->
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="UpNextHeader" Text="{x:Bind models:Strings.Current.MainWindow_UpNext_Header, Mode=OneWay}" FontWeight="SemiBold" FontSize="14" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0,0,0,8" />
+                    <ListView x:Name="UpNextListView" Grid.Row="1" SelectionMode="None" IsItemClickEnabled="True" ItemClick="UpNextListView_ItemClick" ShowsScrollingPlaceholders="False" CanDragItems="True" CanReorderItems="True" AllowDrop="True" DragItemsCompleted="UpNextListView_DragItemsCompleted">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2,0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="52"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border CornerRadius="4" Width="40" Height="40" Margin="0,0,12,0" Background="{Binding CoverArtPath, Converter={StaticResource StringToImageBrushConverter}}" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" Foreground="{ThemeResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Artist}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="4,0,4,0" />
+                                    <Button Grid.Column="3" Tag="{Binding}" Click="UpNextRemoveBtn_Click" Background="Transparent" BorderThickness="0" Padding="4" Width="28" Height="28" CornerRadius="14" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE711;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </Button>
+                                    <FontIcon Grid.Column="4" Glyph="&#xE700;" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"  />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Grid>
+        </Grid>
 
-            <StackPanel  VerticalAlignment="Center" Orientation="Horizontal" Spacing="6" Width="160">
-                <Button x:Name="VolumeMuteButton" Click="VolumeMuteButton_Click" Background="Transparent" BorderThickness="0" Padding="0" Width="30" Height="30" CornerRadius="15">
-                    <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" Foreground="White" />
-                </Button>
-                <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100"
-                        ValueChanged="VolumeSlider_ValueChanged" PointerWheelChanged="VolumeSlider_PointerWheelChanged" Width="120" UseLayoutRounding="True" />
-            </StackPanel>
-            </StackPanel>
+    
+        <Grid x:Name="MiniPlayerGrid" Visibility="Collapsed" Grid.RowSpan="2" Canvas.ZIndex="999" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <!-- Blurred background cover -->
+            <Border x:Name="MiniPlayerBackground" Opacity="0.4" />
+            
+            <!-- Color Tint overlay for theme adaptation -->
+            <Border x:Name="MiniPlayerColorTint" Opacity="0.5" Background="{ThemeResource SystemControlBackgroundAltHighBrush}" />
+            
+            <!-- Dark/Light gradient for readability -->
+            <Grid>
+                <Grid.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#20000000" Offset="0.0" />
+                        <GradientStop Color="#90000000" Offset="1.0" />
+                    </LinearGradientBrush>
+                </Grid.Background>
+            </Grid>
+
+            <!-- Zone de drag dediee : la fenetre mini-lecteur n'a plus de titlebar systeme,
+                 il faut donc une zone explicitement enregistree via SetTitleBar pour rester
+                 deplacable a la souris. Placee derriere le bouton Restaurer (Canvas.ZIndex
+                 inferieur) pour ne jamais intercepter son clic. -->
+            <Grid x:Name="MiniPlayerDragHandle" Height="56" VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Transparent" Canvas.ZIndex="5" />
+
+            <!-- Top bar -->
+            <Button Click="RestoreMainWindow_Click" Background="#20FFFFFF" BorderThickness="1" BorderBrush="#10FFFFFF" Padding="8" CornerRadius="16" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16" ToolTipService.ToolTip="{x:Bind models:Strings.Current.MainWindow_Tooltip_Restore, Mode=OneWay}" Canvas.ZIndex="10">
+                <FontIcon Glyph="&#xE922;" FontSize="14" Foreground="White" />
+            </Button>
+
+            <!-- Content Phone Style -->
+            <Grid Margin="16,24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" /> <!-- Cover art -->
+                    <RowDefinition Height="Auto" /> <!-- Text -->
+                    <RowDefinition Height="Auto" /> <!-- Progress -->
+                    <RowDefinition Height="Auto" /> <!-- Controls -->
+                </Grid.RowDefinitions>
+
+                <!-- Cover Art -->
+                <Border Grid.Row="0" CornerRadius="16" Margin="16,20,16,24" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Image x:Name="MiniCoverImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+
+                <!-- Texts -->
+                <StackPanel Grid.Row="1" Margin="8,0,8,16" HorizontalAlignment="Center">
+                    <TextBlock x:Name="MiniTitle" FontWeight="Bold" TextAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="20" Foreground="White" MaxLines="1" Margin="0,0,0,4" />
+                    <TextBlock x:Name="MiniArtist" Opacity="0.75" TextAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="14" Foreground="White" MaxLines="1" />
+                </StackPanel>
+
+                <!-- Mini Progress Slider -->
+                <Grid Grid.Row="2" Margin="24,0,24,16" VerticalAlignment="Center" Height="20">
+                    <Grid x:Name="MiniCustomProgressTrack" Height="4" Background="#40FFFFFF" CornerRadius="2" VerticalAlignment="Center" />
+                    <Grid x:Name="MiniCustomProgressFill" Height="4" Background="White" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0" />
+                    <Slider x:Name="MiniProgressSlider" Minimum="0" Maximum="1" Opacity="0" SmallChange="1" LargeChange="1" ValueChanged="ProgressSlider_ValueChanged" PointerPressed="ProgressSlider_PointerPressed" PointerReleased="ProgressSlider_PointerReleased" StepFrequency="0.001" VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- Controls -->
+                <Grid Grid.Row="3" Margin="0,0,0,16" HorizontalAlignment="Stretch">
+                    <Button HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-8,0,0,0" Click="RepeatButton_Click" Background="Transparent" BorderThickness="0" Width="44" Height="44" Padding="0" CornerRadius="22" Canvas.ZIndex="5">
+                        <Grid Width="24" Height="24">
+                            <FontIcon x:Name="MiniRepeatIcon" Glyph="&#xE8EE;" FontSize="18" Foreground="White" Opacity="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBlock x:Name="MiniRepeatOneBadge" Text="1" FontSize="9" FontWeight="Bold" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0" Visibility="Collapsed" />
+                        </Grid>
+                    </Button>
+                    
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" Canvas.ZIndex="1">
+                        <Button Click="PrevButton_Click" Background="Transparent" BorderThickness="0" Width="44" Height="44" Padding="0" CornerRadius="22" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE892;" FontSize="20" Foreground="White" />
+                        </Button>
+                        <Button Click="PlayPauseButton_Click" Background="White" BorderThickness="0" Width="56" Height="56" CornerRadius="28" Padding="0" VerticalAlignment="Center">
+                            <FontIcon x:Name="MiniPlayPauseIcon" Glyph="&#xE769;" FontSize="22" Foreground="Black" Margin="2,0,0,0" />
+                        </Button>
+                        <Button Click="NextButton_Click" Background="Transparent" BorderThickness="0" Width="44" Height="44" Padding="0" CornerRadius="22" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE893;" FontSize="20" Foreground="White" />
+                        </Button>
+                    </StackPanel>
+                    
+                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-8,0" Background="Transparent" BorderThickness="0" Width="44" Height="44" Padding="0" CornerRadius="22" Canvas.ZIndex="5">
+                        <Button.Flyout>
+                            <Flyout Placement="Top">
+                                <StackPanel Width="40" Height="120">
+                                    <Slider x:Name="MiniVolumeSlider" Orientation="Vertical" HorizontalAlignment="Center" Height="100" Minimum="0" Maximum="100" ValueChanged="VolumeSlider_ValueChanged" PointerWheelChanged="VolumeSlider_PointerWheelChanged" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                        <Grid Width="24" Height="24">
+                            <FontIcon x:Name="MiniVolumeIcon" Glyph="&#xE767;" FontSize="18" Foreground="White" Opacity="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Grid.RowSpan="2" Canvas.ZIndex="1000" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Frame x:Name="SettingsFrame" />
         </Grid>
     </Grid>
 </Window>
-
-
-
-
-
-

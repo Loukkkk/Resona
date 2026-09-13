@@ -88,11 +88,22 @@ public sealed partial class SettingsPage : Page
 		ColorPresetsPanel.Visibility = ((current.Backdrop != AppBackdropStyle.Solid) ? Visibility.Collapsed : Visibility.Visible);
 		GradientOverflowSwitch.IsOn = current.PlayerGradientOverflowEnabled;
 		MinimizeToTraySwitch.IsOn = current.MinimizeToTrayOnClose;
+		SaveWindowPositionSwitch.IsOn = current.SaveWindowPosition;
+		SaveWindowSizeSwitch.IsOn = current.SaveWindowSize;
 		StartWithWindowsSwitch.IsOn = current.StartWithWindows;
 		StartMinimizedSwitch.IsOn = current.StartMinimized;
 		bool flag = current.MinimizeToTrayOnClose && current.StartWithWindows;
-		StartMinimizedSwitch.IsEnabled = flag;
-		StartMinimizedHint.Opacity = (flag ? 0.6 : 0.2);
+		UpdateStartMinimizedAvailability(flag);
+        ShowMiniPlayerSwitch.IsOn = current.EnableMiniPlayerButton;
+        MiniPlayerAlwaysOnTopSwitch.IsOn = current.MiniPlayerAlwaysOnTop;
+        UpdateMiniPlayerAlwaysOnTopVisibility();
+        ShowFavoriteButtonSwitch.IsOn = current.EnableFavoriteButton;
+        ShowEqualizerQuickButtonSwitch.IsOn = current.EnableEqualizerQuickButton;
+        DiscordRpcSwitch.IsOn = current.EnableDiscordRichPresence;
+        CrossfadeSwitch.IsOn = current.EnableCrossfade;
+        CrossfadeDurationSlider.Value = current.CrossfadeDurationSeconds > 0 ? current.CrossfadeDurationSeconds : 500;
+        CrossfadePanel.Visibility = current.EnableCrossfade ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
 		EqualizerSwitch.IsOn = current.EqualizerEnabled;
 		if (EqualizerBandsPanel != null)
 		{
@@ -130,6 +141,7 @@ public sealed partial class SettingsPage : Page
 		}
 		UpdateFormatHint(current.DownloadFormat);
 		AIEnabledSwitch.IsOn = current.AIEnabled;
+		UpNextToggle.IsOn = current.EnableUpNextPanel;
 		_isLoading = false;
 	}
 
@@ -302,10 +314,31 @@ public sealed partial class SettingsPage : Page
 
 	private void UpdateTranslateVisibility()
     {
-        var vis = LyricsSwitch.IsOn ? Visibility.Visible : Visibility.Collapsed;
-        TranslateLyricsSwitch.Visibility = vis;
-        TranslateLyricsSeparator.Visibility = vis;
-        TranslateLyricsHintText.Visibility = vis;
+        bool lyricsOn = LyricsSwitch.IsOn;
+        TranslateLyricsSwitch.IsEnabled = lyricsOn;
+        TranslateLyricsSwitch.Opacity = lyricsOn ? 1.0 : 0.4;
+        TranslateLyricsHintText.Opacity = lyricsOn ? 0.6 : 0.3;
+    }
+
+	private void UpdateMiniPlayerAlwaysOnTopVisibility()
+    {
+        bool isMiniPlayerOn = ShowMiniPlayerSwitch.IsOn;
+        if (MiniPlayerAlwaysOnTopSwitch != null)
+        {
+            MiniPlayerAlwaysOnTopSwitch.IsEnabled = isMiniPlayerOn;
+            MiniPlayerAlwaysOnTopSwitch.Opacity = isMiniPlayerOn ? 1.0 : 0.4;
+        }
+        if (MiniPlayerAlwaysOnTopHintText != null)
+        {
+            MiniPlayerAlwaysOnTopHintText.Opacity = isMiniPlayerOn ? 0.6 : 0.3;
+        }
+    }
+
+	private void UpdateStartMinimizedAvailability(bool enabled)
+    {
+        StartMinimizedSwitch.IsEnabled = enabled;
+        StartMinimizedSwitch.Opacity = enabled ? 1.0 : 0.4;
+        StartMinimizedHint.Opacity = enabled ? 0.6 : 0.3;
     }
 
 	private async void NormalizationSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -541,8 +574,7 @@ public sealed partial class SettingsPage : Page
 			App.Settings.Current.MinimizeToTrayOnClose = MinimizeToTraySwitch.IsOn;
 			await App.Settings.SaveAsync();
 			bool flag = MinimizeToTraySwitch.IsOn && StartWithWindowsSwitch.IsOn;
-			StartMinimizedSwitch.IsEnabled = flag;
-			StartMinimizedHint.Opacity = (flag ? 0.6 : 0.2);
+			UpdateStartMinimizedAvailability(flag);
 			if (!MinimizeToTraySwitch.IsOn)
 			{
 				App.Settings.Current.StartMinimized = false;
@@ -559,8 +591,7 @@ public sealed partial class SettingsPage : Page
 			App.Settings.Current.StartWithWindows = StartWithWindowsSwitch.IsOn;
 			await App.Settings.SaveAsync();
 			bool flag = MinimizeToTraySwitch.IsOn && StartWithWindowsSwitch.IsOn;
-			StartMinimizedSwitch.IsEnabled = flag;
-			StartMinimizedHint.Opacity = (flag ? 0.6 : 0.2);
+			UpdateStartMinimizedAvailability(flag);
 			if (!StartWithWindowsSwitch.IsOn)
 			{
 				App.Settings.Current.StartMinimized = false;
@@ -618,191 +649,24 @@ public sealed partial class SettingsPage : Page
 		EqualizerSliders.Items.Clear();
 		StackPanel equalizerPresetsContainer = EqualizerPresetsContainer;
 		equalizerPresetsContainer.Children.Clear();
-		Button button = new Button
+		// Liste des presets factorisee dans Models.EqualizerPresets (partagee avec le flyout
+		// rapide de la PlayerBar), pour eviter toute duplication entre les deux emplacements.
+		List<Button> list = new List<Button>();
+		foreach (var preset in Resona.Models.EqualizerPresets.All)
 		{
-			Content = "Flat",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button.Click += delegate
-		{
-			ApplyEqPreset(new double[10]);
-		};
-		Button button2 = new Button
-		{
-			Content = "Bass Boost",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button2.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 6.0, 5.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 });
-		};
-		Button button3 = new Button
-		{
-			Content = "Rock",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button3.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 5.0, 4.0, 3.0, -1.0, -2.0, -1.0, 2.0, 3.0, 4.0, 4.0 });
-		};
-		Button button4 = new Button
-		{
-			Content = "Pop",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button4.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { -1.0, -1.0, 0.0, 2.0, 4.0, 4.0, 2.0, 0.0, -1.0, -2.0 });
-		};
-		Button button5 = new Button
-		{
-			Content = "Electro",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button5.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 5.0, 4.0, 1.0, 0.0, -2.0, 0.0, 1.0, 3.0, 4.0, 5.0 });
-		};
-		Button button6 = new Button
-		{
-			Content = "Classical",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button6.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 3.0, 2.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0 });
-		};
-		Button button7 = new Button
-		{
-			Content = "Acoustic",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button7.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 2.0, 1.0, 0.0, 1.0, 2.0, 2.0, 3.0, 2.0, 1.0, 0.0 });
-		};
-		Button button8 = new Button
-		{
-			Content = "Dance",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button8.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 4.0, 3.0, 2.0, 0.0, -1.0, 0.0, 2.0, 3.0, 4.0, 4.0 });
-		};
-		Button button9 = new Button
-		{
-			Content = "Hip-Hop",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button9.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 5.0, 4.0, 1.0, 0.0, -1.0, -1.0, 1.0, 2.0, 3.0, 4.0 });
-		};
-		Button button10 = new Button
-		{
-			Content = "Jazz",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button10.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 3.0, 2.0, 0.0, 1.0, 2.0, 2.0, 1.0, 0.0, 1.0, 2.0 });
-		};
-		Button button11 = new Button
-		{
-			Content = "Vocal",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button11.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { -2.0, -1.0, 0.0, 1.0, 3.0, 4.0, 3.0, 1.0, 0.0, -1.0 });
-		};
-		Button button12 = new Button
-		{
-			Content = "Treble",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button12.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0 });
-		};
-		Button button13 = new Button
-		{
-			Content = "Metal",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button13.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 4.0, 3.0, 0.0, -2.0, -3.0, -2.0, 0.0, 2.0, 4.0, 5.0 });
-		};
-		Button button14 = new Button
-		{
-			Content = "Party",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button14.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 5.0 });
-		};
-		Button button15 = new Button
-		{
-			Content = "R&B",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button15.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 3.0, 5.0, 4.0, 1.0, -1.0, -1.0, 1.0, 2.0, 3.0, 4.0 });
-		};
-		Button button16 = new Button
-		{
-			Content = "Spoken Word",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button16.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { -4.0, -2.0, 0.0, 2.0, 4.0, 5.0, 4.0, 2.0, 0.0, -2.0 });
-		};
-		Button button17 = new Button
-		{
-			Content = "Piano",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button17.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 2.0, 1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 3.0, 2.0, 1.0 });
-		};
-		Button button18 = new Button
-		{
-			Content = "Lofi",
-			UseLayoutRounding = true,
-			Margin = new Thickness(0.0)
-		};
-		button18.Click += delegate
-		{
-			ApplyEqPreset(new double[10] { 4.0, 5.0, 3.0, 0.0, -2.0, -4.0, -5.0, -5.0, -4.0, -3.0 });
-		};
-		List<Button> list = new List<Button>
-		{
-			button, button2, button3, button4, button5, button6, button7, button8, button9, button10,
-			button11, button12, button13, button14, button15, button16, button17, button18
-		};
+			var presetBands = preset.Bands;
+			Button presetButton = new Button
+			{
+				Content = preset.Name,
+				UseLayoutRounding = true,
+				Margin = new Thickness(0.0)
+			};
+			presetButton.Click += delegate
+			{
+				ApplyEqPreset((double[])presetBands.Clone());
+			};
+			list.Add(presetButton);
+		}
 		Grid grid = new Grid
 		{
 			Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
@@ -889,15 +753,46 @@ public sealed partial class SettingsPage : Page
 		EqualizerSliders.Items.Add(stackPanel);
 	}
 
-	private void ApplyEqPreset(double[] newBands)
+	private async void ApplyEqPreset(double[] newBands)
 	{
 		App.Settings.Current.EqualizerBands = newBands;
-		App.Settings.SaveAsync();
+		if (!App.Settings.Current.EqualizerEnabled)
+		{
+			App.Settings.Current.EqualizerEnabled = true;
+			App.AudioEngine?.SetEqualizerEnabled(true);
+			if (EqualizerSwitch != null) EqualizerSwitch.IsOn = true;
+			if (EqualizerBandsPanel != null) EqualizerBandsPanel.Visibility = Visibility.Visible;
+		}
+		await App.Settings.SaveAsync();
 		for (int i = 0; i < 10; i++)
 		{
 			App.AudioEngine?.SetEqualizerBand(i, (float)newBands[i]);
 		}
 		BuildEqualizerSliders();
+	}
+
+	// Appelee par MainWindow quand un preset d'egaliseur est choisi depuis le flyout rapide
+	// de la PlayerBar, pour que cette page (instanciee en permanence, meme masquee) reflete
+	// l'etat reel : switch active si besoin, et sliders reconstruits sur les nouvelles bandes.
+	public void RefreshEqualizerUI()
+	{
+		var current = App.Settings.Current;
+		// Marque temporairement _isLoading pour que EqualizerSwitch_Toggled ne reagisse pas a
+		// ce changement programmatique : le moteur audio et les Settings sont deja a jour a ce
+		// stade (appele depuis MainWindow.ApplyEqualizerPresetQuick), seul l'affichage doit
+		// se synchroniser ici.
+		bool wasLoading = _isLoading;
+		_isLoading = true;
+		if (EqualizerSwitch != null) EqualizerSwitch.IsOn = current.EqualizerEnabled;
+		_isLoading = wasLoading;
+		if (EqualizerBandsPanel != null)
+		{
+			EqualizerBandsPanel.Visibility = current.EqualizerEnabled ? Visibility.Visible : Visibility.Collapsed;
+		}
+		if (current.EqualizerEnabled)
+		{
+			BuildEqualizerSliders();
+		}
 	}
 
 	private void EqualizerBand_ValueChanged(int bandIndex, double newValue)
@@ -1134,5 +1029,96 @@ public sealed partial class SettingsPage : Page
 		};
 		await successDialog.ShowAsync();
 	}
+	private async void SaveWindowSize_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.SaveWindowSize = SaveWindowSizeSwitch.IsOn;
+			await App.Settings.SaveAsync();
+		}
+	}
+
+	private async void SaveWindowPosition_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.SaveWindowPosition = SaveWindowPositionSwitch.IsOn;
+			await App.Settings.SaveAsync();
+		}
+	}
+	private void UpNextToggle_Toggled(object sender, RoutedEventArgs e)
+	{
+		App.Settings.Current.EnableUpNextPanel = UpNextToggle.IsOn;
+		_ = App.Settings.SaveAsync();
+		if (App.MainWindowInstance != null)
+		{
+			App.MainWindowInstance.UpdateUpNextPanelVisibility();
+		}
+	}
+	private async void ShowMiniPlayerSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.EnableMiniPlayerButton = ShowMiniPlayerSwitch.IsOn;
+			UpdateMiniPlayerAlwaysOnTopVisibility();
+			await App.Settings.SaveAsync();
+			App.MainWindowInstance?.UpdateMiniPlayerButtonVisibility();
+		}
+	}
+
+	private async void MiniPlayerAlwaysOnTopSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.MiniPlayerAlwaysOnTop = MiniPlayerAlwaysOnTopSwitch.IsOn;
+			await App.Settings.SaveAsync();
+		}
+	}
+	private async void ShowFavoriteButtonSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.EnableFavoriteButton = ShowFavoriteButtonSwitch.IsOn;
+			await App.Settings.SaveAsync();
+			App.MainWindowInstance?.UpdatePlayerBarButtonsVisibility();
+		}
+	}
+	private async void ShowEqualizerQuickButtonSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.EnableEqualizerQuickButton = ShowEqualizerQuickButtonSwitch.IsOn;
+			await App.Settings.SaveAsync();
+			App.MainWindowInstance?.UpdatePlayerBarButtonsVisibility();
+		}
+	}
+	private async void DiscordRpcSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.EnableDiscordRichPresence = DiscordRpcSwitch.IsOn;
+			await App.Settings.SaveAsync();
+            if (DiscordRpcSwitch.IsOn) { App.DiscordRpc?.Initialize(); App.DiscordRpc?.UpdatePresence(App.AudioEngine.CurrentTrack, App.AudioEngine.State == NAudio.Wave.PlaybackState.Playing); }
+            else { App.DiscordRpc?.Deinitialize(); }
+		}
+	}
+	private async void CrossfadeSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.EnableCrossfade = CrossfadeSwitch.IsOn;
+			await App.Settings.SaveAsync();
+			CrossfadePanel.Visibility = CrossfadeSwitch.IsOn ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+		}
+	}
+	private async void CrossfadeDurationSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.CrossfadeDurationSeconds = (int)e.NewValue; // now in ms
+			await App.Settings.SaveAsync();
+		}
+	}
+
 }
 }

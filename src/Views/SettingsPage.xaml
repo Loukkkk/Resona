@@ -33,7 +33,117 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===================== FONCTIONNALITES ===================== -->
+
+                        <!-- ===================== BOUTONS DU LECTEUR ===================== -->
+            <StackPanel Spacing="12">
+                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_PlayerButtons, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Grid Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="16">
+                        <ToggleSwitch x:Name="UpNextToggle" Toggled="UpNextToggle_Toggled" Header="{x:Bind models:Strings.Current.SettingsPage_Header_UpNextButton, Mode=OneWay}"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                          <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+
+
+                        <ToggleSwitch x:Name="LyricsSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_LyricsButton, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="LyricsSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        
+                        <ToggleSwitch x:Name="TranslateLyricsSwitch" Margin="24,0,0,0"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Traductiondesparoles, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="TranslateLyricsSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <TextBlock x:Name="TranslateLyricsHintText" Text="{x:Bind models:Strings.Current.SettingsPage_Text_Traduitautomatiqueme, Mode=OneWay}"
+                                     TextWrapping="Wrap" Opacity="0.6" FontSize="12" Margin="24,-12,0,0"
+                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+
+                          <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+
+
+                        <ToggleSwitch x:Name="ShowMiniPlayerSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_MiniPlayerButton, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="ShowMiniPlayerSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        
+                        <ToggleSwitch x:Name="MiniPlayerAlwaysOnTopSwitch" Margin="24,0,0,0"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_MiniPlayerAlwaysOnTop, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="MiniPlayerAlwaysOnTopSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <TextBlock x:Name="MiniPlayerAlwaysOnTopHintText" Text="{x:Bind models:Strings.Current.SettingsPage_Text_MiniPlayerAlwaysOnTopDesc, Mode=OneWay}"
+                                     TextWrapping="Wrap" Opacity="0.6" FontSize="12" Margin="24,-12,0,0"
+                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+
+                          <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+
+
+                        <ToggleSwitch x:Name="ShowFavoriteButtonSwitch"
+                                      Header="{x:Bind models:Strings.Current.MainWindow_Tooltip_Favorites, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="ShowFavoriteButtonSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                          <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+
+
+                        <ToggleSwitch x:Name="ShowEqualizerQuickButtonSwitch"
+                                      Header="{x:Bind models:Strings.Current.MainWindow_Tooltip_Equalizer, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="ShowEqualizerQuickButtonSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+
+                        
+
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+<!-- ===================== FONCTIONNALITES ===================== -->
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Fonctionnalits, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -69,42 +179,7 @@
                         </ToggleSwitch>
                         <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Ajusteautomatiquemen, Mode=OneWay}"
                                    TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-
-                        <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
-
-                        <ToggleSwitch x:Name="LyricsSwitch"
-                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Boutonderecherchedes, Mode=OneWay}"
-                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
-                                      Toggled="LyricsSwitch_Toggled"
-                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
-                            <ToggleSwitch.HeaderTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
-                                </DataTemplate>
-                            </ToggleSwitch.HeaderTemplate>
-                        </ToggleSwitch>
-                        <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_SiActivunboutonParol, Mode=OneWay}"
-                                   TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-
-                        <Rectangle x:Name="TranslateLyricsSeparator" Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
-
-                        <ToggleSwitch x:Name="TranslateLyricsSwitch"
-                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Traductiondesparoles, Mode=OneWay}"
-                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
-                                      Toggled="TranslateLyricsSwitch_Toggled"
-                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}"
-                                      >
-                            <ToggleSwitch.HeaderTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                </DataTemplate>
-                            </ToggleSwitch.HeaderTemplate>
-                        </ToggleSwitch>
-                        <TextBlock x:Name="TranslateLyricsHintText" Text="{x:Bind models:Strings.Current.SettingsPage_Text_Traduitautomatiqueme, Mode=OneWay}"
-                                   TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                   Margin="0,-12,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
 
                         <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
 
@@ -121,7 +196,7 @@
                         </ToggleSwitch>
                         <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_RechercheautomatiqueDesc, Mode=OneWay}"
                                    TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                   Margin="0,-12,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
 
                         <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
 
@@ -138,6 +213,23 @@
                         </ToggleSwitch>
                         <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_DonneResonauna, Mode=OneWay}"
                                    TextWrapping="Wrap" Opacity="0.6" FontSize="12"
+                                   Margin="0,-12,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+
+                        <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+
+                        <ToggleSwitch x:Name="DiscordRpcSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_EnableDiscord, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="DiscordRpcSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_DiscordDesc, Mode=OneWay}"
+                                   TextWrapping="Wrap" Opacity="0.6" FontSize="12" Margin="0,-12,0,0"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                     </StackPanel>
                 </Grid>
@@ -149,6 +241,29 @@
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 <Grid Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="16">
+                        <ToggleSwitch x:Name="SaveWindowSizeSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_SaveWindowSize, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="SaveWindowSize_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <ToggleSwitch x:Name="SaveWindowPositionSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_SaveWindowPosition, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="SaveWindowPosition_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
                         <ToggleSwitch x:Name="MinimizeToTraySwitch"
                                       Header="{x:Bind models:Strings.Current.SettingsPage_Header_Rduiredanslabarredes, Mode=OneWay}"
                                       OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
@@ -162,9 +277,10 @@
                         </ToggleSwitch>
                         <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Lapplicationserduitd, Mode=OneWay}"
                                    TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                   Margin="0,-12,0,10" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
 
-                        <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+                        
+
 
                         <ToggleSwitch x:Name="StartWithWindowsSwitch"
                                       Header="{x:Bind models:Strings.Current.SettingsPage_Header_DmarreravecWindows, Mode=OneWay}"
@@ -191,7 +307,7 @@
                         </ToggleSwitch>
                         <TextBlock x:Name="StartMinimizedHint" Text="{x:Bind models:Strings.Current.SettingsPage_Text_NcessiteRduireenbarr, Mode=OneWay}"
                                    TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                   Margin="0,-12,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -276,10 +392,26 @@
 
             <!-- ===================== EGALISEUR ===================== -->
             <StackPanel Spacing="12">
-                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_galiseur, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
+                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_TraitementAudio, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" Opacity="0.9"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 <Grid Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="16">
+                        
+                        <ToggleSwitch x:Name="CrossfadeSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_EnableCrossfade, Mode=OneWay}"
+                                      OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                      Toggled="CrossfadeSwitch_Toggled"
+                                      Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <StackPanel x:Name="CrossfadePanel" Visibility="Collapsed" Spacing="8">
+                            <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Header_CrossfadeDuration, Mode=OneWay}" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <Slider x:Name="CrossfadeDurationSlider" Minimum="100" Maximum="2000" StepFrequency="50" TickFrequency="100" TickPlacement="Outside" ValueChanged="CrossfadeDurationSlider_ValueChanged" />
+                        </StackPanel>
                         <ToggleSwitch x:Name="EqualizerSwitch"
                                       Header="{x:Bind models:Strings.Current.SettingsPage_Header_Activerlgaliseur, Mode=OneWay}"
                                       OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
@@ -418,8 +550,10 @@
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 <Grid Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="16">
-                        <ToggleSwitch x:Name="AIEnabledSwitch"
-                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_Activerleboutondelas, Mode=OneWay}"
+                                                
+                        
+                                                <ToggleSwitch x:Name="AIEnabledSwitch"
+                                      Header="{x:Bind models:Strings.Current.SettingsPage_Header_AIAssistantButton, Mode=OneWay}"
                                       OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
                                       Toggled="AIEnabledSwitch_Toggled"
                                       Foreground="{StaticResource ToggleSwitchForegroundBrush}">
@@ -429,20 +563,19 @@
                                 </DataTemplate>
                             </ToggleSwitch.HeaderTemplate>
                         </ToggleSwitch>
-                        
-                        <Grid ColumnSpacing="16" Margin="0,8,0,0">
+                        <Grid ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
                                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_RestoreAITags, Mode=OneWay}" FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                                 <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_RestoreAITagsDesc, Mode=OneWay}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                             <Button Grid.Column="1" VerticalAlignment="Center"
-                                    Content="{x:Bind models:Strings.Current.SettingsPage_RestoreAITagsBtn, Mode=OneWay}" Click="RestoreAITagsBtn_Click" />
+                                    Content="{x:Bind models:Strings.Current.SettingsPage_RestoreAITagsBtn, Mode=OneWay}" Click="RestoreAITagsBtn_Click" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </Grid>
                     </StackPanel>
                 </Grid>
@@ -490,7 +623,7 @@
                             </ToggleSwitch>
                             <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Legradientdbordeaude, Mode=OneWay}"
                                        TextWrapping="Wrap" Opacity="0.6" FontSize="12"
-                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                       Margin="0,-12,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>
@@ -509,10 +642,10 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
-                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadata, Mode=OneWay}" FontWeight="SemiBold" />
-                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadataDesc, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12" />
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadata, Mode=OneWay}" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadataDesc, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                             </StackPanel>
-                            <Button Grid.Column="1" VerticalAlignment="Center" Click="ApplyMetadata_Click" Content="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadataButton, Mode=OneWay}" />
+                            <Button Grid.Column="1" VerticalAlignment="Center" Click="ApplyMetadata_Click" Content="{x:Bind models:Strings.Current.SettingsPage_Text_ApplyMetadataButton, Mode=OneWay}" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </Grid>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -520,10 +653,10 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
-                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCache, Mode=OneWay}" FontWeight="SemiBold" />
-                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCacheDesc, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12" />
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCache, Mode=OneWay}" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCacheDesc, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.6" FontSize="12" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                             </StackPanel>
-                            <Button Grid.Column="1" VerticalAlignment="Center" Click="ClearCache_Click" Content="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCacheButton, Mode=OneWay}" />
+                            <Button Grid.Column="1" VerticalAlignment="Center" Click="ClearCache_Click" Content="{x:Bind models:Strings.Current.SettingsPage_Text_ClearCacheButton, Mode=OneWay}" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </Grid>
                     </StackPanel>
                 </Grid>
@@ -550,7 +683,7 @@
                                 </ToggleSwitch.HeaderTemplate>
                             </ToggleSwitch>
                             <Button x:Name="CheckUpdateButton" Content="{x:Bind models:Strings.Current.SettingsPage_Text_CheckUpdate, Mode=OneWay}"
-                                    Click="CheckUpdateButton_Click" Margin="0,10,0,0" />
+                                    Click="CheckUpdateButton_Click" Margin="0,10,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>

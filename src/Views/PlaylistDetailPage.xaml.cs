@@ -159,9 +159,47 @@ public sealed partial class PlaylistDetailPage : Page
 		_playlist = playlist;
 		_tracks = tracks;
 		PlaylistName.Text = _playlist.Name;
-		PlaylistCount.Text = ((_tracks.Count == 0) ? "" : $"♪ {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)}");
-		Grid child = BuildCoverMosaic(_tracks, 120.0, 120.0);
-		HeaderCover.Child = child;
+				if (_tracks.Count == 0) {
+			PlaylistCount.Text = "";
+		} else {
+			var totalTime = TimeSpan.FromTicks(_tracks.Sum(t => t.Duration.Ticks));
+			PlaylistCount.Text = $"♪ {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)} - {Resona.Models.Strings.Current.FormatAlbumDuration(totalTime)}";
+		}
+		if (_playlist != null && _playlist.IsSystem)
+		{
+			HeaderCover.Background = (Microsoft.UI.Xaml.Media.Brush)App.Current.Resources["AppAccentBrush"];
+			HeaderCover.Child = new Microsoft.UI.Xaml.Controls.FontIcon
+			{
+				Glyph = "\ue00b",
+				FontSize = 48.0,
+				Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White),
+				HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Center,
+				VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center
+			};
+		}
+		else if (!string.IsNullOrEmpty(_playlist.CoverImagePath) && System.IO.File.Exists(_playlist.CoverImagePath))
+		{
+			try
+			{
+				var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(_playlist.CoverImagePath));
+				bmp.DecodePixelHeight = 120;
+				HeaderCover.Background = new Microsoft.UI.Xaml.Media.ImageBrush
+				{
+					ImageSource = bmp,
+					Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill
+				};
+				HeaderCover.Child = null;
+			}
+			catch
+			{
+				HeaderCover.Child = BuildCoverMosaic(_tracks, 120.0, 120.0);
+			}
+		}
+		else
+		{
+			HeaderCover.Child = BuildCoverMosaic(_tracks, 120.0, 120.0);
+			HeaderCover.Background = (Microsoft.UI.Xaml.Media.Brush)App.Current.Resources["AppSurfaceBrush"];
+		}
 		
 		UpdateDisplayedTracks(_tracks);
 	}
@@ -169,9 +207,47 @@ public sealed partial class PlaylistDetailPage : Page
 	private void BuildUI()
 	{
 		PlaylistName.Text = _playlist.Name;
-		PlaylistCount.Text = ((_tracks.Count == 0) ? "" : $"♪ {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)}");
-		Grid child = BuildCoverMosaic(_tracks, 120.0, 120.0);
-		HeaderCover.Child = child;
+				if (_tracks.Count == 0) {
+			PlaylistCount.Text = "";
+		} else {
+			var totalTime = TimeSpan.FromTicks(_tracks.Sum(t => t.Duration.Ticks));
+			PlaylistCount.Text = $"♪ {Resona.Models.Strings.Current.FormatTracksCount(_tracks.Count)} - {Resona.Models.Strings.Current.FormatAlbumDuration(totalTime)}";
+		}
+		if (_playlist != null && _playlist.IsSystem)
+		{
+			HeaderCover.Background = (Microsoft.UI.Xaml.Media.Brush)App.Current.Resources["AppAccentBrush"];
+			HeaderCover.Child = new Microsoft.UI.Xaml.Controls.FontIcon
+			{
+				Glyph = "\ue00b",
+				FontSize = 48.0,
+				Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White),
+				HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Center,
+				VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center
+			};
+		}
+		else if (!string.IsNullOrEmpty(_playlist.CoverImagePath) && System.IO.File.Exists(_playlist.CoverImagePath))
+		{
+			try
+			{
+				var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(_playlist.CoverImagePath));
+				bmp.DecodePixelHeight = 120;
+				HeaderCover.Background = new Microsoft.UI.Xaml.Media.ImageBrush
+				{
+					ImageSource = bmp,
+					Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill
+				};
+				HeaderCover.Child = null;
+			}
+			catch
+			{
+				HeaderCover.Child = BuildCoverMosaic(_tracks, 120.0, 120.0);
+			}
+		}
+		else
+		{
+			HeaderCover.Child = BuildCoverMosaic(_tracks, 120.0, 120.0);
+			HeaderCover.Background = (Microsoft.UI.Xaml.Media.Brush)App.Current.Resources["AppSurfaceBrush"];
+		}
 		DisplayedTracks.Clear();
 		if (_tracks.Count <= 0)
 		{
@@ -187,7 +263,7 @@ public sealed partial class PlaylistDetailPage : Page
 	{
 		if (_tracks.Count > 0)
 		{
-			App.MainWindowInstance?.PlayTrack(_tracks[0], _tracks);
+			App.MainWindowInstance?.PlayTrack(_tracks[0], _tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + _playlist.Name);
 			App.MainWindowInstance?.EnableContinuousPlaybackIfOff();
 		}
 	}
@@ -271,7 +347,7 @@ public sealed partial class PlaylistDetailPage : Page
 			}
 			else
 			{
-				App.MainWindowInstance?.PlayTrack(dataContext, _tracks);
+				App.MainWindowInstance?.PlayTrack(dataContext, _tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + _playlist.Name);
 			}
 			if (frameworkElement is Border && frameworkElement.Parent is Grid coverGrid)
 			{
@@ -284,7 +360,7 @@ public sealed partial class PlaylistDetailPage : Page
 	{
 		if ((e.OriginalSource as FrameworkElement)?.DataContext is Track track)
 		{
-			App.MainWindowInstance?.PlayTrack(track, _tracks);
+			App.MainWindowInstance?.PlayTrack(track, _tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + _playlist.Name);
 			TrackListView?.SelectedItems.Clear();
 		}
 	}
@@ -627,14 +703,19 @@ public sealed partial class PlaylistDetailPage : Page
             App.MainWindowInstance?.NavigateToAlbum(album);
         }
     }
+	private void TrackListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+	{
+		e.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+	}
+
+	private void TrackListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+	{
+		_tracks.Clear();
+		_tracks.AddRange(DisplayedTracks);
+		
+		_playlist.TrackIds = _tracks.Select(t => t.Id).ToList();
+		_ = App.Cache.UpsertPlaylistAsync(_playlist);
+		
+		App.MainWindowInstance?.RefreshQueueIfMatches(_tracks);
+	}
 }
-
-
-
-
-
-
-
-
-
-

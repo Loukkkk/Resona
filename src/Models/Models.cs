@@ -83,6 +83,17 @@ public class Track : INotifyPropertyChanged
     [System.Text.Json.Serialization.JsonIgnore]
     public string DisplayGenre { get { var a = Genre; return Resona.App.Settings.Current.GenreMappings.TryGetValue(a, out var m) ? m : a; } }
 
+    public string YearAndGenreDisplay 
+    {
+        get 
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            if (Year > 0) parts.Add(Year.ToString());
+            if (!string.IsNullOrWhiteSpace(DisplayGenre) && DisplayGenre != "Unknown genre" && DisplayGenre != "Genre inconnu" && DisplayGenre != "Unknown" && DisplayGenre != "Inconnu") parts.Add(DisplayGenre);
+            return parts.Count > 0 ? " • " + string.Join(" • ", parts) : "";
+        }
+    }
+
     private string? _coverArtPath;
     public string? CoverArtPath
     {
@@ -118,6 +129,28 @@ public class Track : INotifyPropertyChanged
     public double OpacityPlaying => IsPlaying ? 1.0 : 0.0;
     public double OpacityPlayingBg => IsPlaying ? 0.25 : 0.0;
 
+    // Etat favori transitoire (source de verite = appartenance a la playlist systeme
+    // Favoris), rafraichi a l'affichage des listes pour piloter le coeur au survol.
+    [System.Text.Json.Serialization.JsonIgnore]
+    private bool _isFavorite;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsFavorite
+    {
+        get => _isFavorite;
+        set
+        {
+            if (_isFavorite != value)
+            {
+                _isFavorite = value;
+                Raise();
+                Raise(nameof(FavoriteGlyph));
+            }
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string FavoriteGlyph => IsFavorite ? "\ue00b" : "\ue006";
+
     private double _normalizationGainDb;
     public double NormalizationGainDb
     {
@@ -144,6 +177,11 @@ public class Playlist
     public List<string> TrackIds     { get; set; } = new();
     public DateTime     DateCreated  { get; set; } = DateTime.UtcNow;
     public DateTime     DateModified { get; set; } = DateTime.UtcNow;
+    // Playlist systeme (ex. Favoris) : non renommable, non supprimable, pochette non modifiable,
+    // toujours affichee en tete de liste.
+    public bool          IsSystem     { get; set; } = false;
+
+    public const string FavoritesId = "__favorites__";
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -178,6 +216,13 @@ public class AppSettings
 
     // Localisation
     public string AppLanguage { get; set; } = "";
+    public bool SaveWindowPosition { get; set; } = false;
+    public bool SaveWindowSize { get; set; } = false;
+    public bool EnableUpNextPanel { get; set; } = false;
+    public int WindowWidth { get; set; } = 1200;
+    public int WindowHeight { get; set; } = 800;
+    public int WindowX { get; set; } = -1;
+    public int WindowY { get; set; } = -1;
 
     // BibliothÃ¨que
     public List<string> MusicFolders           { get; set; } = new();
@@ -238,13 +283,22 @@ public class AppSettings
     public bool MinimizeToTrayOnClose { get; set; } = false;
     public bool StartWithWindows { get; set; } = false;
     public bool StartMinimized { get; set; } = false;
+    public bool EnableMiniPlayerButton { get; set; } = true;
+    public bool MiniPlayerAlwaysOnTop { get; set; } = true;
+    public bool EnableDiscordRichPresence { get; set; } = false;
 
-    // Ã‰galiseur
+    // Boutons de la PlayerBar (favoris / egaliseur rapide)
+    public bool EnableFavoriteButton { get; set; } = true;
+    public bool EnableEqualizerQuickButton { get; set; } = true;
+
+    // Traitement Audio (Crossfade / Egaliseur)
+    public bool EnableCrossfade { get; set; } = false;
+    public int CrossfadeDurationSeconds { get; set; } = 3;
     public bool EqualizerEnabled { get; set; } = false;
     public double[] EqualizerBands { get; set; } = new double[10] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
 //  ThemePresets
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -268,6 +322,41 @@ public static class ThemePresets
         new("Gris Ardoise", "#8A9BB0", "#B0BEC5", "#1C1F29", "#2D3242"),
         new("Noir Absolu",  "#000000", "#222222", "#000000", "#0D0D0D"),
         new("Blanc Pur",    "#FFFFFF", "#CCCCCC", "#F0F0F0", "#E0E0E0"),
+    };
+}
+
+// ----------------------------------------------------------------
+//  EqualizerPresets
+//  Liste partagee des 18 presets d'egaliseur (10 bandes chacun),
+//  utilisee par SettingsPage (edition complete) et par le flyout
+//  rapide de la PlayerBar (acces rapide depuis le lecteur), pour
+//  eviter toute duplication entre les deux.
+// ----------------------------------------------------------------
+
+public record EqualizerPreset(string Name, double[] Bands);
+
+public static class EqualizerPresets
+{
+    public static readonly EqualizerPreset[] All =
+    {
+        new("Flat",         new double[10] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }),
+        new("Bass Boost",   new double[10] { 6.0, 5.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }),
+        new("Rock",         new double[10] { 5.0, 4.0, 3.0, -1.0, -2.0, -1.0, 2.0, 3.0, 4.0, 4.0 }),
+        new("Pop",          new double[10] { -1.0, -1.0, 0.0, 2.0, 4.0, 4.0, 2.0, 0.0, -1.0, -2.0 }),
+        new("Electro",      new double[10] { 5.0, 4.0, 1.0, 0.0, -2.0, 0.0, 1.0, 3.0, 4.0, 5.0 }),
+        new("Classical",    new double[10] { 3.0, 2.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0 }),
+        new("Acoustic",     new double[10] { 2.0, 1.0, 0.0, 1.0, 2.0, 2.0, 3.0, 2.0, 1.0, 0.0 }),
+        new("Dance",        new double[10] { 4.0, 3.0, 2.0, 0.0, -1.0, 0.0, 2.0, 3.0, 4.0, 4.0 }),
+        new("Hip-Hop",      new double[10] { 5.0, 4.0, 1.0, 0.0, -1.0, -1.0, 1.0, 2.0, 3.0, 4.0 }),
+        new("Jazz",         new double[10] { 3.0, 2.0, 0.0, 1.0, 2.0, 2.0, 1.0, 0.0, 1.0, 2.0 }),
+        new("Vocal",        new double[10] { -2.0, -1.0, 0.0, 1.0, 3.0, 4.0, 3.0, 1.0, 0.0, -1.0 }),
+        new("Treble",       new double[10] { -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0 }),
+        new("Metal",        new double[10] { 4.0, 3.0, 0.0, -2.0, -3.0, -2.0, 0.0, 2.0, 4.0, 5.0 }),
+        new("Party",        new double[10] { 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 5.0 }),
+        new("R&B",          new double[10] { 3.0, 5.0, 4.0, 1.0, -1.0, -1.0, 1.0, 2.0, 3.0, 4.0 }),
+        new("Spoken Word",  new double[10] { -4.0, -2.0, 0.0, 2.0, 4.0, 5.0, 4.0, 2.0, 0.0, -2.0 }),
+        new("Piano",        new double[10] { 2.0, 1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 3.0, 2.0, 1.0 }),
+        new("Lofi",         new double[10] { 4.0, 5.0, 3.0, 0.0, -2.0, -4.0, -5.0, -5.0, -4.0, -3.0 }),
     };
 }
 

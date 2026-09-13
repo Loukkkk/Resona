@@ -109,14 +109,43 @@ public sealed partial class AlbumsPage : Page
 	private List<Track> _library = new List<Track>();
 	private string _currentSort = "name_asc";
 
+	private void UpdateSortButton()
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		bool isAsc = parts.Length > 1 && parts[1] == "asc";
+
+		string sortName = field switch
+		{
+			"name" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name,
+			"artist" => Resona.Models.Strings.Current.LibraryPage_Sort_Artist,
+			"date" => Resona.Models.Strings.Current.LibraryPage_Sort_DateAdded,
+			"count" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Count,
+			_ => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name
+		};
+		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "" : "";
+	}
+
 	private void SortAlbumsMenu_Click(object sender, RoutedEventArgs e)
 	{
-		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string sort)
+		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string field)
 		{
-			_currentSort = sort;
-			SortButtonLabel.Text = item.Text;
+			string dir = (field == "date" || field == "count") ? "desc" : "asc";
+			_currentSort = $"{field}_{dir}";
+			UpdateSortButton();
 			BuildUIBatched(SearchBox.Text);
 		}
+	}
+
+	private void SortDirection_Click(object sender, RoutedEventArgs e)
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
+		_currentSort = $"{field}_{dir}";
+		UpdateSortButton();
+		BuildUIBatched(SearchBox.Text);
 	}
 
 
@@ -734,13 +763,19 @@ public sealed partial class AlbumsPage : Page
 
 
 		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.Album, StringComparer.OrdinalIgnoreCase)
-				where !string.IsNullOrWhiteSpace(g.Key) && g.Count() > 1 && (string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(filter, StringComparison.OrdinalIgnoreCase))
+				where !string.IsNullOrWhiteSpace(g.Key) && (string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(filter, StringComparison.OrdinalIgnoreCase))
 				select g;
 		
 		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
 		{
+			"name_asc" => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase),
 			"name_desc" => listQuery.OrderByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"count_asc" => listQuery.OrderBy(g => g.Count()),
 			"count_desc" => listQuery.OrderByDescending(g => g.Count()),
+			"artist_asc" => listQuery.OrderBy(g => g.First().DisplayArtist, StringComparer.OrdinalIgnoreCase).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"artist_desc" => listQuery.OrderByDescending(g => g.First().DisplayArtist, StringComparer.OrdinalIgnoreCase).ThenByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"date_asc" => listQuery.OrderBy(g => g.Max(t => t.DateAdded)).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"date_desc" => listQuery.OrderByDescending(g => g.Max(t => t.DateAdded)).ThenByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
 			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
 		};
 
@@ -1617,7 +1652,7 @@ public sealed partial class AlbumsPage : Page
 
 
 
-				App.MainWindowInstance?.PlayTrack(tracks[0], tracks);
+				App.MainWindowInstance?.PlayTrack(tracks[0], tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "L'album : " : "Album: ") + tracks[0].Album);
 
 
 

@@ -10,7 +10,7 @@ A modern Windows local music player designed for seamless library management, mu
 * 🖼️ **Mini Player:** A compact, always-on-top mini player mode for controlling playback while you work.
 * 🔊 **Normalization:** ReplayGain-style RMS/peak volume analysis. Gain is applied only during playback, ensuring your original files are never modified.
 * 🎤 **Synchronized Lyrics:** Automatically fetches and caches synchronized lyrics via [LRCLib](https://lrclib.net), complete with a built-in translation option.
-* 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality covers using the iTunes Search API.
+* 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality covers online.
 * 📖 **Artist Biographies:** Automatically fetches and displays artist biographies and information directly from Wikipedia.
 * 🔍 **Auto-Tagging:** Automatically identifies unknown tracks using acoustic fingerprinting (Chromaprint/fpcalc) to fetch accurate metadata (artist, title) from MusicBrainz.
 * 📝 **Playlist Management:** Full support for M3U and M3U8 import/export.

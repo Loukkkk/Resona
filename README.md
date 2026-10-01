@@ -1,3 +1,7 @@
+﻿<div align="center">
+  <img src="src/icon.ico" width="128" alt="Resona Logo">
+</div>
+
 # 🎵 Resona
 
 A modern Windows local music player designed for seamless library management, music downloading, auto-tagging, lyrics & cover fetching, AI playlist prompts, an equalizer, EN/FR support & more.

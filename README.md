@@ -1,5 +1,5 @@
 ﻿<div align="center">
-  <img src="src/icon.ico" width="128" alt="Resona Logo">
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="src/icon.ico" width="128" alt="Resona Logo">
   <h1>🎵 Resona</h1>
   <p><b>A modern Windows local music player designed for seamless library management, music downloading, auto-tagging, lyrics & cover fetching, AI playlist prompts, an equalizer, EN/FR support & more.</b></p>
   </div>
@@ -124,6 +124,7 @@ Resona does not have an installer — to fully remove it:
 2. Delete the application folder containing the `.exe` file.
 3. Delete the following cache/settings folder:
    - `%LOCALAPPDATA%\Resona`
+
 
 
 

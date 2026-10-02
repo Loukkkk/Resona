@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 
@@ -87,12 +87,7 @@ public sealed partial class GenresPage : Page
 
 
 	private List<Track> _library = new List<Track>();
-
-
-
-
-
-
+	private string _currentSort = "name_asc";
 
 	private int _builtLibraryHash;
 
@@ -191,18 +186,22 @@ public sealed partial class GenresPage : Page
 
 
 	public GenresPage()
-
-
-
 	{
-
-
-
 		InitializeComponent();
+		_currentSort = App.Settings.Current.GenresSort;
+		Resona.Helpers.DisplayCountHelper.Setup(DisplayCountCombo, App.Settings.Current.GenresDisplayLimit, v =>
+		{
+			App.Settings.Current.GenresDisplayLimit = v;
+			_ = App.Settings.SaveAsync();
+			_currentPage = 0;
+			BuildUIBatched(SearchBox.Text);
+		});
+
 
 
 
 		_instance = this;
+		UpdateSortButton();
 
 
 
@@ -218,13 +217,68 @@ public sealed partial class GenresPage : Page
 
 
 
+	private void UpdateSortButton()
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		bool isAsc = parts.Length > 1 && parts[1] == "asc";
+
+		string sortName = field switch
+		{
+			"name" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name,
+			"count" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Count,
+			_ => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name
+		};
+		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "\uE74A" : "\uE74B";
+	}
+
+	private void SortGenresMenu_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string field)
+		{
+			string dir = (field == "count") ? "desc" : "asc";
+			_currentSort = $"{field}_{dir}";
+			App.Settings.Current.GenresSort = _currentSort;
+			_ = App.Settings.SaveAsync();
+			UpdateSortButton();
+			BuildUIBatched(SearchBox.Text);
+		}
+	}
+
+	private void SortDirection_Click(object sender, RoutedEventArgs e)
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
+		_currentSort = $"{field}_{dir}";
+		App.Settings.Current.GenresSort = _currentSort;
+		_ = App.Settings.SaveAsync();
+		UpdateSortButton();
+		BuildUIBatched(SearchBox.Text);
+	}
+
+		private void ShuffleAll_Click(object sender, RoutedEventArgs e)
+	{
+		var listQuery = from g in _library.GroupBy<Track, string>(t => string.IsNullOrWhiteSpace(t.Genre) ? "Genre inconnu" : t.DisplayGenre, StringComparer.OrdinalIgnoreCase)
+						where string.IsNullOrWhiteSpace(SearchBox.Text) || g.Key.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase)
+						select g;
+        var groups = listQuery.ToList();
+        if (groups.Count > 0)
+        {
+            Random random = new Random();
+            var randomGroup = groups[random.Next(groups.Count)];
+            List<Track> tracks = randomGroup.OrderBy(t => t.Artist).ThenBy(t => t.Album).ThenBy(t => t.TrackNumber).ToList();
+            string title = randomGroup.Key;
+            App.MainWindowInstance?.ShowTrackCollection(title, tracks, "Genre");
+            Track randomTrack = tracks[random.Next(tracks.Count)];
+            App.MainWindowInstance?.SetShuffleModeAndPlay(randomTrack, tracks);
+        }
+	}
+
 	public void LoadData(List<Track> library)
 
-
-
 	{
-
-
 
 		int num = ComputeHash(library);
 
@@ -606,31 +660,24 @@ public sealed partial class GenresPage : Page
 
 
 
-		List<(string, List<Track>)> list = (from g in (from g in _library.GroupBy<Track, string>(GenreKey, StringComparer.OrdinalIgnoreCase)
+		var listQuery = from g in _library.GroupBy<Track, string>(GenreKey, StringComparer.OrdinalIgnoreCase)
+						where string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)
+						select g;
+		
+		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
+		{
+			"name_asc" => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"name_desc" => listQuery.OrderByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"count_asc" => listQuery.OrderBy(g => g.Count()),
+			"count_desc" => listQuery.OrderByDescending(g => g.Count()),
+			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+		};
+
+		List<(string, List<Track>)> list = listOrdered.Select(g => (Name: g.Key, Tracks: g.OrderBy(t => t.Artist).ThenBy(t => t.Album).ThenBy(t => t.TrackNumber).ToList())).ToList();
 
 
 
-				where string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)
-
-
-
-				select g).OrderBy<IGrouping<string, Track>, string>((IGrouping<string, Track> g) => g.Key, StringComparer.OrdinalIgnoreCase)
-
-
-
-			select (Name: g.Key, Tracks: (from t in g
-
-
-
-				orderby t.Artist, t.Album, t.TrackNumber
-
-
-
-				select t).ToList())).ToList();
-
-
-
-		_totalPages = (int)Math.Ceiling((double)list.Count / 24.0);
+		_totalPages = (int)Math.Ceiling((double)list.Count / (double)Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.GenresDisplayLimit, list.Count));
 
 
 
@@ -706,7 +753,8 @@ public sealed partial class GenresPage : Page
 
 
 
-		List<(string Name, List<Track> Tracks)> pageGenres = list.Skip(_currentPage * 24).Take(24).ToList();
+		int genresPageSize = Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.GenresDisplayLimit, list.Count);
+		List<(string Name, List<Track> Tracks)> pageGenres = list.Skip(_currentPage * genresPageSize).Take(genresPageSize).ToList();
 
 
 
@@ -1110,6 +1158,8 @@ public sealed partial class GenresPage : Page
 }
 
 }
+
+
 
 
 

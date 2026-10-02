@@ -1,5 +1,5 @@
-﻿// ============================================================
-//  Models.cs  â€”  Resona
+// ============================================================
+//  Models.cs  —  Resona
 //  Fusion de : Track.cs, Playlist.cs, AppSettings.cs, ThemePresets.cs
 // ============================================================
 
@@ -10,9 +10,9 @@ using System.Runtime.CompilerServices;
 
 namespace Resona.Models;
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------
 //  Track
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------
 
 public class Track : INotifyPropertyChanged
 {
@@ -165,9 +165,9 @@ public class Track : INotifyPropertyChanged
     public override string ToString() => $"{Artist} - {Title}";
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------
 //  Playlist
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------
 
 public class Playlist
 {
@@ -184,9 +184,9 @@ public class Playlist
     public const string FavoritesId = "__favorites__";
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------
 //  AppSettings
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------
 
 public enum AppBackdropStyle { Mica, MicaAlt, Acrylic, Solid }
 
@@ -218,17 +218,19 @@ public class AppSettings
     public string AppLanguage { get; set; } = "";
     public bool SaveWindowPosition { get; set; } = false;
     public bool SaveWindowSize { get; set; } = false;
-    public bool EnableUpNextPanel { get; set; } = false;
+    public bool EnableUpNextPanel { get; set; } = true;
     public int WindowWidth { get; set; } = 1200;
     public int WindowHeight { get; set; } = 800;
     public int WindowX { get; set; } = -1;
     public int WindowY { get; set; } = -1;
 
-    // BibliothÃ¨que
+    // Bibliothèque
     public List<string> MusicFolders           { get; set; } = new();
+    // Fichiers retirés de la bibliothèque ("Retirer de l'app") : ignorés lors des scans, sans être supprimés du disque
+    public List<string> ExcludedFilePaths      { get; set; } = new();
     public bool         HasCompletedOnboarding { get; set; } = false;
 
-    // FonctionnalitÃ©s et audio
+    // Fonctionnalités et audio
     public double Volume               { get; set; } = 100.0;
     public int SavedPlaybackMode       { get; set; } = 0;
     public bool NormalizationEnabled   { get; set; } = false;
@@ -252,39 +254,52 @@ public class AppSettings
     public AppBackdropStyle Backdrop                   { get; set; } = AppBackdropStyle.Solid;
     public int              ThemePresetIndex           { get; set; } = 0;
     public bool             PlayerGradientOverflowEnabled { get; set; } = true;
+    // Gradient à l'intérieur du lecteur (si désactivé, le gradient qui dépasse est aussi désactivé)
+    public bool             PlayerGradientEnabled         { get; set; } = true;
 
-    // CatÃ©gories visibles dans la nav
+    // Catégories visibles dans la nav
     public bool ShowLibraryCategory    { get; set; } = true;
     public bool ShowAlbumsCategory     { get; set; } = true;
     public bool ShowPlaylistsCategory  { get; set; } = true;
     public bool ShowArtistsCategory    { get; set; } = true;
     public bool ShowStatisticsCategory { get; set; } = true;
     public bool ShowDownloadCategory   { get; set; } = true;
-    // ParamÃ¨tres d'affichage des pages
+    // Paramètres d'affichage des pages
     public string LibrarySort { get; set; } = "artist_asc";
-    public int AlbumsSortIndex         { get; set; } = 0;
+    public string AlbumsSort { get; set; } = "name_asc";
     public int AlbumsDisplayCountIndex { get; set; } = 0;
-    public int ArtistsSortIndex        { get; set; } = 0;
+    public string ArtistsSort { get; set; } = "name_asc";
     public int ArtistsDisplayCountIndex{ get; set; } = 0;
-    public int GenresSortIndex         { get; set; } = 0;
+    public string GenresSort { get; set; } = "name_asc";
+    public string FoldersSort { get; set; } = "name_asc";
+    public string PlaylistsSort { get; set; } = "name_asc";
     public int GenresDisplayCountIndex { get; set; } = 0;
     public bool ShowGenresCategory     { get; set; } = true;
     public bool ShowFoldersCategory    { get; set; } = true;
 
     public int LibraryDisplayLimit { get; set; } = 50;
 
-    // TÃ©lÃ©chargement
+    // Nombre de cartes affichées par page (-1 = tout afficher)
+    public int AlbumsDisplayLimit { get; set; } = 50;
+    public int ArtistsDisplayLimit { get; set; } = 50;
+    public int GenresDisplayLimit { get; set; } = 50;
+    public int FoldersDisplayLimit { get; set; } = 50;
+    public int PlaylistsDisplayLimit { get; set; } = -1;
+
+    // Téléchargement
     public string DownloadFolder { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
     public DownloadFormat DownloadFormat { get; set; } = DownloadFormat.Opus;
     public string DownloadCodec { get; set; } = string.Empty;
     public DownloadBitrate DownloadBitrate { get; set; } = DownloadBitrate.Best;
 
-    // SystÃ¨me
+    // Système
     public bool MinimizeToTrayOnClose { get; set; } = false;
     public bool StartWithWindows { get; set; } = false;
     public bool StartMinimized { get; set; } = false;
     public bool EnableMiniPlayerButton { get; set; } = true;
     public bool MiniPlayerAlwaysOnTop { get; set; } = true;
+    public int MiniPlayerWidth { get; set; } = 0;   // 0 = taille par defaut (340)
+    public int MiniPlayerHeight { get; set; } = 0;  // 0 = taille par defaut (600)
     public bool EnableDiscordRichPresence { get; set; } = false;
 
     // Boutons de la PlayerBar (favoris / egaliseur rapide)
@@ -298,9 +313,9 @@ public class AppSettings
     public double[] EqualizerBands { get; set; } = new double[10] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 }
 
-// Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
+// ------------------------------------------------------------
 //  ThemePresets
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------
 
 public record ThemePreset(
     string Name,
@@ -314,8 +329,8 @@ public static class ThemePresets
     public static readonly ThemePreset[] All =
     {
         new("Violet Nuit",  "#7C5CFF", "#FF5CA8", "#161129", "#241E42"),
-        new("Bleu OcÃ©an",   "#4FA3FF", "#5CE1FF", "#102033", "#1A304D"),
-        new("Ã‰meraude",     "#2ED6A1", "#7CFFCB", "#0D2920", "#174233"),
+        new("Bleu Océan",   "#4FA3FF", "#5CE1FF", "#102033", "#1A304D"),
+        new("Émeraude",     "#2ED6A1", "#7CFFCB", "#0D2920", "#174233"),
         new("Corail",       "#FF6B5C", "#FFA35C", "#291611", "#42251D"),
         new("Rose Magenta", "#FF5CA8", "#FF8FD0", "#291123", "#421D36"),
         new("Ambre",        "#FFA63D", "#FFD15C", "#291E11", "#42321D"),
@@ -337,6 +352,25 @@ public record EqualizerPreset(string Name, double[] Bands);
 
 public static class EqualizerPresets
 {
+    /// <summary>
+    /// Retourne le preset dont les 10 bandes correspondent aux bandes donnees (a 0.05 dB pres),
+    /// ou null si la configuration est personnalisee.
+    /// </summary>
+    public static EqualizerPreset? FindMatch(double[]? bands)
+    {
+        if (bands == null || bands.Length != 10) return null;
+        foreach (var preset in All)
+        {
+            bool same = true;
+            for (int i = 0; i < 10; i++)
+            {
+                if (Math.Abs(preset.Bands[i] - bands[i]) > 0.05) { same = false; break; }
+            }
+            if (same) return preset;
+        }
+        return null;
+    }
+
     public static readonly EqualizerPreset[] All =
     {
         new("Flat",         new double[10] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }),
@@ -359,8 +393,4 @@ public static class EqualizerPresets
         new("Lofi",         new double[10] { 4.0, 5.0, 3.0, 0.0, -2.0, -4.0, -5.0, -5.0, -4.0, -3.0 }),
     };
 }
-
-
-
-
 

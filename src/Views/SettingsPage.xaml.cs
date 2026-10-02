@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Text;
+using Microsoft.UI.Text;
 using Microsoft.UI.Input;
 using Windows.UI.Core;
 using Microsoft.UI.Xaml.Shapes;
@@ -33,6 +33,9 @@ public sealed partial class SettingsPage : Page
 {
 	private bool _isLoading = true;
 
+	private readonly List<(Resona.Models.EqualizerPreset Preset, Button Button)> _eqPresetButtons = new();
+	private bool _eqLookWhite;
+
 	private static readonly string[] EqualizerLabels = new string[10] { "31", "62", "125", "250", "500", "1K", "2K", "4K", "8K", "16K" };
 	private bool _isInitializingUpdates = true;
     public SettingsPage()
@@ -48,8 +51,259 @@ public sealed partial class SettingsPage : Page
 			{
 				BuildPresetsList();
 				RefreshFoldersList();
+				HookToggleRestColors(this);
+				ApplyPureWhiteControlLook();
 			});
 		};
+		App.ThemeApplied += OnAppThemeApplied;
+		base.Unloaded += (s, e) => App.ThemeApplied -= OnAppThemeApplied;
+	}
+
+	private void OnAppThemeApplied()
+	{
+		DispatcherQueue?.TryEnqueue(DispatcherQueuePriority.Low, ApplyPureWhiteControlLook);
+	}
+
+	// Theme blanc pur uniquement : les boutons de cette page recoivent un style visible (fond gris
+	// clair + bordure, comme le bouton de tri de la bibliotheque) avec un survol sans flash blanc.
+	// Dans les autres themes on revient au style normal (aucun changement).
+	private void ApplyPureWhiteControlLook()
+	{
+		bool white = App.IsPureWhiteTheme;
+		var res = Application.Current.Resources;
+		Style whiteStyle = white ? res["PureWhiteButtonStyle"] as Style : null;
+		foreach (Button btn in FindAllOfType<Button>(this))
+		{
+			if (btn is DropDownButton)
+			{
+				// Selecteur de langue : style dedie (fleche sombre fixe, fond qui ne disparait pas au
+				// survol). Dans les autres themes on revient au style normal.
+				btn.ClearValue(Control.BackgroundProperty);
+				string ddKey = white ? "PureWhiteDropDownButtonStyle" : "ThemedDropDownButtonStyle";
+				if (res[ddKey] is Style ddStyle) btn.Style = ddStyle;
+				else btn.ClearValue(FrameworkElement.StyleProperty);
+				continue;
+			}
+			if (white && whiteStyle != null) btn.Style = whiteStyle;
+			else btn.ClearValue(FrameworkElement.StyleProperty);
+		}
+		foreach (ToggleSwitch ts in FindAllOfType<ToggleSwitch>(this)) { ApplyToggleDisabledBrushes(ts); RefreshToggleTheme(ts); }
+		foreach (var kv in _toggleAvail) ApplyToggleAvailable(kv.Key, kv.Value);
+		foreach (ComboBox combo in FindAllOfType<ComboBox>(this))
+		{
+			if (white) combo.Background = new SolidColorBrush(Color.FromArgb(255, 0xE0, 0xE0, 0xE0));
+			else combo.ClearValue(Control.BackgroundProperty);
+		}
+		ApplyCrossfadeSliderLook(white);
+		// Egaliseur : sliders reconstruits quand on entre/sort du theme blanc (leurs couleurs de piste en dependent),
+		// sinon on rafraichit juste le style des boutons de presets et la bordure du preset actif.
+		if (_eqLookWhite != white && App.Settings.Current.EqualizerEnabled && EqualizerSliders != null) BuildEqualizerSliders();
+		else UpdateEqPresetHighlight();
+	}
+
+	// Theme blanc uni : barre du fondu enchaine -> noir a gauche du rond (partie remplie), blanc a droite.
+	// Slider deja affiche : on pose les ressources (etats survol/pression) ET les fills directement sur les
+	// parties du template ; hors theme blanc on retire tout pour retrouver le rendu normal.
+	// Fills d'origine du template (captures AVANT toute modification) : ClearValue ferait disparaitre la barre,
+	// car le template pose ces fills en valeur locale.
+	private Brush? _cfFilledOrig, _cfTrackOrig;
+	private bool _cfCaptured;
+
+	private void ApplyCrossfadeSliderLook(bool white)
+	{
+		if (CrossfadeDurationSlider == null) return;
+		var slider = CrossfadeDurationSlider;
+		string[] valueKeys = { "SliderTrackValueFill", "SliderTrackValueFillPointerOver", "SliderTrackValueFillPressed" };
+		string[] trackKeys = { "SliderTrackFill", "SliderTrackFillPointerOver", "SliderTrackFillPressed" };
+		var dark = new SolidColorBrush(Color.FromArgb(255, 0x1A, 0x1A, 0x1A));
+		var light = new SolidColorBrush(Color.FromArgb(255, 0xFF, 0xFF, 0xFF));
+
+		// Capture des fills d'origine AVANT de poser nos ressources locales (sinon on capturerait nos couleurs).
+		slider.ApplyTemplate();
+		var filled = Resona.Helpers.VisualTreeHelperExtensions.FindVisualChild<Rectangle>(slider, "HorizontalDecreaseRect");
+		var track = Resona.Helpers.VisualTreeHelperExtensions.FindVisualChild<Rectangle>(slider, "HorizontalTrackRect");
+		if (filled == null || track == null) return;
+		if (!_cfCaptured)
+		{
+			_cfFilledOrig = filled.Fill;
+			_cfTrackOrig = track.Fill;
+			_cfCaptured = true;
+		}
+
+		foreach (string k in valueKeys) { if (white) slider.Resources[k] = dark; else slider.Resources.Remove(k); }
+		foreach (string k in trackKeys) { if (white) slider.Resources[k] = light; else slider.Resources.Remove(k); }
+		if (white)
+		{
+			filled.Fill = dark;
+			track.Fill = light;
+		}
+		else
+		{
+			if (_cfFilledOrig != null) filled.Fill = _cfFilledOrig;
+			if (_cfTrackOrig != null) track.Fill = _cfTrackOrig;
+		}
+	}
+
+	private static IEnumerable<T> FindAllOfType<T>(DependencyObject parent) where T : DependencyObject
+	{
+		int count = VisualTreeHelper.GetChildrenCount(parent);
+		for (int i = 0; i < count; i++)
+		{
+			DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+			if (child is T typed) yield return typed;
+			foreach (T d in FindAllOfType<T>(child)) yield return d;
+		}
+	}
+
+	// Le fond "actif" des ToggleSwitch au repos ne suivait pas nos ressources (seul le survol le
+	// faisait). On l'applique donc directement sur le rectangle du template, avec les MEMES objets
+	// brush que ceux mutes par ApplyThemeResources : la couleur suit le theme en direct, et le
+	// survol/pression (animations du template) revient toujours a cette valeur locale.
+	private static void HookToggleRestColors(DependencyObject parent)
+	{
+		int count = VisualTreeHelper.GetChildrenCount(parent);
+		for (int i = 0; i < count; i++)
+		{
+			DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+			if (child is ToggleSwitch toggle)
+			{
+				toggle.Loaded += (s, e) => ApplyToggleRestColor((ToggleSwitch)s);
+				toggle.IsEnabledChanged += (s, e) =>
+				{
+					var t = (ToggleSwitch)s;
+					ApplyToggleDisabledBrushes(t);
+					RefreshToggleTheme(t);
+				};
+				ApplyToggleRestColor(toggle);
+			}
+			HookToggleRestColors(child);
+		}
+	}
+
+	private readonly Dictionary<ToggleSwitch, bool> _toggleAvail = new();
+
+	// Interrupteur disponible / grise. En theme blanc uni, l'etat "Disabled" du template ne dessine plus le rail
+	// (seul le rond reste visible) : on garde donc l'etat Normal (rail visible), on bloque seulement
+	// l'interaction et on attenue l'opacite. Dans les autres themes : IsEnabled classique.
+	private void SetToggleAvailable(ToggleSwitch t, bool available)
+	{
+		_toggleAvail[t] = available;
+		ApplyToggleAvailable(t, available);
+	}
+
+	private static void ApplyToggleAvailable(ToggleSwitch t, bool available)
+	{
+		ApplyToggleDisabledBrushes(t); // met a jour les couleurs "Disabled" selon le theme courant (evite les restes du theme blanc)
+		if (true) // tous les themes : etat Normal (rail visible) + interaction bloquee + opacite attenuee
+		{
+			t.IsEnabled = true;
+			t.IsHitTestVisible = available;
+			t.IsTabStop = available;
+			t.Opacity = available ? 1.0 : 0.6;
+		}
+		else
+		{
+			t.IsEnabled = available;
+			t.IsHitTestVisible = true;
+			t.IsTabStop = true;
+			t.Opacity = available ? 1.0 : 0.4;
+		}
+	}
+
+	private static readonly string[] DisabledToggleKeys =
+	{
+		"ToggleSwitchFillOffDisabled", "ToggleSwitchStrokeOffDisabled", "ToggleSwitchFillOnDisabled",
+		"ToggleSwitchStrokeOnDisabled", "ToggleSwitchKnobFillOffDisabled", "ToggleSwitchKnobFillOnDisabled"
+	};
+
+	// Etat GRISE (desactive) : les ressources globales ne sont pas prises en compte par le template
+	// (voir ci-dessus). On les pose donc localement sur le ToggleSwitch, avec les memes objets brush que
+	// ceux mutes par ApplyThemeResources -> en theme blanc uni le rail/contour reste visible.
+	private static void ApplyToggleDisabledBrushes(ToggleSwitch toggle)
+	{
+		// Theme blanc uni : couleurs explicites (les cles du template vivent dans ThemeDictionaries, donc
+		// Application.Resources.TryGetValue ne les trouve pas) -> rail gris visible + rond gris fonce.
+		if (App.IsPureWhiteTheme)
+		{
+			SolidColorBrush B(byte r, byte g, byte b) => new SolidColorBrush(Color.FromArgb(255, r, g, b));
+			toggle.Resources["ToggleSwitchFillOffDisabled"] = B(0xEC, 0xEC, 0xEC);
+			toggle.Resources["ToggleSwitchStrokeOffDisabled"] = B(0x8A, 0x8A, 0x8A);
+			toggle.Resources["ToggleSwitchFillOnDisabled"] = B(0xB4, 0xB4, 0xB4);
+			toggle.Resources["ToggleSwitchStrokeOnDisabled"] = B(0x8A, 0x8A, 0x8A);
+			toggle.Resources["ToggleSwitchKnobFillOffDisabled"] = B(0x8A, 0x8A, 0x8A);
+			toggle.Resources["ToggleSwitchKnobFillOnDisabled"] = B(0xFF, 0xFF, 0xFF);
+			return;
+		}
+		foreach (string key in DisabledToggleKeys) toggle.Resources.Remove(key); // autres themes : rendu WinUI par defaut, aucune surcharge
+	}
+
+	private static void ApplyToggleDisabledBrushesLegacy(ToggleSwitch toggle)
+	{
+		var res = Application.Current.Resources;
+		foreach (string key in DisabledToggleKeys)
+		{
+			if (res.TryGetValue(key, out object b) && b is Brush)
+				toggle.Resources[key] = b;
+		}
+	}
+
+	// Thème blanc uni : l'état "Disabled" du template ne dessine pas le rail (seul le rond est visible, quelles que soient
+	// les couleurs). On dessine donc nous-memes un contour de rail, ajoute dans le template juste au-dessus de
+	// "OuterBorder" (sous le rond), visible uniquement en theme blanc uni quand l'interrupteur est desactive.
+	private static void RefreshToggleTheme(ToggleSwitch toggle)
+	{
+		toggle.ApplyTemplate();
+		var outer = Resona.Helpers.VisualTreeHelperExtensions.FindVisualChild<Rectangle>(toggle, "OuterBorder");
+		if (outer == null || VisualTreeHelper.GetParent(outer) is not Grid host) return;
+
+		Rectangle overlay = null;
+		int outerIndex = -1;
+		for (int i = 0; i < host.Children.Count; i++)
+		{
+			if (ReferenceEquals(host.Children[i], outer)) outerIndex = i;
+			if (host.Children[i] is Rectangle r && (r.Tag as string) == "ResonaDisabledRail") overlay = r;
+		}
+
+		bool show = App.IsPureWhiteTheme && !toggle.IsEnabled;
+		if (overlay == null)
+		{
+			if (!show || outerIndex < 0) return;
+			overlay = new Rectangle
+			{
+				Tag = "ResonaDisabledRail",
+				IsHitTestVisible = false,
+				RadiusX = outer.RadiusX,
+				RadiusY = outer.RadiusY,
+				Width = outer.Width,
+				Height = outer.Height,
+				HorizontalAlignment = outer.HorizontalAlignment,
+				VerticalAlignment = outer.VerticalAlignment,
+				Margin = outer.Margin,
+				StrokeThickness = 1.5,
+				Stroke = new SolidColorBrush(Color.FromArgb(255, 0x8A, 0x8A, 0x8A)),
+				Visibility = Visibility.Collapsed
+			};
+			Grid.SetRow(overlay, Grid.GetRow(outer));
+			Grid.SetColumn(overlay, Grid.GetColumn(outer));
+			Grid.SetRowSpan(overlay, Grid.GetRowSpan(outer));
+			Grid.SetColumnSpan(overlay, Grid.GetColumnSpan(outer));
+			host.Children.Insert(outerIndex + 1, overlay);
+		}
+		overlay.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+	}
+
+	private static void ApplyToggleRestColor(ToggleSwitch toggle)
+	{
+		ApplyToggleDisabledBrushes(toggle);
+		RefreshToggleTheme(toggle);
+		toggle.ApplyTemplate();
+		var bounds = Resona.Helpers.VisualTreeHelperExtensions.FindVisualChild<Rectangle>(toggle, "SwitchKnobBounds");
+		if (bounds == null) return;
+		var res = Application.Current.Resources;
+		if (res.TryGetValue("ToggleSwitchFillOn", out object fill) && fill is Brush fillBrush)
+			bounds.Fill = fillBrush;
+		if (res.TryGetValue("ToggleSwitchStrokeOn", out object stroke) && stroke is Brush strokeBrush)
+			bounds.Stroke = strokeBrush;
 	}
 
 	private void LoadEssentialSettings()
@@ -87,6 +341,8 @@ public sealed partial class SettingsPage : Page
 		}
 		ColorPresetsPanel.Visibility = ((current.Backdrop != AppBackdropStyle.Solid) ? Visibility.Collapsed : Visibility.Visible);
 		GradientOverflowSwitch.IsOn = current.PlayerGradientOverflowEnabled;
+		PlayerGradientSwitch.IsOn = current.PlayerGradientEnabled;
+		UpdateGradientOverflowAvailability();
 		MinimizeToTraySwitch.IsOn = current.MinimizeToTrayOnClose;
 		SaveWindowPositionSwitch.IsOn = current.SaveWindowPosition;
 		SaveWindowSizeSwitch.IsOn = current.SaveWindowSize;
@@ -195,19 +451,34 @@ public sealed partial class SettingsPage : Page
 		{
 			ThemePreset themePreset = ThemePresets.All[i];
 			int index = i;
-			Button button = new Button
+			SolidColorBrush presetBrush = new SolidColorBrush(ColorFromHex(themePreset.AccentHex));
+			// Utilise un Border (pas un Button) : le Button WinUI applique inconditionnellement
+			// son template par defaut (VisualStates PointerOver/Pressed, effet Reveal) qui
+			// continuait a masquer/estomper la couleur du preset au survol en theme blanc pur,
+			// meme en fixant Background/Opacity a chaque evenement pointeur. Un Border n'a
+			// AUCUN template ni VisualState herite : sa couleur ne peut pas etre alteree par
+			// autre chose que ce qu'on lui assigne nous-memes ci-dessous.
+			Border button = new Border
 			{
 				Width = 40.0,
 				Height = 40.0,
 				CornerRadius = new CornerRadius(20.0),
-				Padding = new Thickness(0.0),
 				UseLayoutRounding = true,
-				Background = new SolidColorBrush(ColorFromHex(themePreset.AccentHex)),
+				Background = presetBrush,
 				BorderThickness = new Thickness((index == App.Settings.Current.ThemePresetIndex) ? 3 : 0),
 				BorderBrush = new SolidColorBrush(Colors.White)
 			};
-			ToolTipService.SetToolTip(button, themePreset.Name);
-			button.Click += async delegate
+			// Nom du preset affiché dans une infobulle au survol : on force son fond/texte pour
+			// qu'elle reste lisible quel que soit le thème (fond foncé, texte blanc), plutot que
+			// de dépendre des ressources ToolTip par défaut qui suivent le thème clair/sombre.
+			ToolTip presetTooltip = new ToolTip
+			{
+				Content = themePreset.Name,
+				Background = new SolidColorBrush(Color.FromArgb(255, 0x2A, 0x2A, 0x2E)),
+				Foreground = new SolidColorBrush(Colors.White)
+			};
+			ToolTipService.SetToolTip(button, presetTooltip);
+			button.Tapped += async delegate
 			{
 				App.Settings.Current.ThemePresetIndex = index;
 				await App.Settings.SaveAsync();
@@ -215,6 +486,13 @@ public sealed partial class SettingsPage : Page
 				App.MainWindowInstance?.RefreshThemeDependentUI();
 				BuildPresetsList();
 			};
+			// Survol : la pastille s'assombrit legerement, puis revient a sa couleur. On modifie la
+			// couleur du brush directement (pas de template WinUI), donc elle ne peut jamais disparaitre.
+			Color baseColor = ColorFromHex(themePreset.AccentHex);
+			Color hoverColor = Color.FromArgb(255, (byte)(baseColor.R * 0.78), (byte)(baseColor.G * 0.78), (byte)(baseColor.B * 0.78));
+			button.PointerEntered += (s, e) => presetBrush.Color = hoverColor;
+			button.PointerExited += (s, e) => presetBrush.Color = baseColor;
+			button.PointerCanceled += (s, e) => presetBrush.Color = baseColor;
 			PresetsList.Items.Add(button);
 		}
 	}
@@ -251,7 +529,7 @@ public sealed partial class SettingsPage : Page
 			Grid.SetColumn(textBlock, 0);
 			Button button = new Button
 			{
-				Content = "Retirer",
+				Content = Resona.Models.Strings.Current.SettingsPage_Content_RemoveFolder,
 				Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"],
 				UseLayoutRounding = true
 			};
@@ -266,6 +544,7 @@ public sealed partial class SettingsPage : Page
 			grid.Children.Add(button);
 			FoldersList.Items.Add(grid);
 		}
+		ApplyPureWhiteControlLook();
 	}
 
 	private void LanguageFlyoutItem_Click(object sender, RoutedEventArgs e)
@@ -312,11 +591,16 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 
+	private void RescanFolders_Click(object sender, RoutedEventArgs e)
+	{
+		App.MainWindowInstance?.TriggerLibraryRescan();
+	}
+
 	private void UpdateTranslateVisibility()
     {
         bool lyricsOn = LyricsSwitch.IsOn;
-        TranslateLyricsSwitch.IsEnabled = lyricsOn;
-        TranslateLyricsSwitch.Opacity = lyricsOn ? 1.0 : 0.4;
+        SetToggleAvailable(TranslateLyricsSwitch, lyricsOn);
+        // (opacite geree par SetToggleAvailable)
         TranslateLyricsHintText.Opacity = lyricsOn ? 0.6 : 0.3;
     }
 
@@ -325,8 +609,8 @@ public sealed partial class SettingsPage : Page
         bool isMiniPlayerOn = ShowMiniPlayerSwitch.IsOn;
         if (MiniPlayerAlwaysOnTopSwitch != null)
         {
-            MiniPlayerAlwaysOnTopSwitch.IsEnabled = isMiniPlayerOn;
-            MiniPlayerAlwaysOnTopSwitch.Opacity = isMiniPlayerOn ? 1.0 : 0.4;
+            SetToggleAvailable(MiniPlayerAlwaysOnTopSwitch, isMiniPlayerOn);
+            // (opacite geree par SetToggleAvailable)
         }
         if (MiniPlayerAlwaysOnTopHintText != null)
         {
@@ -336,8 +620,8 @@ public sealed partial class SettingsPage : Page
 
 	private void UpdateStartMinimizedAvailability(bool enabled)
     {
-        StartMinimizedSwitch.IsEnabled = enabled;
-        StartMinimizedSwitch.Opacity = enabled ? 1.0 : 0.4;
+        SetToggleAvailable(StartMinimizedSwitch, enabled);
+        // (opacite geree par SetToggleAvailable)
         StartMinimizedHint.Opacity = enabled ? 0.6 : 0.3;
     }
 
@@ -372,6 +656,7 @@ public sealed partial class SettingsPage : Page
 		{
 			App.Settings.Current.TranslateLyricsEnabled = TranslateLyricsSwitch.IsOn;
 			await App.Settings.SaveAsync();
+			App.MainWindowInstance?.RefreshLyrics();
 		}
 	}
 
@@ -497,6 +782,26 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 
+	private void PlayerGradientSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		UpdateGradientOverflowAvailability();
+		if (!_isLoading)
+		{
+			App.Settings.Current.PlayerGradientEnabled = PlayerGradientSwitch.IsOn;
+			App.Settings.SaveAsync();
+			App.MainWindowInstance?.ApplyGradientOverflowSetting();
+		}
+	}
+
+	// Le gradient qui dépasse n'a de sens que si le gradient du lecteur est actif : sinon on le grise.
+	private void UpdateGradientOverflowAvailability()
+	{
+		bool innerOn = PlayerGradientSwitch.IsOn;
+		SetToggleAvailable(GradientOverflowSwitch, innerOn);
+		// (opacite geree par SetToggleAvailable)
+		GradientOverflowHint.Opacity = innerOn ? 0.6 : 0.3;
+	}
+
 	private async void ImportPlaylist_Click(object sender, RoutedEventArgs e)
 	{
 		FileOpenPicker fileOpenPicker = new FileOpenPicker();
@@ -512,7 +817,7 @@ public sealed partial class SettingsPage : Page
 			await new ContentDialog
 			{
 				Title = Models.Strings.Current.IsFr ? "Import termin\u00E9" : "Import complete",
-				Content = Models.Strings.Current.IsFr ? $"{list.Count} piste(s) importÃ©e(s)." + ((list2.Count > 0) ? $"\n{list2.Count} piste(s) introuvable(s)." : "") : $"{list.Count} track(s) imported." + ((list2.Count > 0) ? $"\n{list2.Count} track(s) not found." : ""),
+				Content = Models.Strings.Current.IsFr ? $"{list.Count} piste(s) importée(s)." + ((list2.Count > 0) ? $"\n{list2.Count} piste(s) introuvable(s)." : "") : $"{list.Count} track(s) imported." + ((list2.Count > 0) ? $"\n{list2.Count} track(s) not found." : ""),
 				CloseButtonText = "OK",
 				XamlRoot = base.XamlRoot
 			}.ShowAsync();
@@ -527,7 +832,7 @@ public sealed partial class SettingsPage : Page
             await new ContentDialog
             {
                 Title = Models.Strings.Current.IsFr ? "Aucune playlist" : "No playlists",
-                Content = Models.Strings.Current.IsFr ? "Aucune playlist Ã  exporter." : "No playlists to export.",
+                Content = Models.Strings.Current.IsFr ? "Aucune playlist à exporter." : "No playlists to export.",
                 CloseButtonText = "OK",
                 XamlRoot = base.XamlRoot
             }.ShowAsync();
@@ -561,7 +866,7 @@ public sealed partial class SettingsPage : Page
 		await new ContentDialog
 		{
 			Title = Models.Strings.Current.IsFr ? "Export termin\u00E9" : "Export complete",
-			Content = Models.Strings.Current.IsFr ? $"{exported} playlist(s) exportÃ©e(s)." + ((skipped > 0) ? $"\n{skipped} playlist(s) vide(s) ignorÃ©e(s)." : "") : $"{exported} playlist(s) exported." + ((skipped > 0) ? $"\n{skipped} empty playlist(s) skipped." : ""),
+			Content = Models.Strings.Current.IsFr ? $"{exported} playlist(s) exportée(s)." + ((skipped > 0) ? $"\n{skipped} playlist(s) vide(s) ignorée(s)." : "") : $"{exported} playlist(s) exported." + ((skipped > 0) ? $"\n{skipped} empty playlist(s) skipped." : ""),
 			CloseButtonText = "OK",
 			XamlRoot = base.XamlRoot
 		}.ShowAsync();
@@ -647,11 +952,13 @@ public sealed partial class SettingsPage : Page
 	private void BuildEqualizerSliders()
 	{
 		EqualizerSliders.Items.Clear();
+		_eqLookWhite = App.IsPureWhiteTheme;
 		StackPanel equalizerPresetsContainer = EqualizerPresetsContainer;
 		equalizerPresetsContainer.Children.Clear();
 		// Liste des presets factorisee dans Models.EqualizerPresets (partagee avec le flyout
 		// rapide de la PlayerBar), pour eviter toute duplication entre les deux emplacements.
 		List<Button> list = new List<Button>();
+		_eqPresetButtons.Clear();
 		foreach (var preset in Resona.Models.EqualizerPresets.All)
 		{
 			var presetBands = preset.Bands;
@@ -666,6 +973,7 @@ public sealed partial class SettingsPage : Page
 				ApplyEqPreset((double[])presetBands.Clone());
 			};
 			list.Add(presetButton);
+			_eqPresetButtons.Add((preset, presetButton));
 		}
 		Grid grid = new Grid
 		{
@@ -697,6 +1005,7 @@ public sealed partial class SettingsPage : Page
 			grid.Children.Add(list[num5]);
 		}
 		equalizerPresetsContainer.Children.Add(grid);
+		UpdateEqPresetHighlight();
 		StackPanel stackPanel = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
@@ -725,6 +1034,7 @@ public sealed partial class SettingsPage : Page
 				HorizontalAlignment = HorizontalAlignment.Center,
 				UseLayoutRounding = true
 			};
+			ApplyEqSliderLook(slider);
 			slider.ValueChanged += delegate(object s, RangeBaseValueChangedEventArgs args)
 			{
 				EqualizerBand_ValueChanged(idx, args.NewValue);
@@ -795,6 +1105,52 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 
+	// Indique quel preset correspond aux bandes actuelles : son bouton est entoure (couleur d'accent du theme,
+	// texte pour les themes noir / blanc). Reapplique aussi style + couleur de texte des boutons selon le theme.
+	private void UpdateEqPresetHighlight()
+	{
+		var res = Application.Current.Resources;
+		var cur = App.Settings.Current;
+		var active = Resona.Models.EqualizerPresets.FindMatch(cur.EqualizerBands);
+		bool white = App.IsPureWhiteTheme;
+		bool blackOrWhite = white || (cur.Backdrop == AppBackdropStyle.Solid && cur.ThemePresetIndex == 7);
+		Brush highlight = (Brush)res[blackOrWhite ? "TextFillColorPrimaryBrush" : "AppAccentBrush"];
+		Style? whiteStyle = white ? res["PureWhiteButtonStyle"] as Style : null;
+		foreach (var (preset, button) in _eqPresetButtons)
+		{
+			// Style change seulement si necessaire (cette methode est aussi appelee a chaque deplacement de slider).
+			if (whiteStyle != null) { if (!ReferenceEquals(button.Style, whiteStyle)) button.Style = whiteStyle; }
+			else if (button.Style != null) button.ClearValue(FrameworkElement.StyleProperty);
+			// Meme objet brush que le texte de la page : suit le theme en direct (sombre en blanc uni, clair ailleurs).
+			button.Foreground = (Brush)res["TextFillColorPrimaryBrush"];
+
+			if (ReferenceEquals(preset, active))
+			{
+				button.BorderThickness = new Thickness(2.0);
+				button.BorderBrush = highlight;
+			}
+			else
+			{
+				button.ClearValue(Control.BorderThicknessProperty);
+				button.ClearValue(Control.BorderBrushProperty);
+			}
+		}
+	}
+
+	// Theme blanc uni : les sliders verticaux de l'egaliseur affichaient la piste inversee (noir en haut, blanc en bas).
+	// On force : partie remplie (en bas, jusqu'au curseur) = noir, reste de la piste (en haut) = blanc.
+	// Poses sur le slider AVANT que son template soit applique (d'ou la reconstruction au changement de theme).
+	private static void ApplyEqSliderLook(Slider slider)
+	{
+		if (!App.IsPureWhiteTheme) return;
+		var dark = new SolidColorBrush(Color.FromArgb(255, 0x1A, 0x1A, 0x1A));
+		var light = new SolidColorBrush(Color.FromArgb(255, 0xFF, 0xFF, 0xFF));
+		foreach (string k in new[] { "SliderTrackValueFill", "SliderTrackValueFillPointerOver", "SliderTrackValueFillPressed" })
+			slider.Resources[k] = dark;
+		foreach (string k in new[] { "SliderTrackFill", "SliderTrackFillPointerOver", "SliderTrackFillPressed" })
+			slider.Resources[k] = light;
+	}
+
 	private void EqualizerBand_ValueChanged(int bandIndex, double newValue)
 	{
 		if (!_isLoading)
@@ -802,6 +1158,7 @@ public sealed partial class SettingsPage : Page
 			App.Settings.Current.EqualizerBands[bandIndex] = newValue;
 			App.Settings.SaveAsync();
 			App.AudioEngine?.SetEqualizerBand(bandIndex, (float)newValue);
+			UpdateEqPresetHighlight();
 		}
 	}
 

@@ -47,6 +47,35 @@
             </Style>
 
             <!-- Brushes spécifiques pour les contrôles -->
+            <!-- Controles (boutons, listes deroulantes, popups) : look FIXE, independant du theme.
+                 Ces brushes ne sont JAMAIS mutes par ApplyThemeResources : texte blanc sur fond sombre. -->
+            <SolidColorBrush x:Key="AppControlForegroundBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="AppPopupItemDisabledForegroundBrush" Color="#66FFFFFF" />
+
+            <!-- Popups : menus, listes deroulantes, boites de dialogue -->
+            <StaticResource x:Key="ContentDialogForeground" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutItemForeground" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutItemForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutItemForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutItemForegroundDisabled" ResourceKey="AppPopupItemDisabledForegroundBrush" />
+            <StaticResource x:Key="ToggleMenuFlyoutItemForeground" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ToggleMenuFlyoutItemForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ToggleMenuFlyoutItemForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ToggleMenuFlyoutItemForegroundDisabled" ResourceKey="AppPopupItemDisabledForegroundBrush" />
+            <StaticResource x:Key="ToggleMenuFlyoutItemCheckGlyphForeground" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ToggleMenuFlyoutItemCheckGlyphForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ToggleMenuFlyoutItemCheckGlyphForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutSubItemForeground" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutSubItemForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutSubItemForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="MenuFlyoutSubItemForegroundSubMenuOpened" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ComboBoxItemForeground" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ComboBoxItemForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ComboBoxItemForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ComboBoxItemForegroundSelected" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ComboBoxItemForegroundSelectedPointerOver" ResourceKey="AppControlForegroundBrush" />
+            <StaticResource x:Key="ComboBoxItemForegroundSelectedPressed" ResourceKey="AppControlForegroundBrush" />
+
             <SolidColorBrush x:Key="ToggleSwitchForegroundBrush" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="CheckBoxForegroundBrush" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="RadioButtonForegroundBrush" Color="#FFFFFFFF" />
@@ -60,6 +89,12 @@
             <SolidColorBrush x:Key="TextBoxForegroundPressed" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="TextBoxForegroundDisabled" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="TextBoxForegroundSelected" Color="#FFFFFFFF" />
+            <!-- Vraies cles WinUI du texte saisi (mutees par ApplyThemeResources) : evitent le texte noir
+                 pendant la saisie (etat Focused) dans les champs de recherche. -->
+            <SolidColorBrush x:Key="TextControlForeground" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="TextControlForegroundDisabled" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="TextBoxBackground" Color="#18FFFFFF" />
             <SolidColorBrush x:Key="TextBoxBackgroundPointerOver" Color="#18FFFFFF" />
             <SolidColorBrush x:Key="TextBoxBackgroundFocused" Color="#18FFFFFF" />
@@ -77,6 +112,45 @@
             <SolidColorBrush x:Key="ToggleSwitchOffForeground" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="CheckBoxCheckGlyphForeground" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="RadioButtonCheckGlyphForeground" Color="#FFFFFFFF" />
+
+            <!-- Etats PointerOver/Pressed des controles COCHES/ACTIVES (ToggleSwitch "on",
+                 CheckBox/RadioButton coches). Declares ici (pas crees dynamiquement en C#)
+                 pour que le premier rendu de chaque controle les capture via ThemeResource :
+                 ApplyThemeResources peut ensuite les MUTER comme les autres brushes, ce qui
+                 les propage instantanement, y compris lors d'un changement DEPUIS/VERS le
+                 theme blanc pur (contrairement a des cles ajoutees/retirees dynamiquement,
+                 qui ne sont jamais relues par un template deja resolu). -->
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundPointerOver" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundPressed" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFillPointerOver" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokePointerOver" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="RadioButtonCheckGlyphFillPointerOver" Color="#FFFFFFFF" />
+
+            <!-- Couleur AU REPOS des controles actives (mutee par ApplyThemeResources) -->
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF7C5CFF" />
+            <!-- ToggleSwitch DESACTIVE : declares ici pour que ApplyThemeResources mute les instances
+                 (sinon, en theme blanc, le rail restait invisible et seul le rond se voyait) -->
+            <SolidColorBrush x:Key="ToggleSwitchFillOffDisabled" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOffDisabled" Color="#28FFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnDisabled" Color="#28FFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnDisabled" Color="#28FFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOffDisabled" Color="#5CFFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnDisabled" Color="#87FFFFFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFill" Color="#FF7C5CFF" />
+            <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStroke" Color="#FF7C5CFF" />
 
             <!-- Brushes de texte / contrôle MUTABLES.
                  Ils SURECRIVENT les clés WinUI du même nom : tous les contrôles
@@ -128,6 +202,185 @@
             <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="ButtonBorderBrush" Color="#28FFFFFF" />
+            <!-- Survol/pression des boutons icones transparents (coeur des listes, boutons du player) :
+                 teinte translucide mutee par ApplyThemeResources. Evite le flash blanc au debut du survol
+                 en theme blanc (transition depuis le transparent blanc vers un gris opaque). -->
+            <SolidColorBrush x:Key="PlayerButtonBackgroundPointerOver" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="PlayerButtonBackgroundPressed" Color="#0FFFFFFF" />
+
+            <!-- Style de bouton utilise UNIQUEMENT en theme blanc pur (applique en code par la
+                 page Parametres) : fond gris clair + bordure visibles, survol/pression avec des
+                 couleurs fixes et sans transition, donc pas de flash blanc au survol. -->
+            <SolidColorBrush x:Key="PureWhiteButtonBackground" Color="#FFE6E6E6" />
+            <SolidColorBrush x:Key="PureWhiteButtonBackgroundHover" Color="#FFD6D6D6" />
+            <SolidColorBrush x:Key="PureWhiteButtonBackgroundPressed" Color="#FFC6C6C6" />
+            <SolidColorBrush x:Key="PureWhiteButtonBorder" Color="#FFB4B4B4" />
+            <SolidColorBrush x:Key="PureWhiteButtonForeground" Color="#FF1A1A1A" />
+            <Style x:Key="PureWhiteButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{StaticResource PureWhiteButtonBackground}" />
+                <Setter Property="Foreground" Value="{StaticResource PureWhiteButtonForeground}" />
+                <Setter Property="BorderBrush" Value="{StaticResource PureWhiteButtonBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="12,5,12,6" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Padding="{TemplateBinding Padding}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="{StaticResource PureWhiteButtonBackgroundHover}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="{StaticResource PureWhiteButtonBackgroundPressed}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Opacity" Value="0.4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Meme rendu que PureWhiteButtonStyle, pour le DropDownButton (selecteur de langue) :
+                 fleche et texte restent sombres, le fond ne disparait pas au survol. -->
+            <Style x:Key="PureWhiteDropDownButtonStyle" TargetType="DropDownButton">
+                <Setter Property="Background" Value="{StaticResource PureWhiteButtonBackground}" />
+                <Setter Property="Foreground" Value="{StaticResource PureWhiteButtonForeground}" />
+                <Setter Property="BorderBrush" Value="{StaticResource PureWhiteButtonBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="12,5,12,6" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DropDownButton">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <Grid Padding="{TemplateBinding Padding}" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter x:Name="ContentPresenter"
+                                                      Content="{TemplateBinding Content}"
+                                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                      Foreground="{StaticResource PureWhiteButtonForeground}"
+                                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                    <FontIcon x:Name="ChevronIcon" Grid.Column="1" Glyph="&#xE70D;" FontSize="8"
+                                              VerticalAlignment="Center"
+                                              Foreground="{StaticResource PureWhiteButtonForeground}" />
+                                </Grid>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="{StaticResource PureWhiteButtonBackgroundHover}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="{StaticResource PureWhiteButtonBackgroundPressed}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Opacity" Value="0.4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Selecteur de langue dans les themes AUTRES que blanc pur : meme rendu que le style
+                 par defaut, mais avec un survol/pression qui reste visible (les brosses sont mutees
+                 par ApplyThemeResources). -->
+            <SolidColorBrush x:Key="LanguageButtonHoverBrush" Color="#28FFFFFF" />
+            <SolidColorBrush x:Key="LanguageButtonPressedBrush" Color="#12FFFFFF" />
+            <Style x:Key="ThemedDropDownButtonStyle" TargetType="DropDownButton">
+                <Setter Property="Background" Value="{ThemeResource ButtonBackground}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ButtonBorderBrush}" />
+                <Setter Property="BorderThickness" Value="{ThemeResource ButtonBorderThemeThickness}" />
+                <Setter Property="Padding" Value="12,5,12,6" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DropDownButton">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <Grid Padding="{TemplateBinding Padding}" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter x:Name="ContentPresenter"
+                                                      Content="{TemplateBinding Content}"
+                                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                      Foreground="{TemplateBinding Foreground}"
+                                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                    <FontIcon x:Name="ChevronIcon" Grid.Column="1" Glyph="&#xE70D;" FontSize="8"
+                                              VerticalAlignment="Center"
+                                              Foreground="{TemplateBinding Foreground}" />
+                                </Grid>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="{ThemeResource LanguageButtonHoverBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="{ThemeResource LanguageButtonPressedBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Opacity" Value="0.4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
             <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="UseLayoutRounding" Value="False" />

@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -45,13 +45,22 @@ public static class AIService
             rules = Resona.Models.Strings.Current.CS_AIPromptCleanup_Genres;
         }
 
-        string instructions = $"Tu es un expert musical. Je vais te donner une liste de noms bruts de la catégorie '{type}'. Ton but est de nettoyer, corriger et regrouper ces noms.\n\n" +
-               $"Règles:\n{rules}" +
-               "- Retire les parenthèses inutiles.\n\n" +
-               "Tu dois OBLIGATOIREMENT renvoyer un tableau JSON contenant des objets avec la propriété 'old' (le nom brut exact) et 'new' (le nom corrigé).\n" +
-               "Tu DOIS retourner TOUS les éléments de la liste, sans exception. Si un élément est un single ou ne doit plus faire partie d'un album, met sa propriété 'new' à une chaîne vide \"\". S'il ne nécessite aucune modification, remets le même nom dans 'new'. Format JSON brut uniquement. AUCUN TEXTE AVANT OU APRES LE JSON. ECHAPPE CORRECTEMENT LES GUILLEMETS DANS LES NOMS.";
+        bool isFr = Resona.Models.Strings.Current.IsFr;
+        string typeEn = type == "Artistes" ? "Artists" : type;
 
-        string jsonData = "Voici la liste brute :\n" + itemsJson;
+        string instructions = isFr 
+            ? $"Tu es un expert musical. Je vais te donner une liste de noms bruts de la catÃ©gorie '{type}'. Ton but est de nettoyer, corriger et regrouper ces noms.\n\n" +
+              $"RÃ¨gles:\n{rules}" +
+              "- Retire les parenthÃ¨ses inutiles.\n\n" +
+              "Tu dois OBLIGATOIREMENT renvoyer un tableau JSON contenant des objets avec la propriÃ©tÃ© 'old' (le nom brut exact) et 'new' (le nom corrigÃ©).\n" +
+              "Tu DOIS retourner TOUS les Ã©lÃ©ments de la liste, sans exception. Si un Ã©lÃ©ment est un single ou ne doit plus faire partie d'un album, met sa propriÃ©tÃ© 'new' Ã  une chaÃ®ne vide \"\". S'il ne nÃ©cessite aucune modification, remets le mÃªme nom dans 'new'. Format JSON brut uniquement. AUCUN TEXTE AVANT OU APRES LE JSON. ECHAPPE CORRECTEMENT LES GUILLEMETS DANS LES NOMS."
+            : $"You are a music expert. I will give you a list of raw names from the '{typeEn}' category. Your goal is to clean, correct, and group these names.\n\n" +
+              $"Rules:\n{rules}" +
+              "- Remove unnecessary parentheses.\n\n" +
+              "You MUST return a JSON array containing objects with the property 'old' (the exact raw name) and 'new' (the corrected name).\n" +
+              "You MUST return ALL elements from the list, without exception. If an element is a single or should no longer be part of an album, set its 'new' property to an empty string \"\". If it needs no modification, put the same name in 'new'. Raw JSON format only. NO TEXT BEFORE OR AFTER THE JSON. ESCAPE QUOTES PROPERLY IN THE NAMES.";
+
+        string jsonData = isFr ? "Voici la liste brute :\n" + itemsJson : "Here is the raw list:\n" + itemsJson;
         
         return (instructions, jsonData);
     }
@@ -118,7 +127,7 @@ public static class AIService
             
             if (mapping.Count > 0) return mapping;
             
-            throw new Exception("Erreur lors de la lecture du JSON. L'IA a fourni un JSON invalide (souvent des guillemets dans les noms sans les échapper). Détail : " + ex.Message);
+            throw new Exception("Erreur lors de la lecture du JSON. L'IA a fourni un JSON invalide (souvent des guillemets dans les noms sans les Ã©chapper). DÃ©tail : " + ex.Message);
         }
         return mapping;
     }
@@ -132,7 +141,7 @@ public static class AIService
 
         string instructions = string.Format(Resona.Models.Strings.Current.CS_AIPromptDJ, userPrompt);
                
-        string jsonData = "Bibliothèque :\n" + libraryJson;
+        string jsonData = (Resona.Models.Strings.Current.IsFr ? "BibliothÃ¨que :\n" : "Library:\n") + libraryJson;
 
         return (instructions, jsonData);
     }

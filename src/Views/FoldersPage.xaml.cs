@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 
@@ -91,6 +91,7 @@ public sealed partial class FoldersPage : Page
 
 
 	private List<Track> _library = new List<Track>();
+	private string _currentSort = "name_asc";
 
 
 
@@ -194,29 +195,85 @@ public sealed partial class FoldersPage : Page
 
 
 
-	public FoldersPage()
+	    public FoldersPage()
+    {
+        InitializeComponent();
+        _currentSort = App.Settings.Current.FoldersSort;
+        Resona.Helpers.DisplayCountHelper.Setup(DisplayCountCombo, App.Settings.Current.FoldersDisplayLimit, v => {
+            App.Settings.Current.FoldersDisplayLimit = v;
+            _ = App.Settings.SaveAsync();
+            _currentPage = 0;
+            BuildUIBatched(SearchBox.Text);
+        }, new int[] { 20, 50, 100 });
+        _instance = this;
+        UpdateSortButton();
+    }
 
 
 
+
+
+
+
+	private void UpdateSortButton()
 	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		bool isAsc = parts.Length > 1 && parts[1] == "asc";
 
-
-
-		InitializeComponent();
-
-
-
-		_instance = this;
-
-
-
+		string sortName = field switch
+		{
+			"name" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name,
+			"date" => Resona.Models.Strings.Current.LibraryPage_Sort_DateAdded,
+			"count" => Resona.Models.Strings.Current.PlaylistsPage_Sort_Count,
+			_ => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name
+		};
+		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "\uE74A" : "\uE74B";
 	}
 
+	private void SortFoldersMenu_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Microsoft.UI.Xaml.Controls.MenuFlyoutItem item && item.Tag is string field)
+		{
+			string dir = (field == "date" || field == "count") ? "desc" : "asc";
+			_currentSort = $"{field}_{dir}";
+			App.Settings.Current.FoldersSort = _currentSort;
+			_ = App.Settings.SaveAsync();
+			UpdateSortButton();
+			BuildUIBatched(SearchBox.Text);
+		}
+	}
 
+	private void SortDirection_Click(object sender, RoutedEventArgs e)
+	{
+		string[] parts = _currentSort.Split('_');
+		string field = parts[0];
+		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
+		_currentSort = $"{field}_{dir}";
+		App.Settings.Current.FoldersSort = _currentSort;
+		_ = App.Settings.SaveAsync();
+		UpdateSortButton();
+		BuildUIBatched(SearchBox.Text);
+	}
 
-
-
-
+		private void ShuffleAll_Click(object sender, RoutedEventArgs e)
+	{
+		var listQuery = from g in _library.GroupBy<Track, string>(t => { try { string dir = System.IO.Path.GetDirectoryName(t.FilePath); return string.IsNullOrEmpty(dir) ? "Dossier inconnu" : dir; } catch { return "Dossier inconnu"; } }, StringComparer.OrdinalIgnoreCase)
+						where string.IsNullOrWhiteSpace(SearchBox.Text) || g.Key.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase)
+						select g;
+        var groups = listQuery.ToList();
+        if (groups.Count > 0)
+        {
+            Random random = new Random();
+            var randomGroup = groups[random.Next(groups.Count)];
+            List<Track> tracks = randomGroup.OrderBy(t => t.Artist).ThenBy(t => t.Album).ThenBy(t => t.TrackNumber).ToList();
+            string title = randomGroup.Key;
+            App.MainWindowInstance?.ShowTrackCollection(System.IO.Path.GetFileName(title), tracks, "Dossier");
+            Track randomTrack = tracks[random.Next(tracks.Count)];
+            App.MainWindowInstance?.SetShuffleModeAndPlay(randomTrack, tracks);
+        }
+	}
 
 	public void LoadData(List<Track> library)
 
@@ -638,31 +695,26 @@ public sealed partial class FoldersPage : Page
 
 
 
-		List<(string, List<Track>)> list = (from g in (from g in _library.GroupBy<Track, string>(FolderKey, StringComparer.OrdinalIgnoreCase)
+		var listQuery = from g in _library.GroupBy<Track, string>(FolderKey, StringComparer.OrdinalIgnoreCase)
+						where string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)
+						select g;
+		
+		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
+		{
+			"name_asc" => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"name_desc" => listQuery.OrderByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"count_asc" => listQuery.OrderBy(g => g.Count()),
+			"count_desc" => listQuery.OrderByDescending(g => g.Count()),
+			"date_asc" => listQuery.OrderBy(g => g.Max(t => t.DateAdded)).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			"date_desc" => listQuery.OrderByDescending(g => g.Max(t => t.DateAdded)).ThenByDescending(g => g.Key, StringComparer.OrdinalIgnoreCase),
+			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+		};
+
+		List<(string, List<Track>)> list = listOrdered.Select(g => (Path: g.Key, Tracks: g.OrderBy(t => t.Artist).ThenBy(t => t.Album).ThenBy(t => t.TrackNumber).ToList())).ToList();
 
 
 
-				where string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)
-
-
-
-				select g).OrderBy<IGrouping<string, Track>, string>((IGrouping<string, Track> g) => g.Key, StringComparer.OrdinalIgnoreCase)
-
-
-
-			select (Path: g.Key, Tracks: (from t in g
-
-
-
-				orderby t.Artist, t.Album, t.TrackNumber
-
-
-
-				select t).ToList())).ToList();
-
-
-
-		_totalPages = (int)Math.Ceiling((double)list.Count / 20.0);
+		_totalPages = (int)Math.Ceiling((double)list.Count / (double)Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.FoldersDisplayLimit, list.Count));
 
 
 
@@ -738,7 +790,8 @@ public sealed partial class FoldersPage : Page
 
 
 
-		List<(string Path, List<Track> Tracks)> pageFolders = list.Skip(_currentPage * 20).Take(20).ToList();
+		int foldersPageSize = Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.FoldersDisplayLimit, list.Count);
+		List<(string Path, List<Track> Tracks)> pageFolders = list.Skip(_currentPage * foldersPageSize).Take(foldersPageSize).ToList();
 
 
 
@@ -1162,6 +1215,9 @@ public sealed partial class FoldersPage : Page
 }
 
 }
+
+
+
 
 
 

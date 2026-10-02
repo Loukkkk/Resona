@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 using System.CodeDom.Compiler;
 
@@ -114,9 +114,9 @@ public sealed partial class StatisticsPage : Page
 
 		string item = ((timeSpan.TotalHours >= 1.0) ? $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}min" : $"{timeSpan.Minutes}min");
 
-		int num = library.Select((Track t) => t.Artist).Distinct<string>(StringComparer.OrdinalIgnoreCase).Count();
+		int num = library.Where(t => !string.IsNullOrWhiteSpace(t.Artist)).Select(t => t.Artist).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
-		int num2 = library.Select((Track t) => t.Album).Distinct<string>(StringComparer.OrdinalIgnoreCase).Count();
+		int num2 = library.Where(t => !string.IsNullOrWhiteSpace(t.Album)).Select(t => (t.Album ?? "") + "|||" + (string.IsNullOrWhiteSpace(t.AlbumArtist) ? (t.Artist ?? "") : t.AlbumArtist)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
 		PlayStatsService playStats = App.PlayStats;
 
@@ -655,6 +655,8 @@ public sealed partial class StatisticsPage : Page
 	}
 
 }
+
+
 
 
 

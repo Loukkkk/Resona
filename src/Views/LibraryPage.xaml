@@ -13,7 +13,7 @@
         <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
     </Page.Resources>
 
-    <Grid Padding="24,44,24,24">
+    <Grid Padding="24,44,24,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -216,7 +216,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="4">
                                 <HyperlinkButton Content="{x:Bind Artist, Mode=OneWay}" Click="Artist_Click" Tag="{x:Bind Artist, Mode=OneWay}" Opacity="0.7" FontSize="12"
                                          Foreground="{ThemeResource TextFillColorPrimaryBrush}" Padding="0" MinWidth="0" MinHeight="0" />
-                                <TextBlock Text="{x:Bind YearAndGenreDisplay, Mode=OneWay}" Opacity="0.4" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind YearAndGenreDisplay, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
                         </StackPanel>
 
@@ -226,6 +226,10 @@
                                 Background="Transparent" BorderThickness="0" Width="28" Height="28" Padding="0" Margin="0"
                                 Opacity="{x:Bind IsFavorite, Mode=OneWay, Converter={StaticResource BoolToOpacityConverter}}"
                                 Tag="{x:Bind}" Click="FavoriteHeartBtn_Click">
+                            <Button.Resources>
+                                <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="PlayerButtonBackgroundPointerOver" />
+                                <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="PlayerButtonBackgroundPressed" />
+                            </Button.Resources>
                             <FontIcon Glyph="{x:Bind FavoriteGlyph, Mode=OneWay}" FontSize="14"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                       Foreground="{StaticResource AppAccentBrush}" />
@@ -240,12 +244,12 @@
         </ListView>
 
         <StackPanel x:Name="PaginationPanel" Grid.Row="3" Orientation="Horizontal"
-                    HorizontalAlignment="Center" Spacing="8" Margin="0,20,0,0"
+                    HorizontalAlignment="Center" Spacing="8" Margin="0,17.5,0,18.5" UseLayoutRounding="False"
                     Visibility="Collapsed">
             <Button x:Name="PrevPageButton" Content="&#xE76B;" FontFamily="Segoe Fluent Icons"
                     Click="PrevPage_Click" Width="36" Height="36" Padding="0"
                     Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-            <TextBlock x:Name="PageIndicator" VerticalAlignment="Center" FontSize="13" Opacity="0.8"
+            <TextBlock x:Name="PageIndicator" VerticalAlignment="Center" Margin="0,0,0,2" FontSize="13" Opacity="0.8"
                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
             <Button x:Name="NextPageButton" Content="&#xE76C;" FontFamily="Segoe Fluent Icons"
                     Click="NextPage_Click" Width="36" Height="36" Padding="0"

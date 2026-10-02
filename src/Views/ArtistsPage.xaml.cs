@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 
@@ -118,7 +118,7 @@ public sealed partial class ArtistsPage : Page
 			_ => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name
 		};
 		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
-		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "" : "";
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "\uE74A" : "\uE74B";
 	}
 
 	private void SortArtistsMenu_Click(object sender, RoutedEventArgs e)
@@ -127,9 +127,29 @@ public sealed partial class ArtistsPage : Page
 		{
 			string dir = (field == "count") ? "desc" : "asc";
 			_currentSort = $"{field}_{dir}";
+		App.Settings.Current.ArtistsSort = _currentSort;
+		_ = App.Settings.SaveAsync();
 			UpdateSortButton();
 			BuildUIBatched(SearchBox.Text);
 		}
+	}
+
+		private void ShuffleAll_Click(object sender, RoutedEventArgs e)
+	{
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.Artist, StringComparer.OrdinalIgnoreCase)
+			where !string.IsNullOrWhiteSpace(g.Key) && (string.IsNullOrWhiteSpace(SearchBox.Text) || g.Key.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase))
+			select g;
+        var groups = listQuery.ToList();
+        if (groups.Count > 0)
+        {
+            Random random = new Random();
+            var randomGroup = groups[random.Next(groups.Count)];
+            List<Track> tracks = randomGroup.OrderBy(t => t.Album).ThenBy(t => t.TrackNumber).ToList();
+            string title = randomGroup.Key;
+            App.MainWindowInstance?.ShowTrackCollection(title, tracks, Resona.Models.Strings.Current.CS_Artiste);
+            Track randomTrack = tracks[random.Next(tracks.Count)];
+            App.MainWindowInstance?.SetShuffleModeAndPlay(randomTrack, tracks);
+        }
 	}
 
 	private void SortDirection_Click(object sender, RoutedEventArgs e)
@@ -138,6 +158,8 @@ public sealed partial class ArtistsPage : Page
 		string field = parts[0];
 		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
 		_currentSort = $"{field}_{dir}";
+		App.Settings.Current.ArtistsSort = _currentSort;
+		_ = App.Settings.SaveAsync();
 		UpdateSortButton();
 		BuildUIBatched(SearchBox.Text);
 	}
@@ -365,10 +387,19 @@ public sealed partial class ArtistsPage : Page
 
 
 		InitializeComponent();
+		_currentSort = App.Settings.Current.ArtistsSort;
+		Resona.Helpers.DisplayCountHelper.Setup(DisplayCountCombo, App.Settings.Current.ArtistsDisplayLimit, v =>
+		{
+			App.Settings.Current.ArtistsDisplayLimit = v;
+			_ = App.Settings.SaveAsync();
+			_currentPage = 0;
+			BuildUIBatched(SearchBox.Text);
+		});
 
 
 
 		_instance = this;
+		UpdateSortButton();
 
 
 
@@ -980,7 +1011,7 @@ public sealed partial class ArtistsPage : Page
 
 
 
-		_totalPages = (int)Math.Ceiling((double)list.Count / 24.0);
+		_totalPages = (int)Math.Ceiling((double)list.Count / (double)Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.ArtistsDisplayLimit, list.Count));
 
 
 
@@ -1056,7 +1087,8 @@ public sealed partial class ArtistsPage : Page
 
 
 
-		List<(string key, List<Track> tracks, int albumCount)> pageArtists = list.Skip(_currentPage * 24).Take(24).ToList();
+		int artistsPageSize = Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.ArtistsDisplayLimit, list.Count);
+		List<(string key, List<Track> tracks, int albumCount)> pageArtists = list.Skip(_currentPage * artistsPageSize).Take(artistsPageSize).ToList();
 
 
 
@@ -1552,6 +1584,8 @@ public sealed partial class ArtistsPage : Page
 }
 
 }
+
+
 
 
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -768,7 +768,14 @@ public sealed partial class LibraryPage : Page
 		}
 		if (grid != null)
 		{
-			UpdateCoverIndicator(grid, track.IsPlaying, isHovered: true);
+			_ = Task.Run(async () =>
+			{
+				await Task.Delay(50);
+				DispatcherQueue.TryEnqueue(() =>
+				{
+					UpdateCoverIndicator(grid, track.IsPlaying, isHovered: true);
+				});
+			});
 		}
 	}
 

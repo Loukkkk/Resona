@@ -12,7 +12,7 @@
         <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
     </Page.Resources>
 
-    <Grid Padding="24,44,24,24">
+    <Grid Padding="24,44,24,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -28,8 +28,12 @@
             <Button x:Name="ClearAllBtn" 
                     Content="{x:Bind models:Strings.Current.QueuePage_Btn_ClearAll, Mode=OneWay}" 
                     Click="ClearAllBtn_Click" 
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                     Margin="12,4,0,0" 
-                    VerticalAlignment="Center" />
+                    VerticalAlignment="Center" 
+                    Background="{ThemeResource ControlFillColorSecondaryBrush}" 
+                    BorderThickness="1" 
+                    BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
         </StackPanel>
 
         <ListView x:Name="TrackListView" Grid.Row="1"
@@ -147,7 +151,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                 <HyperlinkButton Content="{x:Bind Artist}" Click="Artist_Click" Tag="{x:Bind Artist}" Opacity="0.7" FontSize="12"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" Padding="0" MinWidth="0" MinHeight="0" />
-                                <TextBlock Text="{x:Bind YearAndGenreDisplay, Mode=OneWay}" Opacity="0.4" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind YearAndGenreDisplay, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
                             </StackPanel>
                             <HyperlinkButton Content="{x:Bind Album}" Click="Album_Click" Tag="{x:Bind Album}" Grid.Column="2" VerticalAlignment="Center" Opacity="0.8"
@@ -156,6 +160,10 @@
                                     Background="Transparent" BorderThickness="0" Width="28" Height="28" Padding="0" Margin="6,0,0,0"
                                     Opacity="{x:Bind IsFavorite, Mode=OneWay, Converter={StaticResource BoolToOpacityConverter}}"
                                     Tag="{x:Bind}" Click="FavoriteHeartBtn_Click">
+                                <Button.Resources>
+                                    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="PlayerButtonBackgroundPointerOver" />
+                                    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="PlayerButtonBackgroundPressed" />
+                                </Button.Resources>
                                 <FontIcon Glyph="{x:Bind FavoriteGlyph, Mode=OneWay}" FontSize="14"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                           Foreground="{StaticResource AppAccentBrush}" />
@@ -170,6 +178,9 @@
         </ListView>
     </Grid>
 </Page>
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 
@@ -124,7 +124,7 @@ public sealed partial class AlbumsPage : Page
 			_ => Resona.Models.Strings.Current.PlaylistsPage_Sort_Name
 		};
 		if (SortButtonLabel != null) SortButtonLabel.Text = (Resona.Models.Strings.Current.IsFr ? "Trier : " : "Sort: ") + sortName;
-		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "" : "";
+		if (SortDirectionIcon != null) SortDirectionIcon.Glyph = isAsc ? "\uE74A" : "\uE74B";
 	}
 
 	private void SortAlbumsMenu_Click(object sender, RoutedEventArgs e)
@@ -133,9 +133,29 @@ public sealed partial class AlbumsPage : Page
 		{
 			string dir = (field == "date" || field == "count") ? "desc" : "asc";
 			_currentSort = $"{field}_{dir}";
+		App.Settings.Current.AlbumsSort = _currentSort;
+		_ = App.Settings.SaveAsync();
 			UpdateSortButton();
 			BuildUIBatched(SearchBox.Text);
 		}
+	}
+
+		private void ShuffleAll_Click(object sender, RoutedEventArgs e)
+	{
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => (t.Album ?? "") + "|||" + (string.IsNullOrWhiteSpace(t.AlbumArtist) ? (t.Artist ?? "") : t.AlbumArtist), StringComparer.OrdinalIgnoreCase)
+				where !string.IsNullOrWhiteSpace(g.First().Album) && (string.IsNullOrWhiteSpace(SearchBox.Text) || g.First().Album.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase))
+				select g;
+        var groups = listQuery.ToList();
+        if (groups.Count > 0)
+        {
+            Random random = new Random();
+            var randomGroup = groups[random.Next(groups.Count)];
+            List<Track> tracks = randomGroup.OrderBy(t => t.TrackNumber).ToList();
+            string title = randomGroup.First().Album;
+            App.MainWindowInstance?.ShowTrackCollection(title, tracks, randomGroup.First().Artist);
+            Track randomTrack = tracks[random.Next(tracks.Count)];
+            App.MainWindowInstance?.SetShuffleModeAndPlay(randomTrack, tracks);
+        }
 	}
 
 	private void SortDirection_Click(object sender, RoutedEventArgs e)
@@ -144,6 +164,8 @@ public sealed partial class AlbumsPage : Page
 		string field = parts[0];
 		string dir = (parts.Length > 1 && parts[1] == "asc") ? "desc" : "asc";
 		_currentSort = $"{field}_{dir}";
+		App.Settings.Current.AlbumsSort = _currentSort;
+		_ = App.Settings.SaveAsync();
 		UpdateSortButton();
 		BuildUIBatched(SearchBox.Text);
 	}
@@ -371,10 +393,19 @@ public sealed partial class AlbumsPage : Page
 
 
 		InitializeComponent();
+		_currentSort = App.Settings.Current.AlbumsSort;
+		Resona.Helpers.DisplayCountHelper.Setup(DisplayCountCombo, App.Settings.Current.AlbumsDisplayLimit, v =>
+		{
+			App.Settings.Current.AlbumsDisplayLimit = v;
+			_ = App.Settings.SaveAsync();
+			_currentPage = 0;
+			BuildUIBatched(SearchBox.Text);
+		});
 
 
 
 		_instance = this;
+		UpdateSortButton();
 
 
 
@@ -762,8 +793,8 @@ public sealed partial class AlbumsPage : Page
 
 
 
-		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.Album, StringComparer.OrdinalIgnoreCase)
-				where !string.IsNullOrWhiteSpace(g.Key) && (string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(filter, StringComparison.OrdinalIgnoreCase))
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => (t.Album ?? "") + "|||" + (string.IsNullOrWhiteSpace(t.AlbumArtist) ? (t.Artist ?? "") : t.AlbumArtist), StringComparer.OrdinalIgnoreCase)
+				where !string.IsNullOrWhiteSpace(g.First().Album) && (string.IsNullOrWhiteSpace(filter) || g.First().Album.Contains(filter, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(filter, StringComparison.OrdinalIgnoreCase))
 				select g;
 		
 		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
@@ -779,11 +810,11 @@ public sealed partial class AlbumsPage : Page
 			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
 		};
 
-		List<(string, List<Track>)> list = listOrdered.Select(g => (g.Key, g.OrderBy(t => t.TrackNumber).ToList())).ToList();
+		List<(string, List<Track>)> list = listOrdered.Select(g => (g.First().Album, g.OrderBy(t => t.TrackNumber).ToList())).ToList();
 
 
 
-		_totalPages = (int)Math.Ceiling((double)list.Count / 24.0);
+		_totalPages = (int)Math.Ceiling((double)list.Count / (double)Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.AlbumsDisplayLimit, list.Count));
 
 
 
@@ -859,7 +890,8 @@ public sealed partial class AlbumsPage : Page
 
 
 
-		List<(string name, List<Track> tracks)> pageAlbums = list.Skip(_currentPage * 24).Take(24).ToList();
+		int albumsPageSize = Resona.Helpers.DisplayCountHelper.GetEffective(App.Settings.Current.AlbumsDisplayLimit, list.Count);
+		List<(string name, List<Track> tracks)> pageAlbums = list.Skip(_currentPage * albumsPageSize).Take(albumsPageSize).ToList();
 
 
 
@@ -1675,6 +1707,8 @@ public sealed partial class AlbumsPage : Page
 }
 
 }
+
+
 
 
 

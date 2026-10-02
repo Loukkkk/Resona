@@ -11,7 +11,7 @@
         <converters:StringToImageBrushConverter x:Key="StringToImageBrushConverter" />
     </Page.Resources>
 
-    <Grid Padding="24,44,24,24">
+    <Grid Padding="24,44,24,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -185,7 +185,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                 <HyperlinkButton Content="{x:Bind Artist}" Click="Artist_Click" Tag="{x:Bind Artist}" Opacity="0.7" FontSize="12"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" Padding="0" MinWidth="0" MinHeight="0" />
-                                <TextBlock Text="{x:Bind YearAndGenreDisplay, Mode=OneWay}" Opacity="0.4" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind YearAndGenreDisplay, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
                             </StackPanel>
                             <HyperlinkButton Content="{x:Bind Album}" Click="Album_Click" Tag="{x:Bind Album}" Grid.Column="2" VerticalAlignment="Center" Opacity="0.8"

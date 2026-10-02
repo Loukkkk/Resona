@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.ComponentModel;
@@ -319,6 +319,12 @@ namespace Resona;
 		private string? _nowPlayingFilePath;
 
 		private List<Track> _queue;
+		// Son actuellement lu (référence directe) : permet à Up Next d'afficher le son en cours même s'il n'est pas dans _library (ex : sons lancés depuis une playlist)
+		private Track? _nowPlayingTrack;
+		// Anti-rebond des changements de son manuels (suivant / précédent) : en cas de clics rapides,
+		// seul le dernier son déclenche le travail lourd (lecture, pochette, couleurs, paroles...).
+		private bool _manualSkipPending;
+		private int _skipDebounceToken;
 
 		private int _queueIndex;
 
@@ -461,6 +467,9 @@ namespace Resona;
 		private ObservableCollection<Track> _upNextObsList;
 
 		private bool _isMiniPlayerMode;
+		// Pochette du mini lecteur : decodee une seule fois (720 px max) et partagee entre le fond et l'image.
+		private string? _miniCoverPath;
+		private BitmapImage? _miniCoverBitmap;
 
 		private int _savedMainWindowWidth;
 
@@ -618,7 +627,7 @@ namespace Resona;
 					dwMask = 15u,
 					iId = 101u,
 					hIcon = iconForText,
-					szTip = "PrÃƒÆ’Ã‚Â©cÃƒÆ’Ã‚Â©dent",
+					szTip = "Précédent",
 					dwFlags = 0u
 				};
 				_thumbPlay = new THUMBBUTTON
@@ -657,7 +666,9 @@ namespace Resona;
 				{
 					using System.Drawing.SolidBrush brush = new System.Drawing.SolidBrush(System.Drawing.Color.White);
 					System.Drawing.SizeF sizeF = graphics.MeasureString(text, font);
-					graphics.DrawString(text, font, brush, (32f - sizeF.Width) / 2f, (32f - sizeF.Height) / 2f);
+					float offsetX = (text == "\ue768" || text == "\ue769") ? 2f : 0f;
+                    float offsetY = (text == "\ue769") ? 1f : 0f;
+					graphics.DrawString(text, font, brush, (32f - sizeF.Width) / 2f + offsetX, (32f - sizeF.Height) / 2f + offsetY);
 				}
 				return bitmap.GetHicon();
 			}
@@ -739,7 +750,7 @@ namespace Resona;
 						_thumbPlay.hIcon = _hIconPlay;
 						_thumbPlay.szTip = "Lecture";
 					}
-					_taskbar.ThumbBarUpdateButtons(windowHandle, 1u, new THUMBBUTTON[1] { _thumbPlay });
+					_taskbar.ThumbBarUpdateButtons(windowHandle, 3u, new THUMBBUTTON[3] { _thumbPrev, _thumbPlay, _thumbNext });
 				}
 			}
 			catch (Exception ex)
@@ -748,12 +759,33 @@ namespace Resona;
 			}
 		}
 
+		private Storyboard? _npExitStoryboard;
+
+		// Fond "repos" de la barre du lecteur quand le debordement du gradient est desactive (null si debordement actif
+		// ou pas encore calcule). En mode grosse cover, ce fond est retire pour laisser voir la cover floue.
+		private Brush? _playerBarIdleBackground;
+
+		private void RefreshPlayerBarForNowPlaying()
+		{
+			if (_playerBarIdleBackground == null) return;
+			((Panel)PlayerBar).Background = _isNowPlayingModeActive
+				? (Brush)new SolidColorBrush(Color.FromArgb(0, 0, 0, 0))
+				: _playerBarIdleBackground;
+		}
+
 		public void SetNowPlayingMode(bool isActive, string? trackId)
 		{
 			bool isNowPlayingModeActive = _isNowPlayingModeActive;
 			_isNowPlayingModeActive = isActive;
+			RefreshPlayerBarForNowPlaying();
 			if (isActive)
 			{
+				// Une sortie encore en cours (ou terminee mais "holdee") ne doit pas survivre a une entree.
+				if (_npExitStoryboard != null)
+				{
+					_npExitStoryboard.Stop();
+					_npExitStoryboard = null;
+				}
 				Track track = _library.FirstOrDefault((Track t) => t.Id == trackId) ?? _queue.FirstOrDefault((Track t) => t.Id == trackId);
 				if (track != null)
 				{
@@ -846,15 +878,18 @@ namespace Resona;
 			}
 			else
 			{
-				Storyboard val9 = new Storyboard();
-				DoubleAnimation val10 = new DoubleAnimation
+				// Deja hors mode grosse cover : ne pas relancer la storyboard de sortie (elle remettait
+				// le gradient a sa valeur locale 0 puis le refaisait apparaitre -> double apparition).
+				if (!isNowPlayingModeActive)
 				{
-					To = 1.0,
-					Duration = TimeSpan.FromMilliseconds(300.0)
-				};
-				Storyboard.SetTarget((Timeline)(object)val10, (DependencyObject)PlayerGradientOverflow);
-				Storyboard.SetTargetProperty((Timeline)(object)val10, "Opacity");
-				val9.Children.Add((Timeline)(object)val10);
+					UpdatePlayerButtonsColor();
+					return;
+				}
+				Storyboard val9 = new Storyboard();
+				// Le gradient (ZIndex -1) est sous le fond flou : on le remet a 1 tout de suite, il est revele
+				// par le fondu du fond flou. Ne plus animer son opacite : en opacite partielle, la couche de
+				// couleur et la couche de fade ne s'annulent plus et la limite haute du gradient apparait.
+				((UIElement)PlayerGradientOverflow).Opacity = 1.0;
 				DoubleAnimation val11 = new DoubleAnimation
 				{
 					To = 0.0,
@@ -931,6 +966,7 @@ namespace Resona;
 						NowPlayingBlurredBackground.Source = null;
 					}
 				};
+				_npExitStoryboard = val9;
 				val9.Begin();
 			}
 			UpdatePlayerButtonsColor();
@@ -947,7 +983,7 @@ namespace Resona;
 			}
 			try
 			{
-				NowPlayingCenterCoverImage.Source = (ImageSource)new BitmapImage(new Uri(coverPath));
+				NowPlayingCenterCoverImage.Source = (ImageSource)new BitmapImage(new Uri(coverPath)) { DecodePixelWidth = 800 };
 				((UIElement)NowPlayingCenterPlaceholder).Visibility = Visibility.Collapsed;
 				byte[] bytes = await Task.Run(delegate
 				{
@@ -1052,6 +1088,7 @@ namespace Resona;
 			if (((ContentControl)ContentFrame).Content is NowPlayingPage nowPlayingPage)
 			{
 				nowPlayingPage.UpdateTrackInfo(track);
+				DeselectSidebarForNowPlaying();
 				SetNowPlayingMode(isActive: true, track.Id);
 				AnimateTrackChange(isGoingBack);
 				return;
@@ -1059,11 +1096,63 @@ namespace Resona;
 			NowPlayingPage nowPlayingPage2 = new NowPlayingPage();
 			((ContentControl)ContentFrame).Content = nowPlayingPage2;
 			nowPlayingPage2.UpdateTrackInfo(track);
+			SetNowPlayingMode(isActive: true, track.Id);
 			if (RootNav.SelectedItem != null)
 			{
 				_lastNavSelectedItem = RootNav.SelectedItem;
 			}
-			RootNav.SelectedItem = null;
+			RootNav.SelectionChanged -= RootNav_SelectionChanged;
+			if (RootNav.SelectedItem is NavigationViewItem selNvi) 
+			{ 
+				selNvi.IsSelected = false; 
+				VisualStateManager.GoToState(selNvi, "Normal", false);
+				VisualStateManager.GoToState(selNvi, "Unselected", false);
+			}
+			if (RootNav.SettingsItem is NavigationViewItem settingsNvi) 
+			{ 
+				settingsNvi.IsSelected = false; 
+				VisualStateManager.GoToState(settingsNvi, "Normal", false);
+				VisualStateManager.GoToState(settingsNvi, "Unselected", false);
+			}
+			foreach (var objItem in RootNav.MenuItems) { if (objItem is NavigationViewItem nItem) nItem.IsSelected = false; }
+			RootNav.SelectedItem = RootNav.MenuItems[0];
+			RootNav.SelectedItem = DummyEndItem;
+			RootNav.IsSettingsVisible = false;
+			RootNav.IsSettingsVisible = true;
+			RootNav.SelectionChanged += RootNav_SelectionChanged;
+		}
+
+		// Deselectionne la sidebar (dont Settings) quand on passe en mode cover centrale.
+		// Necessaire aussi quand ContentFrame contient deja NowPlayingPage (retour depuis Settings).
+		private void DeselectSidebarForNowPlaying()
+		{
+			if (RootNav.SelectedItem == DummyEndItem)
+			{
+				return;
+			}
+			if (RootNav.SelectedItem != null)
+			{
+				_lastNavSelectedItem = RootNav.SelectedItem;
+			}
+			RootNav.SelectionChanged -= RootNav_SelectionChanged;
+			if (RootNav.SelectedItem is NavigationViewItem selNvi)
+			{
+				selNvi.IsSelected = false;
+				VisualStateManager.GoToState(selNvi, "Normal", false);
+				VisualStateManager.GoToState(selNvi, "Unselected", false);
+			}
+			if (RootNav.SettingsItem is NavigationViewItem settingsNvi)
+			{
+				settingsNvi.IsSelected = false;
+				VisualStateManager.GoToState(settingsNvi, "Normal", false);
+				VisualStateManager.GoToState(settingsNvi, "Unselected", false);
+			}
+			foreach (var objItem in RootNav.MenuItems) { if (objItem is NavigationViewItem nItem) nItem.IsSelected = false; }
+			RootNav.SelectedItem = RootNav.MenuItems[0];
+			RootNav.SelectedItem = DummyEndItem;
+			RootNav.IsSettingsVisible = false;
+			RootNav.IsSettingsVisible = true;
+			RootNav.SelectionChanged += RootNav_SelectionChanged;
 		}
 
 		private void NowPlayingCover_Tapped(object sender, TappedRoutedEventArgs e)
@@ -1077,9 +1166,10 @@ namespace Resona;
 
 		private void NowPlayingCenterCover_Tapped(object sender, TappedRoutedEventArgs e)
 		{
+			SetNowPlayingMode(false, null);
 			if (_lastNavSelectedItem != null)
 			{
-				RootNav.SelectedItem = _lastNavSelectedItem;
+				RestoreSidebarSelection();
 			}
 			else
 			{
@@ -1330,14 +1420,23 @@ namespace Resona;
 			}, true);
 			((UIElement)RootGrid).PreviewKeyDown += (KeyEventHandler)delegate(object s, KeyRoutedEventArgs e)
 			{
-				if ((int)e.Key == 32)
+				object focusedElement = FocusManager.GetFocusedElement(((Window)this).Content.XamlRoot);
+				bool isTextInput = focusedElement is TextBox || focusedElement is PasswordBox || focusedElement is AutoSuggestBox || focusedElement is RichEditBox;
+
+				if ((int)e.Key == 32 && !isTextInput)
 				{
-					object focusedElement = FocusManager.GetFocusedElement(((Window)this).Content.XamlRoot);
-					if (!(focusedElement is TextBox) && !(focusedElement is PasswordBox) && !(focusedElement is AutoSuggestBox) && !(focusedElement is RichEditBox))
-					{
-						e.Handled = true;
-						PlayPauseButton_Click(this, new RoutedEventArgs());
-					}
+					e.Handled = true;
+					PlayPauseButton_Click(this, new RoutedEventArgs());
+				}
+				else if ((int)e.Key == 37 && !isTextInput) // Left Arrow
+				{
+					e.Handled = true;
+					PrevButton_Click(this, new RoutedEventArgs());
+				}
+				else if ((int)e.Key == 39 && !isTextInput) // Right Arrow
+				{
+					e.Handled = true;
+					NextButton_Click(this, new RoutedEventArgs());
 				}
 			};
 			((FrameworkElement)RootNav).Loaded += (RoutedEventHandler)delegate
@@ -1385,7 +1484,7 @@ namespace Resona;
 			ApplyBackdrop();
 			ApplyTitleBarTheme();
 			RefreshNavCategories();
-			ApplyLyricsButtonVisibility();
+			ApplyLyricsButtonVisibility(); UpdatePlayerButtonsColor();
 			UpdatePlaybackControlsCentering();
 			((RangeBase)VolumeSlider).Value = App.Settings.Current.Volume;
 			App.AudioEngine.SetUserVolume((float)(((RangeBase)VolumeSlider).Value / 100.0));
@@ -1397,7 +1496,7 @@ namespace Resona;
 			UpdateRepeatButtonVisual();
 			((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 			{
-				ApplyLyricsButtonVisibility();
+				ApplyLyricsButtonVisibility(); UpdatePlayerButtonsColor();
 				UpdateUpNextPanelVisibility();
 				UpdateMiniPlayerButtonVisibility();
 				UpdatePlayerBarButtonsVisibility();
@@ -1758,8 +1857,7 @@ namespace Resona;
 				{
 					structure.ptMinTrackSize.X = 340;
 					structure.ptMinTrackSize.Y = 600;
-					structure.ptMaxTrackSize.X = 340;
-					structure.ptMaxTrackSize.Y = 600;
+					// Removed ptMaxTrackSize to allow resizing larger
 				}
 				else
 				{
@@ -1816,7 +1914,8 @@ namespace Resona;
 				byte b2 = Convert.ToByte(text.Substring(2, 2), 16);
 				byte b3 = Convert.ToByte(text.Substring(4, 2), 16);
 				int value = (b3 << 16) | (b2 << 8) | b;
-				DwmSetWindowAttribute(windowHandle, 34, ref value, 4);
+				int borderNone = unchecked((int)0xFFFFFFFE);
+				DwmSetWindowAttribute(windowHandle, 34, ref borderNone, 4);
 				DwmSetWindowAttribute(windowHandle, 35, ref value, 4);
 			}
 			catch
@@ -1885,7 +1984,7 @@ namespace Resona;
 				Color value = Color.FromArgb((byte)0, (byte)0, (byte)0, (byte)0);
 				ThemePreset themePreset = ThemePresets.All[Math.Clamp(App.Settings.Current.ThemePresetIndex, 0, ThemePresets.All.Length - 1)];
 				Color val2 = ParseHexColor(themePreset.BackgroundHex);
-				bool flag = isSolid && val2.R >= 220 && val2.G >= 220 && val2.B >= 220;
+				bool flag = val2.R >= 200 && val2.G >= 200 && val2.B >= 200;
 				Color value2 = (flag ? Color.FromArgb(byte.MaxValue, (byte)26, (byte)26, (byte)26) : Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
 				Color value3 = (flag ? Color.FromArgb((byte)150, (byte)26, (byte)26, (byte)26) : Color.FromArgb((byte)150, byte.MaxValue, byte.MaxValue, byte.MaxValue));
 				val.BackgroundColor = value;
@@ -1960,6 +2059,22 @@ namespace Resona;
 			}
 		}
 
+		// Cache de la couleur moyenne par pochette (cle = chemin + date de modif) : evite de relire/decoder l'image
+		// a chaque passage sur un son deja vu, ce qui allegeait deja l'enchainement rapide.
+		private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Color?> _avgColorCache = new();
+
+		private static Color? GetAverageColorCached(string imagePath)
+		{
+			if (string.IsNullOrEmpty(imagePath)) return GetAverageColorCpu(imagePath);
+			string key = imagePath;
+			try { key = imagePath + "|" + File.GetLastWriteTimeUtc(imagePath).Ticks; } catch { }
+			if (_avgColorCache.TryGetValue(key, out Color? cached)) return cached;
+			Color? result = GetAverageColorCpu(imagePath);
+			if (_avgColorCache.Count > 2000) _avgColorCache.Clear();
+			_avgColorCache[key] = result;
+			return result;
+		}
+
 		private static Color Darken(Color c, double factor)
 		{
 			return Color.FromArgb(byte.MaxValue, (byte)((double)(int)c.R * factor), (byte)((double)(int)c.G * factor), (byte)((double)(int)c.B * factor));
@@ -1975,11 +2090,177 @@ namespace Resona;
 			return c;
 		}
 
+		// Applique (ou retire si brush == null) la couleur de cover sur les textes/icones du volet.
+		// Les ressources de RootNav ne sont pas re-evaluees sur des items deja charges : on force en local.
+		private bool _navForegroundApplied;
+
+		// Variante "survol" d'une couleur d'accent : plus claire, ou plus sombre si l'accent est deja tres clair.
+		private static Color HoverVariant(Color c)
+		{
+			double luma = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+			if (luma > 190.0)
+			{
+				return Color.FromArgb(c.A, (byte)(c.R * 0.7), (byte)(c.G * 0.7), (byte)(c.B * 0.7));
+			}
+			return Color.FromArgb(c.A, (byte)(c.R + (255 - c.R) * 0.35), (byte)(c.G + (255 - c.G) * 0.35), (byte)(c.B + (255 - c.B) * 0.35));
+		}
+		private Color? _lastThemeToggleColor;
+
+		private void ApplyNavItemsForeground(Brush? brush)
+		{
+			if (brush == null && !_navForegroundApplied) return;
+			_navForegroundApplied = brush != null;
+			void Apply(object? o)
+			{
+				if (o is not NavigationViewItem item) return;
+				if (brush != null) item.Foreground = brush; else item.ClearValue(Control.ForegroundProperty);
+				if (item.Icon is IconElement icon)
+				{
+					if (brush != null) icon.Foreground = brush; else icon.ClearValue(IconElement.ForegroundProperty);
+				}
+				ApplyToTextBlocks(item, brush);
+			}
+			foreach (var mi in RootNav.MenuItems) Apply(mi);
+			foreach (var fi in RootNav.FooterMenuItems) Apply(fi);
+			Apply(RootNav.SettingsItem);
+			ApplyPaneToggleForeground(brush);
+		}
+
+		// Bouton d'ouverture/fermeture du volet gauche (hamburger) : meme couleur de cover que les items du volet.
+		private void ApplyPaneToggleForeground(Brush? brush)
+		{
+			string[] keys = { "NavigationViewButtonForegroundPointerOver", "NavigationViewButtonForegroundPressed" };
+			foreach (string key in keys)
+			{
+				if (brush != null) RootNav.Resources[key] = brush; else RootNav.Resources.Remove(key);
+			}
+			foreach (FrameworkElement fe in WalkVisualTree((DependencyObject)RootNav))
+			{
+				if (fe is Button b && b.Name == "TogglePaneButton")
+				{
+					if (brush != null) b.Foreground = brush; else b.ClearValue(Control.ForegroundProperty);
+					ApplyToTextBlocks(b, brush);
+					break;
+				}
+			}
+		}
+
+		private static void ApplyToTextBlocks(DependencyObject parent, Brush? brush)
+		{
+			int count = VisualTreeHelper.GetChildrenCount(parent);
+			for (int i = 0; i < count; i++)
+			{
+				DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+				if (child is TextBlock tb)
+				{
+					if (brush != null) tb.Foreground = brush; else tb.ClearValue(TextBlock.ForegroundProperty);
+				}
+				ApplyToTextBlocks(child, brush);
+			}
+		}
+
+		// En thème blanc uni, les brushes de texte/survol de l'application sont mutés en sombre (App.ApplyThemeResources) :
+		// RequestedTheme=Dark seul ne suffit donc pas. On écrase localement ces ressources avec leurs valeurs
+		// des thèmes sombres sur les zones à fond sombre (grande cover, mini lecteur, Up Next).
+		private static readonly (string Key, byte A, byte R, byte G, byte B)[] DarkOverrideBrushes =
+		{
+			("TextFillColorPrimaryBrush", 255, 255, 255, 255),
+			("TextFillColorSecondaryBrush", 200, 255, 255, 255),
+			("TextFillColorTertiaryBrush", 160, 255, 255, 255),
+			("TextFillColorDisabledBrush", 92, 255, 255, 255),
+			("TextFillColorInverseBrush", 255, 0x1A, 0x1A, 0x1A),
+			("ControlFillColorDefaultBrush", 15, 255, 255, 255),
+			("ControlFillColorSecondaryBrush", 24, 255, 255, 255),
+			("ControlFillColorTertiaryBrush", 8, 255, 255, 255),
+			("ControlStrongStrokeColorDefaultBrush", 0x28, 255, 255, 255),
+			("CardStrokeColorDefaultBrush", 0x28, 255, 255, 255),
+			("DividerStrokeColorDefaultBrush", 0x28, 255, 255, 255),
+			("ControlAltFillColorTertiaryBrush", 0x0A, 255, 255, 255),
+			("ButtonForeground", 255, 255, 255, 255),
+			("ButtonForegroundPointerOver", 255, 255, 255, 255),
+			("ButtonForegroundPressed", 255, 255, 255, 255),
+			("ButtonBackground", 24, 255, 255, 255),
+			("ButtonBackgroundPointerOver", 20, 255, 255, 255),
+			("ButtonBackgroundPressed", 15, 255, 255, 255),
+			("PlayerButtonBackgroundPointerOver", 20, 255, 255, 255),
+			("PlayerButtonBackgroundPressed", 15, 255, 255, 255),
+			// (bordures de survol : déjà transparentes dans le XAML du lecteur)
+			// (bordures "pressed" : idem)
+			("ToggleSwitchForegroundPointerOver", 255, 255, 255, 255),
+			("ToggleSwitchForegroundPressed", 255, 255, 255, 255),
+			("ScrollBarThumbFill", 200, 255, 255, 255),
+			("ScrollBarThumbBackgroundColor", 200, 255, 255, 255),
+		};
+
+		// Sauvegarde des ressources locales d'origine (le XAML du lecteur définit déjà ButtonBackgroundPointerOver, etc.)
+		private readonly Dictionary<string, object?> _darkOverrideBackup = new();
+		private readonly Dictionary<string, bool> _overlayThemeState = new();
+
+		// Force la résolution des ThemeResource en basculant le thème de l'élément
+		private void ForceRetheme(FrameworkElement element, ElementTheme target)
+		{
+			element.RequestedTheme = (target == ElementTheme.Dark) ? ElementTheme.Light : ElementTheme.Dark;
+			element.RequestedTheme = target;
+		}
+
+		private void ApplyOverlayThemeState(FrameworkElement element, bool enable)
+		{
+			_overlayThemeState.TryGetValue(element.Name, out bool current);
+			if (current == enable) return;
+			_overlayThemeState[element.Name] = enable;
+			SetDarkOverrides(element, enable);
+			ForceRetheme(element, enable ? ElementTheme.Dark : ElementTheme.Default);
+		}
+
+		// Rafraîchit le thème d'un conteneur une fois visible : un changement de thème fait pendant qu'il était
+		// masqué (Collapsed) n'est pas propagé aux ThemeResource de ses boutons (survols restés noirs au démarrage).
+		private void RefreshOverlayTheme(FrameworkElement element)
+		{
+			_overlayThemeState.TryGetValue(element.Name, out bool on);
+			ForceRetheme(element, on ? ElementTheme.Dark : ElementTheme.Default);
+		}
+
+		private static bool IsWhiteSolidTheme() =>
+			App.Settings.Current.Backdrop == AppBackdropStyle.Solid && App.Settings.Current.ThemePresetIndex == 8;
+
+		private void SetDarkOverrides(FrameworkElement element, bool enable)
+		{
+			if (element == null) return;
+			foreach (var (key, a, r, g, b) in DarkOverrideBrushes)
+			{
+				if (enable)
+				{
+					if (!_darkOverrideBackup.ContainsKey(element.Name + "|" + key))
+					{
+						_darkOverrideBackup[element.Name + "|" + key] = element.Resources.TryGetValue(key, out object? existing) ? existing : null;
+						element.Resources[key] = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+					}
+				}
+				else
+				{
+					string backupKey = element.Name + "|" + key;
+					if (_darkOverrideBackup.TryGetValue(backupKey, out object? original))
+					{
+						_darkOverrideBackup.Remove(backupKey);
+						if (original != null) element.Resources[key] = original; else element.Resources.Remove(key);
+					}
+				}
+			}
+		}
+
 		private void UpdatePlayerButtonsColor()
 		{
-			if (_isNowPlayingModeActive)
+			if (_isNowPlayingModeActive || _isMiniPlayerMode)
 			{
 				Color val = BrightenIfNeeded(_lastComputedAvgColor);
+				// Thème blanc uni : en grande cover / mini lecteur, on se comporte comme un thème sombre
+				// (survols lisibles, fond du mini lecteur sombre) plutôt que le thème clair.
+				bool whiteSolidOverlay = App.Settings.Current.Backdrop == AppBackdropStyle.Solid && App.Settings.Current.ThemePresetIndex == 8;
+				ElementTheme overlayTheme = whiteSolidOverlay ? ElementTheme.Dark : ElementTheme.Default;
+				ApplyOverlayThemeState(PlayerBar, whiteSolidOverlay);
+				ApplyOverlayThemeState(MiniPlayerGrid, whiteSolidOverlay);
+				
+				
 				SolidColorBrush val2 = new SolidColorBrush(val);
 				Color val3 = Color.FromArgb(byte.MaxValue, (byte)Math.Min(255, val.R + 30), (byte)Math.Min(255, val.G + 30), (byte)Math.Min(255, val.B + 30));
 				SolidColorBrush val4 = new SolidColorBrush(val3);
@@ -1988,6 +2269,40 @@ namespace Resona;
 				((Control)NextButton).Foreground = (Brush)val2;
 				((Control)NowPlayingTitle).Foreground = (Brush)val2;
 				((Control)NowPlayingArtist).Foreground = (Brush)val2;
+				if (NowPlayingAlbum != null) ((Control)NowPlayingAlbum).Foreground = (Brush)val2;
+				if (NowPlayingFavoriteIcon != null && NowPlayingFavoriteIcon.Glyph != "\ue00b") ((IconElement)NowPlayingFavoriteIcon).Foreground = (Brush)val2;
+				if (LyricsIcon != null) ((IconElement)LyricsIcon).Foreground = (Brush)val2;
+				if (UpNextIcon != null) UpNextIcon.Foreground = (Brush)val2;
+				if (EqualizerIcon != null) EqualizerIcon.Foreground = (Brush)val2;
+				if (MiniPlayerIcon != null) MiniPlayerIcon.Foreground = (Brush)val2;
+				
+				AppWindow appWindow = ((Window)this).AppWindow;
+				AppWindowTitleBar titleBar = ((appWindow != null) ? appWindow.TitleBar : null);
+				if (titleBar != null)
+				{
+					titleBar.ButtonForegroundColor = val;
+					titleBar.ButtonHoverForegroundColor = val;
+					titleBar.ButtonPressedForegroundColor = val;
+					titleBar.ButtonHoverBackgroundColor = Color.FromArgb(40, val.R, val.G, val.B);
+					titleBar.ButtonPressedBackgroundColor = Color.FromArgb(80, val.R, val.G, val.B);
+					titleBar.ButtonInactiveForegroundColor = Color.FromArgb(150, val.R, val.G, val.B);
+				}
+				if (_lyricsLineCurrent != null)
+				{
+					Brush lyricsBrush = (App.Settings.Current.ThemePresetIndex == 8 && _isNowPlayingModeActive) ? new SolidColorBrush(Colors.White) : (Brush)val2;
+					_lyricsLineCurrent.Foreground = lyricsBrush;
+					if (_lyricsLinePrev != null) _lyricsLinePrev.Foreground = lyricsBrush;
+					if (_lyricsLineNext != null) _lyricsLineNext.Foreground = lyricsBrush;
+				}
+				
+				if (_isNowPlayingModeActive)
+				{
+					RootNav.Resources["NavigationViewItemForeground"] = val2;
+					RootNav.Resources["NavigationViewItemForegroundSelected"] = val2;
+					RootNav.Resources["NavigationViewItemForegroundPointerOver"] = val2;
+					RootNav.Resources["NavigationViewItemForegroundSelectedPointerOver"] = val2;
+					ApplyNavItemsForeground(val2);
+				}
 				((Control)RepeatButton).Foreground = (Brush)val2;
 				((IconElement)RepeatIcon).Foreground = (Brush)val2;
 				((UIElement)RepeatIcon).Opacity = ((_playbackMode == PlaybackMode.Off) ? 0.5 : 1.0);
@@ -1999,10 +2314,15 @@ namespace Resona;
 				((Control)PlayPauseButton).Background = (Brush)val2;
 				((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPointerOver"] = val4;
 				((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPressed"] = val4;
-				ElementTheme requestedTheme = ((FrameworkElement)PlayPauseButton).RequestedTheme;
-				((FrameworkElement)PlayPauseButton).RequestedTheme = ElementTheme.Dark;
-				((FrameworkElement)PlayPauseButton).RequestedTheme = ElementTheme.Light;
-				((FrameworkElement)PlayPauseButton).RequestedTheme = requestedTheme;
+				// Les bascules de RequestedTheme forcent un re-theming complet : inutile si la couleur n'a pas change.
+				bool colorChanged = !_lastThemeToggleColor.HasValue || _lastThemeToggleColor.Value != val;
+				if (colorChanged)
+				{
+					ElementTheme requestedTheme = ((FrameworkElement)PlayPauseButton).RequestedTheme;
+					((FrameworkElement)PlayPauseButton).RequestedTheme = ElementTheme.Dark;
+					((FrameworkElement)PlayPauseButton).RequestedTheme = ElementTheme.Light;
+					((FrameworkElement)PlayPauseButton).RequestedTheme = requestedTheme;
+				}
 				((IconElement)PlayPauseIcon).Foreground = (Brush)((num > 0.6) ? new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)0, (byte)0, (byte)0)) : new SolidColorBrush(Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue)));
 				CurrentTimeText.Foreground = (Brush)val2;
 				TotalTimeText.Foreground = (Brush)val2;
@@ -2010,7 +2330,7 @@ namespace Resona;
 				((Microsoft.UI.Xaml.Shapes.Shape)CustomProgressThumbInner).Fill = (Brush)val2;
 				((IconElement)LyricsIcon).Foreground = (Brush)val2;
 				
-				LyricsButton.BorderBrush = (Brush)val2;
+				
 				((IconElement)VolumeIcon).Foreground = (Brush)val2;
 				((Control)VolumeSlider).Foreground = (Brush)val2;
 				((FrameworkElement)VolumeSlider).Resources["SliderThumbBackground"] = val2;
@@ -2018,103 +2338,226 @@ namespace Resona;
 				((FrameworkElement)VolumeSlider).Resources["SliderThumbBackgroundPressed"] = val4;
 				((FrameworkElement)VolumeSlider).Resources["SliderTrackValueFillPointerOver"] = val4;
 				((FrameworkElement)VolumeSlider).Resources["SliderTrackValueFillPressed"] = val4;
-				ElementTheme requestedTheme2 = ((FrameworkElement)VolumeSlider).RequestedTheme;
-				((FrameworkElement)VolumeSlider).RequestedTheme = ElementTheme.Dark;
-				((FrameworkElement)VolumeSlider).RequestedTheme = ElementTheme.Light;
-				((FrameworkElement)VolumeSlider).RequestedTheme = requestedTheme2;
+				// Theme blanc uni : la partie remplie du volume restait noire (accent du theme blanc).
+				// On la met a la couleur de la cover, comme la barre de lecture (base translucide inchangee).
+				if (whiteSolidOverlay)
+				{
+					((FrameworkElement)VolumeSlider).Resources["SliderTrackValueFill"] = val2;
+				}
+				else
+				{
+					((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackValueFill");
+				}
+				// Mini lecteur : la barre de volume suit aussi la couleur de la cover.
+				if (MiniVolumeSlider != null)
+				{
+					((Control)MiniVolumeSlider).Foreground = val2;
+					var miniVolRes = ((FrameworkElement)MiniVolumeSlider).Resources;
+					miniVolRes["SliderThumbBackground"] = val2;
+					miniVolRes["SliderThumbBackgroundPointerOver"] = val4;
+					miniVolRes["SliderThumbBackgroundPressed"] = val4;
+					miniVolRes["SliderTrackValueFill"] = val2;
+					miniVolRes["SliderTrackValueFillPointerOver"] = val4;
+					miniVolRes["SliderTrackValueFillPressed"] = val4;
+					if (colorChanged)
+					{
+						ElementTheme miniVolTheme = ((FrameworkElement)MiniVolumeSlider).RequestedTheme;
+						((FrameworkElement)MiniVolumeSlider).RequestedTheme = ElementTheme.Dark;
+						((FrameworkElement)MiniVolumeSlider).RequestedTheme = ElementTheme.Light;
+						((FrameworkElement)MiniVolumeSlider).RequestedTheme = miniVolTheme;
+					}
+				}
+				// Base de la barre de volume : meme translucide que la barre de lecture (CustomProgressTrack),
+				// posee explicitement pour ne plus dependre du theme blanc uni (sinon elle restait noire).
+				var overlayTrackBase = new SolidColorBrush(Color.FromArgb(0x8C, 255, 255, 255));
+				((FrameworkElement)VolumeSlider).Resources["SliderTrackFill"] = overlayTrackBase;
+				((FrameworkElement)VolumeSlider).Resources["SliderTrackFillPointerOver"] = overlayTrackBase;
+				((FrameworkElement)VolumeSlider).Resources["SliderTrackFillPressed"] = overlayTrackBase;
+				if (MiniVolumeSlider != null)
+				{
+					((FrameworkElement)MiniVolumeSlider).Resources["SliderTrackFill"] = overlayTrackBase;
+					((FrameworkElement)MiniVolumeSlider).Resources["SliderTrackFillPointerOver"] = overlayTrackBase;
+					((FrameworkElement)MiniVolumeSlider).Resources["SliderTrackFillPressed"] = overlayTrackBase;
+					ElementTheme miniTrackTheme = ((FrameworkElement)MiniVolumeSlider).RequestedTheme;
+					((FrameworkElement)MiniVolumeSlider).RequestedTheme = ElementTheme.Dark;
+					((FrameworkElement)MiniVolumeSlider).RequestedTheme = ElementTheme.Light;
+					((FrameworkElement)MiniVolumeSlider).RequestedTheme = miniTrackTheme;
+				}
+				// Les ressources changees apres le rendu du template ne sont relues qu'apres un changement
+				// de theme : on force toujours le rafraichissement du volume (pas seulement si la couleur change).
+				{
+					ElementTheme volTrackTheme = ((FrameworkElement)VolumeSlider).RequestedTheme;
+					((FrameworkElement)VolumeSlider).RequestedTheme = ElementTheme.Dark;
+					((FrameworkElement)VolumeSlider).RequestedTheme = ElementTheme.Light;
+					((FrameworkElement)VolumeSlider).RequestedTheme = volTrackTheme;
+				}
+				if (colorChanged)
+				{
+					ElementTheme requestedTheme2 = ((FrameworkElement)VolumeSlider).RequestedTheme;
+					((FrameworkElement)VolumeSlider).RequestedTheme = ElementTheme.Dark;
+					((FrameworkElement)VolumeSlider).RequestedTheme = ElementTheme.Light;
+					((FrameworkElement)VolumeSlider).RequestedTheme = requestedTheme2;
+					_lastThemeToggleColor = val;
+				}
 				((Microsoft.UI.Xaml.Shapes.Shape)CustomProgressThumbOuter).Fill = (Brush)val2;
 				return;
 			}
+			// Retour au mode normal : on rend leur thème aux conteneurs
+			ApplyOverlayThemeState(PlayerBar, false);
+			ApplyOverlayThemeState(MiniPlayerGrid, false);
+			
+			
 			SolidColorBrush val5 = new SolidColorBrush(Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+			SolidColorBrush val8 = new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)0, (byte)0, (byte)0));
+			bool isWhiteSolid = App.Settings.Current.Backdrop == AppBackdropStyle.Solid && App.Settings.Current.ThemePresetIndex == 8;
+			// Retour au mode normal : on retire les couleurs de cover posees sur les barres de volume.
+			((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackValueFill");
+			if (MiniVolumeSlider != null)
+			{
+				((DependencyObject)MiniVolumeSlider).ClearValue(Control.ForegroundProperty);
+				var miniVolResReset = ((FrameworkElement)MiniVolumeSlider).Resources;
+				miniVolResReset.Remove("SliderThumbBackground");
+				miniVolResReset.Remove("SliderThumbBackgroundPointerOver");
+				miniVolResReset.Remove("SliderThumbBackgroundPressed");
+				miniVolResReset.Remove("SliderTrackValueFill");
+				miniVolResReset.Remove("SliderTrackFill");
+				miniVolResReset.Remove("SliderTrackFillPointerOver");
+				miniVolResReset.Remove("SliderTrackFillPressed");
+				miniVolResReset.Remove("SliderTrackValueFillPointerOver");
+				miniVolResReset.Remove("SliderTrackValueFillPressed");
+				ElementTheme miniVolThemeReset = ((FrameworkElement)MiniVolumeSlider).RequestedTheme;
+				((FrameworkElement)MiniVolumeSlider).RequestedTheme = ElementTheme.Dark;
+				((FrameworkElement)MiniVolumeSlider).RequestedTheme = ElementTheme.Light;
+				((FrameworkElement)MiniVolumeSlider).RequestedTheme = miniVolThemeReset;
+			}
+			bool isBlackSolid = App.Settings.Current.Backdrop == AppBackdropStyle.Solid && App.Settings.Current.ThemePresetIndex == 7;
+			
+			// Base icon brush: black for white theme, white otherwise
+			SolidColorBrush iconBrush = isWhiteSolid ? val8 : val5;
 			Brush val6 = (Brush)Application.Current.Resources["AppAccentBrush"];
-			((Control)PrevButton).Foreground = (Brush)val5;
-			((Control)NextButton).Foreground = (Brush)val5;
-			((Control)NowPlayingTitle).Foreground = (Brush)val5;
-			((Control)NowPlayingArtist).Foreground = (Brush)new SolidColorBrush(Color.FromArgb((byte)165, byte.MaxValue, byte.MaxValue, byte.MaxValue));
-			((Control)RepeatButton).Foreground = (Brush)val5;
+			
+			((Control)PrevButton).Foreground = (Brush)iconBrush;
+			((Control)NextButton).Foreground = (Brush)iconBrush;
+			((Control)NowPlayingTitle).Foreground = (Brush)iconBrush;
+			((Control)NowPlayingArtist).Foreground = (Brush)(isWhiteSolid 
+				? new SolidColorBrush(Color.FromArgb((byte)165, (byte)0, (byte)0, (byte)0))
+				: new SolidColorBrush(Color.FromArgb((byte)165, byte.MaxValue, byte.MaxValue, byte.MaxValue)));
+			if (NowPlayingAlbum != null) ((Control)NowPlayingAlbum).Foreground = isWhiteSolid
+				? new SolidColorBrush(Color.FromArgb((byte)150, (byte)0, (byte)0, (byte)0))
+				: (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+			((Control)RepeatButton).Foreground = (Brush)iconBrush;
 			((IconElement)RepeatIcon).Foreground = ((_playbackMode == PlaybackMode.Off) ? ((Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]) : ((Brush)Application.Current.Resources["SystemControlHighlightAccentBrush"]));
 			((UIElement)RepeatIcon).Opacity = 1.0;
 			RepeatOneBadge.Foreground = val6;
+			
+			// Play/Pause button
 			((Control)PlayPauseButton).Background = val6;
 			((IconElement)PlayPauseIcon).Foreground = (Brush)val5;
 			((FrameworkElement)PlayPauseButton).Resources.Remove("ButtonBackgroundPointerOver");
 			((FrameworkElement)PlayPauseButton).Resources.Remove("ButtonBackgroundPressed");
-			if (App.Settings.Current.Backdrop == AppBackdropStyle.Solid)
+			if (isBlackSolid)
 			{
-				if (App.Settings.Current.ThemePresetIndex == 7)
+				((Control)PlayPauseButton).Background = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)40, (byte)40, (byte)40));
+				((IconElement)PlayPauseIcon).Foreground = (Brush)val5;
+				if (_playbackMode != PlaybackMode.Off)
 				{
-					((Control)PlayPauseButton).Background = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)40, (byte)40, (byte)40));
-					((IconElement)PlayPauseIcon).Foreground = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
-					if (_playbackMode != PlaybackMode.Off)
-					{
-						((IconElement)RepeatIcon).Foreground = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
-						RepeatOneBadge.Foreground = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
-					}
-				}
-				else if (App.Settings.Current.ThemePresetIndex == 8)
-				{
-					((Control)PlayPauseButton).Background = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)220, (byte)220, (byte)220));
-					((IconElement)PlayPauseIcon).Foreground = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)0, (byte)0, (byte)0));
-					if (_playbackMode != PlaybackMode.Off)
-					{
-						((IconElement)RepeatIcon).Foreground = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)0, (byte)0, (byte)0));
-						RepeatOneBadge.Foreground = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)0, (byte)0, (byte)0));
-					}
+					((IconElement)RepeatIcon).Foreground = (Brush)val5;
+					RepeatOneBadge.Foreground = (Brush)val5;
 				}
 			}
+			else if (isWhiteSolid)
+			{
+				((Control)PlayPauseButton).Background = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)240, (byte)240, (byte)240));
+				((IconElement)PlayPauseIcon).Foreground = (Brush)val8;
+				((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPointerOver"] = (object)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)220, (byte)220, (byte)220));
+				((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPressed"] = (object)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)200, (byte)200, (byte)200));
+				if (_playbackMode != PlaybackMode.Off)
+				{
+					((IconElement)RepeatIcon).Foreground = (Brush)val8;
+					RepeatOneBadge.Foreground = (Brush)val8;
+				}
+			}
+			
 			ElementTheme requestedTheme3 = ((FrameworkElement)PlayPauseButton).RequestedTheme;
 			((FrameworkElement)PlayPauseButton).RequestedTheme = ElementTheme.Dark;
 			((FrameworkElement)PlayPauseButton).RequestedTheme = ElementTheme.Light;
 			((FrameworkElement)PlayPauseButton).RequestedTheme = requestedTheme3;
-			CurrentTimeText.Foreground = (Brush)val5;
-			TotalTimeText.Foreground = (Brush)val5;
-			Brush val7 = val6;
-			SolidColorBrush val8 = new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)0, (byte)0, (byte)0));
-			if (App.Settings.Current.Backdrop == AppBackdropStyle.Solid)
-			{
-				if (App.Settings.Current.ThemePresetIndex == 7)
-				{
-					val7 = (Brush)val5;
-					((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPointerOver"] = (object)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)60, (byte)60, (byte)60));
-					((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPressed"] = (object)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)80, (byte)80, (byte)80));
-				}
-				else if (App.Settings.Current.ThemePresetIndex == 8)
-				{
-					val7 = (Brush)val8;
-					((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPointerOver"] = (object)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)220, (byte)220, (byte)220));
-					((FrameworkElement)PlayPauseButton).Resources["ButtonBackgroundPressed"] = (object)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)200, (byte)200, (byte)200));
-					((Control)PlayPauseButton).Background = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)240, (byte)240, (byte)240));
-					((IconElement)PlayPauseIcon).Foreground = (Brush)val8;
-					((Control)PrevButton).Foreground = (Brush)val8;
-					((Control)NextButton).Foreground = (Brush)val8;
-				}
-			}
-			((Panel)CustomProgressFill).Background = val7;
-			((Microsoft.UI.Xaml.Shapes.Shape)CustomProgressThumbInner).Fill = val7;
-			((Microsoft.UI.Xaml.Shapes.Shape)CustomProgressThumbOuter).Fill = val7;
-			((IconElement)LyricsIcon).Foreground = (Brush)val5;
+			CurrentTimeText.Foreground = (Brush)iconBrush;
+			TotalTimeText.Foreground = (Brush)iconBrush;
 			
-			LyricsButton.BorderBrush = val6;
-			if (App.Settings.Current.Backdrop == AppBackdropStyle.Solid && App.Settings.Current.ThemePresetIndex == 8)
+			// Progress bar
+			Brush progressBrush = isWhiteSolid ? (Brush)val8 : (isBlackSolid ? (Brush)val5 : val6);
+			((Panel)CustomProgressFill).Background = progressBrush;
+			((Microsoft.UI.Xaml.Shapes.Shape)CustomProgressThumbInner).Fill = progressBrush;
+			((Microsoft.UI.Xaml.Shapes.Shape)CustomProgressThumbOuter).Fill = progressBrush;
+			
+			// All right-side icons
+			((IconElement)LyricsIcon).Foreground = (Brush)iconBrush;
+			
+			((IconElement)VolumeIcon).Foreground = (Brush)iconBrush;
+			if (NowPlayingFavoriteIcon != null && ((FontIcon)NowPlayingFavoriteIcon).Glyph != "\ue00b") ((IconElement)NowPlayingFavoriteIcon).Foreground = (Brush)iconBrush;
+			if (UpNextIcon != null) UpNextIcon.Foreground = (Brush)iconBrush;
+			if (EqualizerIcon != null) EqualizerIcon.Foreground = (Brush)iconBrush;
+			if (MiniPlayerIcon != null) MiniPlayerIcon.Foreground = (Brush)iconBrush;
+			
+			// Volume slider
+			if (isWhiteSolid)
 			{
 				SolidColorBrush val9 = new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)60, (byte)60, (byte)60));
-				((IconElement)VolumeIcon).Foreground = (Brush)val8;
 				((Control)VolumeSlider).Foreground = (Brush)val8;
 				((FrameworkElement)VolumeSlider).Resources["SliderThumbBackground"] = val8;
 				((FrameworkElement)VolumeSlider).Resources["SliderThumbBackgroundPointerOver"] = val9;
 				((FrameworkElement)VolumeSlider).Resources["SliderThumbBackgroundPressed"] = val9;
 				((FrameworkElement)VolumeSlider).Resources["SliderTrackValueFillPointerOver"] = val9;
 				((FrameworkElement)VolumeSlider).Resources["SliderTrackValueFillPressed"] = val9;
+				// Base de la barre de volume en blanc (la partie remplie reste noire)
+				SolidColorBrush volumeTrackBase = new SolidColorBrush(Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+				((FrameworkElement)VolumeSlider).Resources["SliderTrackFill"] = volumeTrackBase;
+				((FrameworkElement)VolumeSlider).Resources["SliderTrackFillPointerOver"] = volumeTrackBase;
+				((FrameworkElement)VolumeSlider).Resources["SliderTrackFillPressed"] = volumeTrackBase;
 			}
 			else
 			{
-				((IconElement)VolumeIcon).Foreground = (Brush)val5;
 				((DependencyObject)VolumeSlider).ClearValue(Control.ForegroundProperty);
+				((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackFill");
+				((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackFillPointerOver");
+				((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackFillPressed");
 				((FrameworkElement)VolumeSlider).Resources.Remove("SliderThumbBackground");
-				((FrameworkElement)VolumeSlider).Resources.Remove("SliderThumbBackgroundPointerOver");
-				((FrameworkElement)VolumeSlider).Resources.Remove("SliderThumbBackgroundPressed");
-				((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackValueFillPointerOver");
-				((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackValueFillPressed");
+				// App.xaml.cs met les etats PointerOver/Pressed a la meme couleur que l'etat normal (aucune
+				// surbrillance) : on fournit une variante de survol propre au volume, derivee de l'accent.
+				if (Application.Current.Resources.TryGetValue("SliderThumbBackground", out object? baseObj) && baseObj is SolidColorBrush baseAccent)
+				{
+					var hoverBrush = new SolidColorBrush(HoverVariant(baseAccent.Color));
+					((FrameworkElement)VolumeSlider).Resources["SliderThumbBackgroundPointerOver"] = hoverBrush;
+					((FrameworkElement)VolumeSlider).Resources["SliderThumbBackgroundPressed"] = hoverBrush;
+					((FrameworkElement)VolumeSlider).Resources["SliderTrackValueFillPointerOver"] = hoverBrush;
+					((FrameworkElement)VolumeSlider).Resources["SliderTrackValueFillPressed"] = hoverBrush;
+				}
+				else
+				{
+					((FrameworkElement)VolumeSlider).Resources.Remove("SliderThumbBackgroundPointerOver");
+					((FrameworkElement)VolumeSlider).Resources.Remove("SliderThumbBackgroundPressed");
+					((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackValueFillPointerOver");
+					((FrameworkElement)VolumeSlider).Resources.Remove("SliderTrackValueFillPressed");
+				}
+			}
+			
+			// Nav pane
+			RootNav.Resources.Remove("NavigationViewItemForeground");
+			RootNav.Resources.Remove("NavigationViewItemForegroundSelected");
+			RootNav.Resources.Remove("NavigationViewItemForegroundPointerOver");
+			RootNav.Resources.Remove("NavigationViewItemForegroundSelectedPointerOver");
+			_lastThemeToggleColor = null;
+			ApplyNavItemsForeground(null);
+			ApplyTitleBarButtonColors(App.Settings.Current.Backdrop == AppBackdropStyle.Solid);
+			
+			// Lyrics
+			if (_lyricsLineCurrent != null) 
+			{
+				Brush normalLyricsBrush = isWhiteSolid ? new SolidColorBrush(Colors.White) : (Brush)Application.Current.Resources["AppAccentBrush"];
+				_lyricsLineCurrent.Foreground = normalLyricsBrush;
+				if (_lyricsLinePrev != null) _lyricsLinePrev.Foreground = normalLyricsBrush;
+				if (_lyricsLineNext != null) _lyricsLineNext.Foreground = normalLyricsBrush;
 			}
 			ElementTheme requestedTheme4 = ((FrameworkElement)VolumeSlider).RequestedTheme;
 			((FrameworkElement)VolumeSlider).RequestedTheme = ElementTheme.Dark;
@@ -2128,7 +2571,10 @@ namespace Resona;
 			Color themeSurface = ParseHexColor(themePreset.SurfaceHex);
 			Task.Run(delegate
 			{
-				Color? c = GetAverageColorCpu(track.CoverArtPath ?? "");
+				// Enchainement rapide : si ce son n'est deja plus le courant, on ne lit meme pas la pochette
+				if (track.Id != _nowPlayingId) return;
+				Color? c = GetAverageColorCached(track.CoverArtPath ?? "");
+				if (track.Id != _nowPlayingId) return;
 				((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 				{
 					ApplyPlayerBarColor(track.Id, c, themeSurface);
@@ -2138,6 +2584,8 @@ namespace Resona;
 
 		private void ApplyPlayerBarColor(string trackId, Color? avg, Color themeSurface)
 		{
+			// Son déjà dépassé par un suivant (enchaînement rapide) : inutile d'appliquer sa couleur
+			if (trackId != _nowPlayingId) return;
 			Color c = (_lastComputedAvgColor = (avg ?? Color.FromArgb(byte.MaxValue, (byte)30, (byte)30, (byte)30)));
 			UpdatePlayerButtonsColor();
 			Color val = Darken(c, 0.4);
@@ -2158,9 +2606,12 @@ namespace Resona;
 				Offset = 1.0
 			});
 			bool flag = App.Settings.Current.Backdrop == AppBackdropStyle.Solid;
-			if (App.Settings.Current.PlayerGradientOverflowEnabled & flag)
+			// Gradient du lecteur désactivé : fond uni (couleur de surface) et pas de débordement possible.
+			bool innerGradientOn = App.Settings.Current.PlayerGradientEnabled;
+			if (App.Settings.Current.PlayerGradientOverflowEnabled & flag & innerGradientOn)
 			{
 				_gradientStartColor = val;
+				_playerBarIdleBackground = null;
 				_gradientEndColor = themeSurface;
 				LinearGradientBrush val4 = new LinearGradientBrush
 				{
@@ -2199,7 +2650,8 @@ namespace Resona;
 			}
 			else
 			{
-				((Panel)PlayerBar).Background = (Brush)(flag ? ((object)val3) : ((object)val2));
+				_playerBarIdleBackground = (Brush)(flag ? (innerGradientOn ? ((object)val3) : (object)new SolidColorBrush(themeSurface)) : ((object)val2));
+				((Panel)PlayerBar).Background = _isNowPlayingModeActive ? (Brush)val2 : _playerBarIdleBackground;
 				((FrameworkElement)PlayerBar).Margin = new Thickness(0.0);
 				((UIElement)PlayerGradientOverflow).Visibility = Visibility.Collapsed;
 				((UIElement)PlayerGradientFadeLayer).Visibility = Visibility.Collapsed;
@@ -2574,11 +3026,64 @@ namespace Resona;
 		private void ForceUIRepaint()
 		{
 			ElementTheme currentTheme = ((FrameworkElement)RootGrid).RequestedTheme;
-			((FrameworkElement)RootGrid).RequestedTheme = (ElementTheme)(((int)currentTheme != 1) ? 1 : 2);
+			ElementTheme flipped = (ElementTheme)(((int)currentTheme != 1) ? 1 : 2);
+			((FrameworkElement)RootGrid).RequestedTheme = flipped;
+
+			// Le simple toggle de RequestedTheme sur RootGrid ne suffit pas pour les brushes
+			// ajoutees/mutees dynamiquement (ex: etats PointerOver des ToggleSwitch/CheckBox
+			// coches en theme blanc pur) : chaque controle deja rendu garde son template deja
+			// resolu tant qu'on ne le force pas individuellement a re-transitionner. On toggle
+			// donc aussi RequestedTheme sur chaque controle interactif concerne, dans tout
+			// l'arbre visuel de la fenetre (pas seulement la page actuellement affichee, car
+			// SettingsPage reste en cache meme masquee).
+			var allToggles = FindAllVisualChildren<Microsoft.UI.Xaml.Controls.ToggleSwitch>(RootGrid).ToList();
+			var allChecks = FindAllVisualChildren<Microsoft.UI.Xaml.Controls.CheckBox>(RootGrid).ToList();
+			var allRadios = FindAllVisualChildren<Microsoft.UI.Xaml.Controls.RadioButton>(RootGrid).ToList();
+			var allButtons = FindAllVisualChildren<Microsoft.UI.Xaml.Controls.Button>(RootGrid).ToList();
+
+			foreach (var toggle in allToggles) toggle.RequestedTheme = flipped;
+			foreach (var check in allChecks) check.RequestedTheme = flipped;
+			foreach (var radio in allRadios) radio.RequestedTheme = flipped;
+			foreach (var btn in allButtons) btn.RequestedTheme = flipped;
+
+			// Thickness (ex: ButtonBorderThemeThickness) n'est PAS un objet mutable-en-place
+			// comme une SolidColorBrush : le toggle de RequestedTheme ci-dessus ne suffit pas
+			// a la faire relire par les Button deja rendus. On la relit depuis les Resources
+			// et on la reapplique explicitement a chaque bouton pour forcer la mise a jour de
+			// sa bordure (visible/invisible) lors d'un changement depuis/vers le theme blanc pur.
+			if (Application.Current.Resources.TryGetValue("ButtonBorderThemeThickness", out object thicknessObj) && thicknessObj is Microsoft.UI.Xaml.Thickness borderThickness)
+			{
+				foreach (var btn in allButtons)
+				{
+					btn.BorderThickness = borderThickness;
+				}
+			}
+
 			((Window)this).DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Normal, (DispatcherQueueHandler)delegate
 			{
 				((FrameworkElement)RootGrid).RequestedTheme = currentTheme;
+				foreach (var toggle in allToggles) toggle.RequestedTheme = currentTheme;
+				foreach (var check in allChecks) check.RequestedTheme = currentTheme;
+				foreach (var radio in allRadios) radio.RequestedTheme = currentTheme;
+				foreach (var btn in allButtons) btn.RequestedTheme = currentTheme;
 			});
+		}
+
+		private static System.Collections.Generic.IEnumerable<T> FindAllVisualChildren<T>(DependencyObject parent) where T : FrameworkElement
+		{
+			int count = VisualTreeHelper.GetChildrenCount(parent);
+			for (int i = 0; i < count; i++)
+			{
+				var child = VisualTreeHelper.GetChild(parent, i);
+				if (child is T typed)
+				{
+					yield return typed;
+				}
+				foreach (var descendant in FindAllVisualChildren<T>(child))
+				{
+					yield return descendant;
+				}
+			}
 		}
 
 		public void RefreshNavCategories()
@@ -3183,6 +3688,7 @@ namespace Resona;
 						if (CurrentTimeText.Text != text)
 						{
 							CurrentTimeText.Text = text;
+							if (MiniCurrentTimeText != null) MiniCurrentTimeText.Text = text;
 						}
 						if (_queueIndex >= 0 && _queueIndex < _queue.Count)
 						{
@@ -3268,6 +3774,8 @@ namespace Resona;
 
 		public async void PlayTrack(Track track, List<Track>? queue = null, bool isGoingBack = false, bool isGoingForward = false, string? sourceName = null, bool fromManualQueue = false)
 		{
+			bool manualSkip = _manualSkipPending;
+			_manualSkipPending = false;
 			Track old = _queue.FirstOrDefault((Track t) => t.Id == _nowPlayingId);
 			if (old != null)
 			{
@@ -3285,7 +3793,7 @@ namespace Resona;
 					_playbackFuture.Clear();
 				}
 			}
-			if (App.NowPlayingFilePath != null)
+			if (!manualSkip && App.NowPlayingFilePath != null)
 			{
 				UpdateIsPlayingGlobally(App.NowPlayingFilePath, isPlaying: false);
 			}
@@ -3334,7 +3842,40 @@ namespace Resona;
 			_currentIndex = _library.FindIndex((Track t) => t.Id == track.Id);
 			AppSettings settings = App.Settings.Current;
 			_nowPlayingId = track.Id;
+			_nowPlayingTrack = track;
 			_nowPlayingFilePath = track.FilePath;
+			if (manualSkip)
+			{
+				// Mise à jour légère immédiate, puis courte attente : si un autre clic arrive, on abandonne ce son
+				// sans rien calculer (la file / l'index sont déjà à jour pour le clic suivant).
+				((ContentControl)NowPlayingTitle).Content = track.Title;
+				((ContentControl)NowPlayingArtist).Content = track.Artist;
+				((ContentControl)NowPlayingAlbum).Content = track.Album;
+				// Mise en surbrillance immédiate dans la liste (mêmes instances que la file), en même temps que les infos du lecteur
+				if (old != null && old != track) old.IsPlaying = false;
+				track.IsPlaying = true;
+				// Couleur du gradient du lecteur : mise à jour immédiate (comme les textes), sans attendre le délai ci-dessous
+				UpdatePlayerBarColorAsync(track);
+				// Pochette du lecteur : mise à jour immédiate aussi, en même temps que les textes et le gradient
+				if (!string.IsNullOrEmpty(track.CoverArtPath))
+				{
+					SetPlayerCover(track.CoverArtPath);
+				}
+				else
+				{
+					ClearPlayerCover();
+				}
+				int skipToken = ++_skipDebounceToken;
+				await Task.Delay(120);
+				if (skipToken != _skipDebounceToken)
+				{
+					return;
+				}
+				if (App.NowPlayingFilePath != null)
+				{
+					UpdateIsPlayingGlobally(App.NowPlayingFilePath, isPlaying: false);
+				}
+			}
 			_crossfadeTriggered = false;
 			App.AudioEngine.CancelFade();
 			App.NowPlayingId = track.Id;
@@ -3365,8 +3906,40 @@ namespace Resona;
 				((RangeBase)MiniProgressSlider).Value = 0.0;
 			}
 			TotalTimeText.Text = FormatTime(track.Duration);
+			if (MiniTotalTimeText != null) MiniTotalTimeText.Text = FormatTime(track.Duration);
 			CurrentTimeText.Text = "0:00";
+			if (MiniCurrentTimeText != null) MiniCurrentTimeText.Text = "0:00";
 			ShowPlayerBar();
+			if (!string.IsNullOrEmpty(track.CoverArtPath))
+			{
+				if (!manualSkip)
+				{
+					SetPlayerCover(track.CoverArtPath);
+				}
+			}
+			else
+			{
+				if (!manualSkip)
+				{
+					ClearPlayerCover();
+				}
+				if (settings.AutoFetchMissingCovers)
+				{
+					FindMissingCoverAsync(track);
+				}
+			}
+			if (!manualSkip)
+			{
+				UpdatePlayerBarColorAsync(track);
+			}
+			// Mises à jour d'interface secondaires (pages, Up Next, pochette, couleurs, paroles) : reportées à priorité basse
+			// pour que l'audio démarre sans attendre ; ignorées si un son plus récent a pris la place entre-temps.
+			((Window)this).DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, (DispatcherQueueHandler)(() =>
+			{
+			if (_nowPlayingId != track.Id)
+			{
+				return;
+			}
 			_libraryPageInstance?.SetNowPlayingId(track.Id, track.FilePath);
 			object content = ((ContentControl)ContentFrame).Content;
 			if (content is PlaylistDetailPage pdp)
@@ -3416,19 +3989,6 @@ namespace Resona;
 			{
 				NavigateToNowPlaying(track, isGoingBack);
 			}
-			if (!string.IsNullOrEmpty(track.CoverArtPath))
-			{
-				SetPlayerCover(track.CoverArtPath);
-			}
-			else
-			{
-				ClearPlayerCover();
-				if (settings.AutoFetchMissingCovers)
-				{
-					FindMissingCoverAsync(track);
-				}
-			}
-			UpdatePlayerBarColorAsync(track);
 			_lrcLines.Clear();
 			_lrcCurrentIndex = -1;
 			UpdateLyricsOverlayTrackInfo(track);
@@ -3443,6 +4003,7 @@ namespace Resona;
 					FindMissingLyricsAsync(track);
 				}
 			}
+			}));
 			try
 			{
 				double gainToApply = (settings.NormalizationEnabled ? track.NormalizationGainDb : 0.0);
@@ -3515,6 +4076,11 @@ namespace Resona;
 					XamlRoot = ((UIElement)ContentFrame).XamlRoot
 				};
 				errorDialog.ShowAsync();
+				return;
+			}
+				if (_nowPlayingId != track.Id)
+			{
+				// Demande de lecture dépassée par un son plus récent (enchaînement rapide) : rien de plus à faire
 				return;
 			}
 			App.PlayStats.RecordPlay(track.Id);
@@ -3924,13 +4490,29 @@ namespace Resona;
 		{
 			bool lyricsEnabled = App.Settings.Current.LyricsEnabled;
 			bool enableUpNextPanel = App.Settings.Current.EnableUpNextPanel;
-			((UIElement)LyricsButton).Visibility = (lyricsEnabled ? Visibility.Visible : Visibility.Collapsed);
-			((UIElement)UpNextToggleBtn).Visibility = (enableUpNextPanel ? Visibility.Visible : Visibility.Collapsed);
+			var lyricsVis = lyricsEnabled ? Visibility.Visible : Visibility.Collapsed;
+			var upNextVis = enableUpNextPanel ? Visibility.Visible : Visibility.Collapsed;
+
+			((UIElement)LyricsButton).Visibility = lyricsVis;
+			if (MiniLyricsButton != null) ((UIElement)MiniLyricsButton).Visibility = lyricsVis;
+			
+			((UIElement)UpNextToggleBtn).Visibility = upNextVis;
+			if (MiniUpNextToggleBtn != null) ((UIElement)MiniUpNextToggleBtn).Visibility = upNextVis;
+			
 			UpdateVolumeSliderWidth();
 			UpdatePlaybackControlsCentering();
 			if (!lyricsEnabled)
 			{
 				CloseLyricsOverlay();
+			}
+		}
+
+		public void RefreshLyrics()
+		{
+			Track track = _library.FirstOrDefault(t => t.Id == App.NowPlayingId) ?? _library.FirstOrDefault(t => string.Equals(t.FilePath, App.NowPlayingFilePath, StringComparison.OrdinalIgnoreCase));
+			if (track != null && !string.IsNullOrEmpty(track.Lyrics))
+			{
+				LoadLyricsAsync(track.Lyrics, track.LyricsSynced);
 			}
 		}
 
@@ -3969,7 +4551,7 @@ namespace Resona;
 					{
 						string orig = rawLines[i2].Text;
 						string trans = translatedLines[i2].Trim();
-						_lrcLines.Add(new LrcLine(rawLines[i2].Time, (string.IsNullOrWhiteSpace(trans) || orig == trans) ? orig : (orig + "\n— " + trans)));
+						_lrcLines.Add(new LrcLine(rawLines[i2].Time, (string.IsNullOrWhiteSpace(trans) || orig == trans) ? orig : (orig + "\n\u2014 " + trans)));
 					}
 				}
 				else
@@ -3984,6 +4566,7 @@ namespace Resona;
 				{
 					ShowPlainLyrics(lyrics);
 				}
+				UpdatePlayerButtonsColor();
 				return;
 			}
 			if (App.Settings.Current.TranslateLyricsEnabled)
@@ -4002,7 +4585,7 @@ namespace Resona;
 					}
 					else
 					{
-						sb.AppendLine((string.IsNullOrWhiteSpace(trans2) || orig2 == trans2) ? orig2 : (orig2 + "\n— " + trans2));
+						sb.AppendLine((string.IsNullOrWhiteSpace(trans2) || orig2 == trans2) ? orig2 : (orig2 + "\n\u2014 " + trans2));
 					}
 				}
 				lyrics = sb.ToString();
@@ -4039,7 +4622,7 @@ namespace Resona;
 			}
 			Border val = new Border
 			{
-				Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)234, (byte)9, (byte)9, (byte)13)),
+				Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)246, (byte)9, (byte)9, (byte)13)),
 				HorizontalAlignment = HorizontalAlignment.Stretch,
 				VerticalAlignment = VerticalAlignment.Stretch
 			};
@@ -4181,7 +4764,7 @@ namespace Resona;
 			};
 			Grid.SetRow((FrameworkElement)_lyricsOverlay, 0);
 			Grid.SetRowSpan((FrameworkElement)_lyricsOverlay, 3);
-			Canvas.SetZIndex((UIElement)_lyricsOverlay, 90);
+			Canvas.SetZIndex((UIElement)_lyricsOverlay, 1003);
 			((UIElement)_lyricsOverlay).Tapped += (TappedEventHandler)delegate
 			{
 				CloseLyricsOverlay();
@@ -4558,8 +5141,11 @@ namespace Resona;
 			}
 		}
 
-		private void LyricsButton_Tapped(object sender, TappedRoutedEventArgs e)
+				private void MiniLyricsButton_Click(object sender, RoutedEventArgs e)
 		{
+			MiniLyricsButton.IsEnabled = false;
+			MiniLyricsButton.IsEnabled = true;
+			VisualStateManager.GoToState(MiniLyricsButton, "Normal", true);
 			HideInfoOverlay();
 			if (_lyricsOverlayOpen)
 			{
@@ -4569,24 +5155,31 @@ namespace Resona;
 			{
 				OpenLyricsOverlay();
 			}
-			LyricsButton.Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)30, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+		}
+
+		private void LyricsButton_Click(object sender, RoutedEventArgs e)
+		{
+			LyricsButton.IsEnabled = false;
+			LyricsButton.IsEnabled = true;
+			VisualStateManager.GoToState(LyricsButton, "Normal", true);
+			HideInfoOverlay();
+			if (_lyricsOverlayOpen)
+			{
+				CloseLyricsOverlay();
+			}
+			else
+			{
+				OpenLyricsOverlay();
+			}
+			
 		}
 
 		private void LyricsButton_PointerExited(object sender, PointerRoutedEventArgs e)
 		{
 			AnimationHelper.ApplyBouncyScale((UIElement)LyricsButton, 1f);
-			LyricsButton.Background = (Brush)new SolidColorBrush(Colors.Transparent);
 		}
 
-		private void LyricsButton_PointerPressed(object sender, PointerRoutedEventArgs e)
-		{
-			LyricsButton.Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)15, byte.MaxValue, byte.MaxValue, byte.MaxValue));
-		}
-
-		private void LyricsButton_PointerReleased(object sender, PointerRoutedEventArgs e)
-		{
-			LyricsButton.Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)30, byte.MaxValue, byte.MaxValue, byte.MaxValue));
-		}
+		
 
 		public void RefreshPlaylistsPage()
 		{
@@ -4757,6 +5350,21 @@ namespace Resona;
 			return val;
 		}
 
+		// Ajoute les fichiers à la liste d'exclusion pour qu'ils ne réapparaissent pas au prochain scan
+		private static async Task AddToExclusionListAsync(IEnumerable<Track> tracks)
+		{
+			List<string> list = new List<string>(App.Settings.Current.ExcludedFilePaths ?? new List<string>());
+			foreach (Track t in tracks)
+			{
+				if (!string.IsNullOrEmpty(t.FilePath) && !list.Contains(t.FilePath, StringComparer.OrdinalIgnoreCase))
+				{
+					list.Add(t.FilePath);
+				}
+			}
+			App.Settings.Current.ExcludedFilePaths = list;
+			await App.Settings.SaveAsync();
+		}
+
 		public async Task ShowDeleteTracksDialogAsync(List<Track> tracks)
 		{
 			if (tracks == null || tracks.Count == 0)
@@ -4808,6 +5416,7 @@ namespace Resona;
 			((ButtonBase)removeBtn).Click += (RoutedEventHandler)async delegate
 			{
 				dialog.Hide();
+				await AddToExclusionListAsync(tracks);
 				bool wasPlaying = false;
 				foreach (Track track in tracks)
 				{
@@ -4953,6 +5562,13 @@ namespace Resona;
 				}
 				favorites.DateModified = DateTime.UtcNow;
 				await App.Cache.UpsertPlaylistAsync(favorites);
+				// Synchronise l'etat sur toutes les instances du son (listes, file d'attente...) pour que le coeur
+				// des listes se mette a jour aussi quand on bascule depuis le player.
+				track.IsFavorite = nowFavorite;
+				foreach (Track libTrack in _library)
+				{
+					if (libTrack.Id == track.Id) libTrack.IsFavorite = nowFavorite;
+				}
 				_playlistsPageInstance?.RefreshAsync();
 				if (App.NowPlayingId == track.Id)
 				{
@@ -4965,11 +5581,46 @@ namespace Resona;
 
 		private void UpdateNowPlayingFavoriteIconVisual(bool isFavorite)
 		{
-			if (NowPlayingFavoriteIcon == null) return;
-			NowPlayingFavoriteIcon.Glyph = isFavorite ? "\ue00b" : "\ue006";
-			((IconElement)NowPlayingFavoriteIcon).Foreground = isFavorite
-				? (Brush)Application.Current.Resources["AppAccentBrush"]
-				: (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+			bool isBlackTheme = App.Settings.Current.ThemePresetIndex == 7;
+			bool isWhiteTheme = App.Settings.Current.ThemePresetIndex == 8;
+			
+			var glyph = isFavorite ? "\ue00b" : "\ue006";
+			Brush brush;
+			if (isFavorite)
+			{
+				if (_isMiniPlayerMode || _isNowPlayingModeActive) brush = new SolidColorBrush(BrightenIfNeeded(_lastComputedAvgColor));
+				else if (isBlackTheme) brush = new SolidColorBrush(Color.FromArgb(255, 255, 255, 255));
+				else if (isWhiteTheme) brush = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0));
+				else brush = (Brush)Application.Current.Resources["AppAccentBrush"];
+			}
+			else
+			{
+				if (_isMiniPlayerMode || _isNowPlayingModeActive) brush = new SolidColorBrush(Colors.White);
+				else brush = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+			}
+
+			if (NowPlayingFavoriteIcon != null)
+			{
+				NowPlayingFavoriteIcon.Glyph = glyph;
+				((IconElement)NowPlayingFavoriteIcon).Foreground = brush;
+			}
+			if (MiniNowPlayingFavoriteIcon != null)
+			{
+				// Le mini lecteur a toujours un fond sombre : ne jamais lui appliquer le brush du theme normal
+				// (sinon contour noir au demarrage tant que le favori n'a pas ete toggle).
+				MiniNowPlayingFavoriteIcon.Glyph = glyph;
+				((IconElement)MiniNowPlayingFavoriteIcon).Foreground = isFavorite
+					? new SolidColorBrush(BrightenIfNeeded(_lastComputedAvgColor))
+					: new SolidColorBrush(Colors.White);
+			}
+			
+			// Si on est en mode grande cover, on rappelle UpdatePlayerButtonsColor
+			// pour qu'il force le cœur vide à prendre la couleur de la pochette (val2)
+			// au lieu de rester blanc.
+			if (!isFavorite && (_isNowPlayingModeActive || _isMiniPlayerMode))
+			{
+				UpdatePlayerButtonsColor();
+			}
 		}
 
 		private async Task UpdateNowPlayingFavoriteIconAsync(string trackId)
@@ -4983,7 +5634,7 @@ namespace Resona;
 
 		private async void NowPlayingFavoriteButton_Click(object sender, RoutedEventArgs e)
 		{
-			Track track = _library.FirstOrDefault((Track t) => t.Id == App.NowPlayingId);
+			Track track = _library.FirstOrDefault((Track t) => t.Id == App.NowPlayingId) ?? _library.FirstOrDefault((Track t) => string.Equals(t.FilePath, App.NowPlayingFilePath, StringComparison.OrdinalIgnoreCase));
 			if (track != null)
 			{
 				await ToggleFavoriteAsync(track);
@@ -5012,12 +5663,46 @@ namespace Resona;
 				Text = Strings.Current.CS_EqualizerPresetsTitle,
 				IsEnabled = false
 			};
+			// Thème blanc uni + lecteur en thème sombre (grande cover / mini lecteur) : les couleurs de texte globales
+			// sont sombres, on force du blanc pour le titre (désactivé) et les presets.
+			bool darkFlyout = IsWhiteSolidTheme() && ((FrameworkElement)EqualizerQuickButton).ActualTheme == ElementTheme.Dark;
+			SolidColorBrush flyoutWhite = new SolidColorBrush(Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+			SolidColorBrush flyoutHover = new SolidColorBrush(Color.FromArgb((byte)25, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+			if (darkFlyout)
+			{
+				header.Resources["MenuFlyoutItemForegroundDisabled"] = flyoutWhite;
+				header.Foreground = flyoutWhite;
+			}
 			flyout.Items.Add((MenuFlyoutItemBase)header);
 			flyout.Items.Add((MenuFlyoutItemBase)new MenuFlyoutSeparator());
+			var eqCur = App.Settings.Current;
+			var eqActive = eqCur.EqualizerEnabled ? Resona.Models.EqualizerPresets.FindMatch(eqCur.EqualizerBands) : null;
+			if (eqCur.EqualizerEnabled && eqActive == null)
+			{
+				// Reglages differents de tous les presets : ligne "Personnalise" cochee (ouvre l'egaliseur complet).
+				ToggleMenuFlyoutItem customItem = new ToggleMenuFlyoutItem { Text = Strings.Current.IsFr ? "Personnalisé" : "Custom", IsChecked = true };
+				if (darkFlyout) ApplyDarkToggleItemResources(customItem, flyoutWhite, flyoutHover);
+				customItem.Click += (RoutedEventHandler)delegate
+				{
+					NavigateToSidebarItem(null, true);
+				};
+				flyout.Items.Add((MenuFlyoutItemBase)customItem);
+				flyout.Items.Add((MenuFlyoutItemBase)new MenuFlyoutSeparator());
+			}
 			foreach (var preset in Resona.Models.EqualizerPresets.All)
 			{
 				var presetBands = preset.Bands;
-				MenuFlyoutItem item = new MenuFlyoutItem { Text = preset.Name };
+				ToggleMenuFlyoutItem item = new ToggleMenuFlyoutItem { Text = preset.Name, IsChecked = ReferenceEquals(eqActive, preset) };
+				if (darkFlyout)
+				{
+					item.Foreground = flyoutWhite;
+					item.Resources["MenuFlyoutItemForeground"] = flyoutWhite;
+					item.Resources["MenuFlyoutItemForegroundPointerOver"] = flyoutWhite;
+					item.Resources["MenuFlyoutItemForegroundPressed"] = flyoutWhite;
+					item.Resources["MenuFlyoutItemBackgroundPointerOver"] = flyoutHover;
+					item.Resources["MenuFlyoutItemBackgroundPressed"] = flyoutHover;
+					ApplyDarkToggleItemResources(item, flyoutWhite, flyoutHover);
+				}
 				item.Click += (RoutedEventHandler)delegate
 				{
 					ApplyEqualizerPresetQuick((double[])presetBands.Clone());
@@ -5030,12 +5715,32 @@ namespace Resona;
 				Text = Strings.Current.CS_OpenFullEqualizer,
 				Icon = (IconElement)new FontIcon { Glyph = "\ue713" }
 			};
+			if (darkFlyout)
+			{
+				openFull.Foreground = flyoutWhite;
+				((FontIcon)openFull.Icon).Foreground = flyoutWhite;
+				openFull.Resources["MenuFlyoutItemForeground"] = flyoutWhite;
+				openFull.Resources["MenuFlyoutItemForegroundPointerOver"] = flyoutWhite;
+				openFull.Resources["MenuFlyoutItemForegroundPressed"] = flyoutWhite;
+				openFull.Resources["MenuFlyoutItemBackgroundPointerOver"] = flyoutHover;
+				openFull.Resources["MenuFlyoutItemBackgroundPressed"] = flyoutHover;
+			}
 			openFull.Click += (RoutedEventHandler)delegate
 			{
 				NavigateToSidebarItem(null, true);
 			};
 			flyout.Items.Add((MenuFlyoutItemBase)openFull);
 			flyout.ShowAt((FrameworkElement)EqualizerQuickButton);
+		}
+
+		private static void ApplyDarkToggleItemResources(ToggleMenuFlyoutItem t, Brush white, Brush hover)
+		{
+			t.Foreground = white;
+			foreach (string k in new[] { "ToggleMenuFlyoutItemForeground", "ToggleMenuFlyoutItemForegroundPointerOver", "ToggleMenuFlyoutItemForegroundPressed",
+				"ToggleMenuFlyoutItemCheckGlyphForeground", "ToggleMenuFlyoutItemCheckGlyphForegroundPointerOver", "ToggleMenuFlyoutItemCheckGlyphForegroundPressed" })
+				t.Resources[k] = white;
+			t.Resources["ToggleMenuFlyoutItemBackgroundPointerOver"] = hover;
+			t.Resources["ToggleMenuFlyoutItemBackgroundPressed"] = hover;
 		}
 
 		private void ApplyEqualizerPresetQuick(double[] newBands)
@@ -5119,7 +5824,7 @@ namespace Resona;
 				Text = label,
 				FontSize = 11.0,
 				Opacity = 0.7,
-				Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]
+				Foreground = (Brush)Application.Current.Resources["AppControlForegroundBrush"]
 			};
 			StackPanel val3 = new StackPanel
 			{
@@ -5237,10 +5942,28 @@ public void UpdateQueue(List<Track> newQueue)
 			if (list.Count > 0)
 			{
 				if (RootNav.SelectedItem != null)
-				{
-					_lastNavSelectedItem = RootNav.SelectedItem;
-				}
-				RootNav.SelectedItem = null;
+			{
+				_lastNavSelectedItem = RootNav.SelectedItem;
+			}
+			RootNav.SelectionChanged -= RootNav_SelectionChanged;
+			if (RootNav.SelectedItem is NavigationViewItem selNvi) 
+			{ 
+				selNvi.IsSelected = false; 
+				VisualStateManager.GoToState(selNvi, "Normal", false);
+				VisualStateManager.GoToState(selNvi, "Unselected", false);
+			}
+			if (RootNav.SettingsItem is NavigationViewItem settingsNvi) 
+			{ 
+				settingsNvi.IsSelected = false; 
+				VisualStateManager.GoToState(settingsNvi, "Normal", false);
+				VisualStateManager.GoToState(settingsNvi, "Unselected", false);
+			}
+			foreach (var objItem in RootNav.MenuItems) { if (objItem is NavigationViewItem nItem) nItem.IsSelected = false; }
+			RootNav.SelectedItem = RootNav.MenuItems[0];
+			RootNav.SelectedItem = DummyEndItem;
+			RootNav.IsSettingsVisible = false;
+			RootNav.IsSettingsVisible = true;
+			RootNav.SelectionChanged += RootNav_SelectionChanged;
 				ShowTrackCollection(artist, list, Strings.Current.CS_Artiste);
 			}
 		}
@@ -5251,10 +5974,28 @@ public void UpdateQueue(List<Track> newQueue)
 			if (list.Count > 0)
 			{
 				if (RootNav.SelectedItem != null)
-				{
-					_lastNavSelectedItem = RootNav.SelectedItem;
-				}
-				RootNav.SelectedItem = null;
+			{
+				_lastNavSelectedItem = RootNav.SelectedItem;
+			}
+			RootNav.SelectionChanged -= RootNav_SelectionChanged;
+			if (RootNav.SelectedItem is NavigationViewItem selNvi) 
+			{ 
+				selNvi.IsSelected = false; 
+				VisualStateManager.GoToState(selNvi, "Normal", false);
+				VisualStateManager.GoToState(selNvi, "Unselected", false);
+			}
+			if (RootNav.SettingsItem is NavigationViewItem settingsNvi) 
+			{ 
+				settingsNvi.IsSelected = false; 
+				VisualStateManager.GoToState(settingsNvi, "Normal", false);
+				VisualStateManager.GoToState(settingsNvi, "Unselected", false);
+			}
+			foreach (var objItem in RootNav.MenuItems) { if (objItem is NavigationViewItem nItem) nItem.IsSelected = false; }
+			RootNav.SelectedItem = RootNav.MenuItems[0];
+			RootNav.SelectedItem = DummyEndItem;
+			RootNav.IsSettingsVisible = false;
+			RootNav.IsSettingsVisible = true;
+			RootNav.SelectionChanged += RootNav_SelectionChanged;
 				ShowTrackCollection(album, list, Strings.Current.CS_Album);
 			}
 		}
@@ -5468,7 +6209,7 @@ public void UpdateQueue(List<Track> newQueue)
 				FontSize = 11.0,
 				Opacity = 0.6,
 				Margin = new Thickness(0.0, 6.0, 0.0, 0.0),
-				Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"],
+				Foreground = (Brush)Application.Current.Resources["AppControlForegroundBrush"],
 				TextWrapping = TextWrapping.Wrap,
 				Visibility = Visibility.Collapsed
 			};
@@ -5523,12 +6264,12 @@ public void UpdateQueue(List<Track> newQueue)
 						{
 						}
 					}
-					statusTextBlock.Text = (Strings.Current.IsFr ? "✅ Métadonnées trouvées et pré-remplies." : "✅ Metadata found and pre-filled.");
+					statusTextBlock.Text = (Strings.Current.IsFr ? "\u2705 M\u00e9tadonn\u00e9es trouv\u00e9es et pr\u00e9-remplies." : "\u2705 Metadata found and pre-filled.");
 					((UIElement)statusTextBlock).Visibility = Visibility.Visible;
 				}
 				else
 				{
-					statusTextBlock.Text = (Strings.Current.IsFr ? "⚠\ufe0f Aucune donnée trouvée — remplis manuellement." : "⚠\ufe0f No data found — fill manually.");
+					statusTextBlock.Text = (Strings.Current.IsFr ? "\u26a0\ufe0f Aucune donn\u00e9e trouv\u00e9e \u2014 remplis manuellement." : "\u26a0\ufe0f No data found \u2014 fill manually.");
 					((UIElement)statusTextBlock).Visibility = Visibility.Visible;
 				}
 			};
@@ -5593,7 +6334,7 @@ public void UpdateQueue(List<Track> newQueue)
 				Content = (Strings.Current.IsFr ? "Enregistrer les modifications directement dans le fichier (écraser)" : "Save changes directly to file (overwrite)"),
 				IsChecked = App.Settings.Current.AutoTagWriteToFile,
 				Margin = new Thickness(0.0, 16.0, 0.0, 0.0),
-				Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]
+				Foreground = (Brush)Application.Current.Resources["AppControlForegroundBrush"]
 			};
 			Grid dialogContentPanel = new Grid();
 			dialogContentPanel.RowDefinitions.Add(new RowDefinition
@@ -5610,7 +6351,7 @@ public void UpdateQueue(List<Track> newQueue)
 			((Panel)dialogContentPanel).Children.Add((UIElement)writeToFileCheckBox);
 			ContentDialog editDialog = new ContentDialog
 			{
-				Title = (Strings.Current.IsFr ? "Autotag - Édition" : "Autotag - Edit"),
+				Title = (Strings.Current.IsFr ? "Autotag - édition" : "Autotag - Edit"),
 				Content = dialogContentPanel,
 				PrimaryButtonText = (Strings.Current.IsFr ? "Sauvegarder" : "Save"),
 				CloseButtonText = Strings.Current.CS_Annuler,
@@ -5794,6 +6535,10 @@ public void UpdateQueue(List<Track> newQueue)
 			};
 			bool flag2 = false;
 			_playbackMode = playbackMode2;
+			if (_playbackMode == PlaybackMode.Shuffle)
+			{
+				RegenerateShuffleUpcoming();
+			}
 			App.Settings.Current.SavedPlaybackMode = (int)_playbackMode;
 			App.Settings.SaveAsync();
 			UpdateRepeatButtonVisual();
@@ -5852,7 +6597,7 @@ public void UpdateQueue(List<Track> newQueue)
 				{
 					double num3 = actualWidth * num2;
 					((FrameworkElement)CustomProgressFill).Width = num3;
-					((FrameworkElement)CustomProgressThumb).Margin = new Thickness(num3, 5.0, 0.0, 0.0);
+					((FrameworkElement)CustomProgressThumb).Margin = new Thickness(num3, 0.0, 0.0, 0.0);
 				}
 			}
 			if (MiniProgressSlider != (Slider)null && MiniCustomProgressFill != (Grid)null && MiniCustomProgressTrack != (Grid)null)
@@ -5983,8 +6728,8 @@ public void UpdateQueue(List<Track> newQueue)
 						if (!string.IsNullOrWhiteSpace(extract))
 						{
 							infoText = extract;
-							if (extract.Contains("may refer to:", StringComparison.OrdinalIgnoreCase) || extract.Contains("peut faire rÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â\u00a0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â\u00a0ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â\u00a0ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â\u00a0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©fÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â\u00a0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â\u00a0ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â\u00a0ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â\u00a0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©rence ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â\u00a0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â\u00a0ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â\u00a0ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â\u00a0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â\u00a0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€\u00a0Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â\u00a0", StringComparison.OrdinalIgnoreCase) || extract.Contains("est une page d'homonymie", StringComparison.OrdinalIgnoreCase) || extract.Contains("may also refer to:", StringComparison.OrdinalIgnoreCase))
-							{
+                        if (extract.Contains("may refer to:", StringComparison.OrdinalIgnoreCase) || extract.Contains("peut faire r", StringComparison.OrdinalIgnoreCase) || extract.Contains("est une page d'homonymie", StringComparison.OrdinalIgnoreCase) || extract.Contains("may also refer to:", StringComparison.OrdinalIgnoreCase))
+                        {
 								isDisambiguation = true;
 							}
 							break;
@@ -6104,6 +6849,7 @@ public void UpdateQueue(List<Track> newQueue)
 
 		private void RootNav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
 		{
+			if (args.SelectedItem == DummyEndItem || args.SelectedItem == null) return;
 			NavigationViewItemBase selectedItemContainer = args.SelectedItemContainer;
 			string tag = ((selectedItemContainer == (NavigationViewItemBase)null) ? null : ((FrameworkElement)selectedItemContainer).Tag?.ToString()) ?? "";
 			NavigateToSidebarItem(tag, args.IsSettingsSelected);
@@ -6112,12 +6858,11 @@ public void UpdateQueue(List<Track> newQueue)
 		private void LyricsButton_PointerEntered(object sender, PointerRoutedEventArgs e)
 		{
 			AnimationHelper.ApplyBouncyScale((UIElement)LyricsButton, 1.05f);
-			LyricsButton.Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)10, byte.MaxValue, byte.MaxValue, byte.MaxValue));
 		}
 
 		private void NowPlayingCoverBorder_RightTapped(object sender, RightTappedRoutedEventArgs e)
 		{
-			Track track = _library.FirstOrDefault((Track t) => t.Id == App.NowPlayingId);
+			Track track = _library.FirstOrDefault((Track t) => t.Id == App.NowPlayingId) ?? _library.FirstOrDefault((Track t) => string.Equals(t.FilePath, App.NowPlayingFilePath, StringComparison.OrdinalIgnoreCase));
 			if (track != null)
 			{
 				e.Handled = true;
@@ -6128,7 +6873,7 @@ public void UpdateQueue(List<Track> newQueue)
 
 		private void NowPlayingInfo_RightTapped(object sender, RightTappedRoutedEventArgs e)
 		{
-			Track track = _library.FirstOrDefault((Track t) => t.Id == App.NowPlayingId);
+			Track track = _library.FirstOrDefault((Track t) => t.Id == App.NowPlayingId) ?? _library.FirstOrDefault((Track t) => string.Equals(t.FilePath, App.NowPlayingFilePath, StringComparison.OrdinalIgnoreCase));
 			if (track != null)
 			{
 				e.Handled = true;
@@ -6160,7 +6905,7 @@ public void UpdateQueue(List<Track> newQueue)
 				if (MiniRepeatIcon != (FontIcon)null)
 				{
 					MiniRepeatIcon.Glyph = "\ue8ee";
-					((UIElement)MiniRepeatIcon).Opacity = 1.0;
+					((UIElement)MiniRepeatIcon).Opacity = 0.5;
 					((IconElement)MiniRepeatIcon).Foreground = (Brush)new SolidColorBrush(Color.FromArgb(byte.MaxValue, (byte)180, (byte)180, (byte)180));
 				}
 				ToolTipService.SetToolTip((DependencyObject)RepeatButton, (object)(Strings.Current.IsFr ? "Lecture simple" : "Normal playback"));
@@ -6236,7 +6981,7 @@ public void UpdateQueue(List<Track> newQueue)
 					{
 						((FrameworkElement)MiniPlayPauseIcon).Margin = new Thickness(2.0, 0.0, 0.0, 0.0);
 					}
-					UpdateTaskbarPlayPauseIcon();
+					UpdateTaskbarPlayPauseIcon(false);
 					return;
 				}
 			}
@@ -6271,10 +7016,17 @@ public void UpdateQueue(List<Track> newQueue)
 			{
 				((FrameworkElement)MiniPlayPauseIcon).Margin = new Thickness(0.0);
 			}
-			UpdateTaskbarPlayPauseIcon();
+			UpdateTaskbarPlayPauseIcon(true);
 		}
 
 		private void NextButton_Click(object sender, RoutedEventArgs e)
+		{
+			_manualSkipPending = true;
+			try { NextButtonCore(); }
+			finally { _manualSkipPending = false; }
+		}
+
+		private void NextButtonCore()
 		{
 			if (_manualQueue.Count > 0)
 			{
@@ -6311,6 +7063,13 @@ public void UpdateQueue(List<Track> newQueue)
 		}
 
 		private void PrevButton_Click(object sender, RoutedEventArgs e)
+		{
+			_manualSkipPending = true;
+			try { PrevButtonCore(); }
+			finally { _manualSkipPending = false; }
+		}
+
+		private void PrevButtonCore()
 		{
 			if (_queue.Count == 0)
 			{
@@ -6433,9 +7192,9 @@ public void UpdateQueue(List<Track> newQueue)
 					{
 						continue;
 					}
-					if (currentSettings)
-					{
-						SetNowPlayingMode(isActive: false, null);
+					SetNowPlayingMode(isActive: false, null);
+                    if (currentSettings)
+                    {
 						((UIElement)ContentFrame).Visibility = Visibility.Collapsed;
 						((UIElement)SettingsContainer).Visibility = Visibility.Visible;
 						AnimationHelper.PlayEntranceAnimation((UIElement)SettingsContainer);
@@ -6557,8 +7316,9 @@ public void UpdateQueue(List<Track> newQueue)
 			{
 				((UIElement)PlayerBar).Visibility = Visibility.Visible;
 				((UIElement)PlayerBar).Opacity = 0.0;
+				RefreshOverlayTheme(PlayerBar);
 				((FrameworkElement)PlayerBar).Height = 0.0;
-				if (App.Settings.Current.PlayerGradientOverflowEnabled && App.Settings.Current.Backdrop == AppBackdropStyle.Solid)
+				if (App.Settings.Current.PlayerGradientOverflowEnabled && App.Settings.Current.PlayerGradientEnabled && App.Settings.Current.Backdrop == AppBackdropStyle.Solid)
 				{
 					((UIElement)PlayerGradientOverflow).Visibility = Visibility.Visible;
 					((UIElement)PlayerGradientFadeLayer).Visibility = Visibility.Visible;
@@ -6596,7 +7356,7 @@ public void UpdateQueue(List<Track> newQueue)
 				DoubleAnimation val5 = new DoubleAnimation
 				{
 					From = 0.0,
-					To = 98.0,
+					To = 106.0,
 					Duration = new Duration(TimeSpan.FromMilliseconds(300.0)),
 					EasingFunction = (EasingFunctionBase)new QuadraticEase
 					{
@@ -6620,13 +7380,14 @@ public void UpdateQueue(List<Track> newQueue)
 
 		public void RestoreSidebarSelection()
 		{
-			object obj = RootNav.SelectedItem ?? _lastNavSelectedItem;
+			object obj = (RootNav.SelectedItem == null || RootNav.SelectedItem == DummyEndItem) ? _lastNavSelectedItem : RootNav.SelectedItem;
 			NavigationViewItem val = obj as NavigationViewItem;
 			if (val != (NavigationViewItem)null)
 			{
 				object settingsItem = RootNav.SettingsItem;
 				bool isSettings = (settingsItem as NavigationViewItem) == val;
 				RootNav.SelectedItem = val;
+				val.IsSelected = true;
 				NavigateToSidebarItem(((FrameworkElement)val).Tag?.ToString(), isSettings);
 			}
 		}
@@ -6671,7 +7432,10 @@ public void UpdateQueue(List<Track> newQueue)
 				double width = ((FrameworkElement)slider).ActualWidth;
 				if (width > 0.0)
 				{
-					double ratio = Math.Clamp(point.Position.X / width, 0.0, 1.0);
+					// Le Slider reserve la largeur de son curseur de chaque cote : meme mapping que le drag natif
+					// (et que la barre custom du mini lecteur) pour eviter l'ecart cumule entre clics successifs.
+					double pad = ((sender == MiniProgressSlider) ? 9.0 : 0.0);
+					double ratio = Math.Clamp((point.Position.X - pad) / Math.Max(1.0, width - 2.0 * pad), 0.0, 1.0);
 					double newValue = ((RangeBase)slider).Minimum + ratio * (((RangeBase)slider).Maximum - ((RangeBase)slider).Minimum);
 					((RangeBase)slider).Value = newValue;
 				}
@@ -6760,6 +7524,9 @@ public void UpdateQueue(List<Track> newQueue)
 
 		private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
 		{
+			// Ferme depuis le mini lecteur : on memorise sa taille, et on enregistre la taille/position de la
+			// fenetre PRINCIPALE (pas celles du mini lecteur).
+			if (_isMiniPlayerMode) SaveMiniPlayerSize(sync: true);
 			if (App.Settings.Current.MinimizeToTrayOnClose)
 			{
 				args.Cancel = true;
@@ -6772,13 +7539,13 @@ public void UpdateQueue(List<Track> newQueue)
 			{
 				if (saveWindowSize)
 				{
-					App.Settings.Current.WindowWidth = ((Window)this).AppWindow.Size.Width;
-					App.Settings.Current.WindowHeight = ((Window)this).AppWindow.Size.Height;
+					App.Settings.Current.WindowWidth = _isMiniPlayerMode ? _savedMainWindowWidth : ((Window)this).AppWindow.Size.Width;
+					App.Settings.Current.WindowHeight = _isMiniPlayerMode ? _savedMainWindowHeight : ((Window)this).AppWindow.Size.Height;
 				}
 				if (saveWindowPosition)
 				{
-					App.Settings.Current.WindowX = ((Window)this).AppWindow.Position.X;
-					App.Settings.Current.WindowY = ((Window)this).AppWindow.Position.Y;
+					App.Settings.Current.WindowX = _isMiniPlayerMode ? _savedMainWindowX : ((Window)this).AppWindow.Position.X;
+					App.Settings.Current.WindowY = _isMiniPlayerMode ? _savedMainWindowY : ((Window)this).AppWindow.Position.Y;
 				}
 				App.Settings.SaveSync();
 			}
@@ -6796,19 +7563,18 @@ public void UpdateQueue(List<Track> newQueue)
 			});
 		}
 
-		public void UpdatePlayerBarButtonsVisibility()
+				public void UpdatePlayerBarButtonsVisibility()
 		{
 			((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 			{
-				if (NowPlayingFavoriteButton != (Button)null)
-				{
-					((UIElement)NowPlayingFavoriteButton).Visibility = (App.Settings.Current.EnableFavoriteButton ? Visibility.Visible : Visibility.Collapsed);
-				}
-				if (EqualizerQuickButton != (Button)null)
-				{
-					((UIElement)EqualizerQuickButton).Visibility = (App.Settings.Current.EnableEqualizerQuickButton ? Visibility.Visible : Visibility.Collapsed);
-				}
-				UpdatePlaybackControlsCentering();
+				var favVis = App.Settings.Current.EnableFavoriteButton ? Visibility.Visible : Visibility.Collapsed;
+				if (NowPlayingFavoriteButton != null) ((UIElement)NowPlayingFavoriteButton).Visibility = favVis;
+				if (MiniNowPlayingFavoriteButton != null) ((UIElement)MiniNowPlayingFavoriteButton).Visibility = favVis;
+
+				var eqVis = App.Settings.Current.EnableEqualizerQuickButton ? Visibility.Visible : Visibility.Collapsed;
+				if (EqualizerQuickButton != null) ((UIElement)EqualizerQuickButton).Visibility = eqVis;
+				if (MiniEqualizerQuickButton != null) ((UIElement)MiniEqualizerQuickButton).Visibility = eqVis;
+                UpdatePlaybackControlsCentering();
 			});
 		}
 
@@ -6817,7 +7583,7 @@ public void UpdateQueue(List<Track> newQueue)
 			if (UpNextToggleBtn != (Button)null)
 			{
 				((UIElement)UpNextToggleBtn).Visibility = (App.Settings.Current.EnableUpNextPanel ? Visibility.Visible : Visibility.Collapsed);
-				ApplyLyricsButtonVisibility();
+				ApplyLyricsButtonVisibility(); UpdatePlayerButtonsColor();
 				if (!App.Settings.Current.EnableUpNextPanel && _isUpNextPanelOpen)
 				{
 					_isUpNextPanelOpen = false;
@@ -6830,11 +7596,49 @@ public void UpdateQueue(List<Track> newQueue)
 		{
 			try
 			{
+				UpNextToggleBtn.IsEnabled = false;
+				UpNextToggleBtn.IsEnabled = true;
+				VisualStateManager.GoToState(UpNextToggleBtn, "Normal", true);
 				_isUpNextPanelOpen = !_isUpNextPanelOpen;
 				if (_isUpNextPanelOpen)
 				{
+					if (_isMiniPlayerMode)
+					{
+						UpNextPanel.Width = double.NaN;
+						UpNextPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
+						UpNextPanel.Height = double.NaN;
+						UpNextPanel.VerticalAlignment = VerticalAlignment.Stretch;
+						UpNextPanel.Margin = new Thickness(16, 60, 16, 80);
+					}
+					else
+					{
+						UpNextPanel.Width = 360;
+						UpNextPanel.HorizontalAlignment = HorizontalAlignment.Right;
+						UpNextPanel.Height = 500;
+						UpNextPanel.VerticalAlignment = VerticalAlignment.Bottom;
+						UpNextPanel.Margin = new Thickness(0, 0, 24, 90);
+					}
+					if (UpNextPanelBackgroundBorder != null)
+					{
+						if (_isMiniPlayerMode || _isNowPlayingModeActive)
+						{
+							Color bg = Darken(_lastComputedAvgColor, 0.4);
+							UpNextPanelBackgroundBorder.Background = new SolidColorBrush(Color.FromArgb(255, bg.R, bg.G, bg.B));
+							UpNextPanelBackgroundBorder.Opacity = 1.0;
+							SetDarkOverrides(UpNextPanel, IsWhiteSolidTheme());
+							UpNextPanel.RequestedTheme = ElementTheme.Dark;
+						}
+						else
+						{
+							UpNextPanelBackgroundBorder.Background = (Brush)Application.Current.Resources["AppSurfaceBrush"];
+							UpNextPanelBackgroundBorder.Opacity = 0.95;
+							SetDarkOverrides(UpNextPanel, false);
+							UpNextPanel.RequestedTheme = ElementTheme.Default;
+						}
+					}
 					((UIElement)UpNextOverlay).Visibility = Visibility.Visible;
 					((UIElement)UpNextPanel).Visibility = Visibility.Visible;
+					ForceRetheme(UpNextPanel, (_isMiniPlayerMode || _isNowPlayingModeActive) ? ElementTheme.Dark : ElementTheme.Default);
 					UpdateUpNextPanel();
 					DoubleAnimation val = new DoubleAnimation
 					{
@@ -6898,15 +7702,15 @@ public void UpdateQueue(List<Track> newQueue)
 			{
 				return;
 			}
-			Track track = _library.FirstOrDefault((Track t) => t.Id == _nowPlayingId);
+			Track track = ((_nowPlayingTrack != null && _nowPlayingTrack.Id == _nowPlayingId) ? _nowPlayingTrack : null) ?? _queue?.FirstOrDefault((Track t) => t.Id == _nowPlayingId) ?? _library.FirstOrDefault((Track t) => t.Id == _nowPlayingId) ?? _library.FirstOrDefault((Track t) => string.Equals(t.FilePath, _nowPlayingFilePath, StringComparison.OrdinalIgnoreCase));
 			if (track != null)
 			{
 				UpNextCurrentTitle.Text = track.Title;
 				UpNextCurrentArtist.Text = track.Artist;
 				string value = (string.IsNullOrEmpty(track.Album) ? Strings.Current.CS_AlbumInconnu : track.Album);
-				string value2 = ((track.Year > 0) ? $" • {track.Year}" : "");
+				string value2 = ((track.Year > 0) ? $" \u2022 {track.Year}" : "");
 				string value3 = (_isCurrentlyPlayingManualQueue ? Strings.Current.MainWindow_UpNext_ManualQueue : (_queueSourceName ?? Strings.Current.MainWindow_UpNext_FromLibrary));
-				UpNextCurrentAlbum.Text = $"{value}{value2} • {track.DurationDisplay} • {value3}";
+				UpNextCurrentAlbum.Text = $"{value}{value2} \u2022 {track.DurationDisplay} \u2022 {value3}";
 				((UIElement)UpNextCurrentSource).Visibility = Visibility.Collapsed;
 				if (!string.IsNullOrEmpty(track.CoverArtPath))
 				{
@@ -6916,7 +7720,7 @@ public void UpdateQueue(List<Track> newQueue)
 					};
 					try
 					{
-						val.ImageSource = (ImageSource)new BitmapImage(new Uri(track.CoverArtPath));
+						val.ImageSource = (ImageSource)new BitmapImage(new Uri(track.CoverArtPath)) { DecodePixelWidth = 120 };
 						UpNextCurrentCoverBorder.Background = (Brush)val;
 					}
 					catch
@@ -6939,6 +7743,10 @@ public void UpdateQueue(List<Track> newQueue)
 				if (_playbackFuture != null && _playbackFuture.Count > 0)
 				{
 					_upNextDisplayList.AddRange(_playbackFuture);
+				}
+				if (_shuffleUpcoming.Count == 0 && _queue != null && _queue.Count > 1)
+				{
+					RegenerateShuffleUpcoming();
 				}
 				int count = Math.Max(0, 30 - _upNextDisplayList.Count);
 				_upNextDisplayList.AddRange(_shuffleUpcoming.Take(count));
@@ -7073,17 +7881,25 @@ public void UpdateQueue(List<Track> newQueue)
 				((UIElement)RootNav).Visibility = Visibility.Collapsed;
 				((UIElement)PlayerBar).Visibility = Visibility.Collapsed;
 				((UIElement)MiniPlayerGrid).Visibility = Visibility.Visible;
+				RefreshOverlayTheme(MiniPlayerGrid);
 				AppWindowPresenter presenter = ((Window)this).AppWindow.Presenter;
 				OverlappedPresenter val = presenter as OverlappedPresenter;
 				if (val != null)
 				{
-					val.SetBorderAndTitleBar(false, false);
+					val.SetBorderAndTitleBar(true, false);
+					val.IsResizable = true;
 					val.IsAlwaysOnTop = App.Settings.Current.MiniPlayerAlwaysOnTop;
 				}
 				DisplayArea fromWindowId = DisplayArea.GetFromWindowId(((Window)this).AppWindow.Id, DisplayAreaFallback.Nearest);
 				RectInt32 workArea = fromWindowId.WorkArea;
 				int num = 340;
 				int num2 = 600;
+				// Taille memorisee a la derniere sortie du mini lecteur (bornee a la zone de travail de l'ecran).
+				if (App.Settings.Current.MiniPlayerWidth >= 200 && App.Settings.Current.MiniPlayerHeight >= 250)
+				{
+					num = Math.Min(App.Settings.Current.MiniPlayerWidth, workArea.Width);
+					num2 = Math.Min(App.Settings.Current.MiniPlayerHeight, workArea.Height);
+				}
 				int num3 = workArea.X + workArea.Width - num - 24;
 				int num4 = workArea.Y + workArea.Height - num2 - 24;
 				((Window)this).AppWindow.MoveAndResize(new RectInt32(num3, num4, num, num2));
@@ -7097,7 +7913,61 @@ public void UpdateQueue(List<Track> newQueue)
 				}
 				catch { }
 				UpdateMiniPlayerUI();
+				// Reapplique les couleurs liees a la cover (paroles, boutons...) a chaque entree en mode mini :
+				// entre-temps l'affichage normal a remis les paroles en couleur d'accent.
+				UpdatePlayerButtonsColor();
+				// Dynamic lyrics sizing based on mini player window height
+				((FrameworkElement)MiniPlayerGrid).SizeChanged += MiniPlayerGrid_SizeChanged;
+				UpdateMiniLyricsSize();
 			}
+		}
+		
+		private void MiniPlayerGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+		{
+			UpdateMiniLyricsSize();
+			ScheduleMiniSizeSave();
+		}
+
+		// Enregistre la taille du mini lecteur peu apres chaque redimensionnement : ainsi elle est memorisee
+		// meme si l'app est fermee sans repasser par l'affichage normal.
+		private DispatcherQueueTimer? _miniSizeSaveTimer;
+		private void ScheduleMiniSizeSave()
+		{
+			if (!_isMiniPlayerMode) return;
+			if (_miniSizeSaveTimer == null)
+			{
+				_miniSizeSaveTimer = ((Window)this).DispatcherQueue.CreateTimer();
+				_miniSizeSaveTimer.Interval = TimeSpan.FromMilliseconds(600);
+				_miniSizeSaveTimer.IsRepeating = false;
+				_miniSizeSaveTimer.Tick += (_, _) => { if (_isMiniPlayerMode) SaveMiniPlayerSize(); };
+			}
+			_miniSizeSaveTimer.Stop();
+			_miniSizeSaveTimer.Start();
+		}
+		
+		private void UpdateMiniLyricsSize()
+		{
+			double h = ((FrameworkElement)MiniPlayerGrid).ActualHeight;
+			if (h <= 0) h = 600;
+			// Scale from 12 at 400px to 22 at 900px
+			double scale = Math.Clamp((h - 400) / 500.0, 0.0, 1.0);
+			double currentSize = 12 + scale * 10;
+			double otherSize = 9 + scale * 6;
+			double maxW = 240 + scale * 200;
+			if (_lyricsLineCurrent != null) { _lyricsLineCurrent.FontSize = currentSize; _lyricsLineCurrent.MaxWidth = maxW; }
+			if (_lyricsLinePrev != null) { _lyricsLinePrev.FontSize = otherSize; _lyricsLinePrev.MaxWidth = maxW; }
+			if (_lyricsLineNext != null) { _lyricsLineNext.FontSize = otherSize; _lyricsLineNext.MaxWidth = maxW; }
+		}
+
+		private void SaveMiniPlayerSize(bool sync = false)
+		{
+			var size = ((Window)this).AppWindow.Size;
+			if (size.Width < 200 || size.Height < 250) return;
+			if (!sync && App.Settings.Current.MiniPlayerWidth == size.Width && App.Settings.Current.MiniPlayerHeight == size.Height) return;
+			App.Settings.Current.MiniPlayerWidth = size.Width;
+			App.Settings.Current.MiniPlayerHeight = size.Height;
+			if (sync) App.Settings.SaveSync();
+			else App.Settings.SaveAsync();
 		}
 
 		public async void RestoreMainWindow()
@@ -7107,7 +7977,13 @@ public void UpdateQueue(List<Track> newQueue)
 				((Window)this).AppWindow.Show();
 				return;
 			}
+			// Memorise la taille du mini lecteur avant de revenir a la fenetre principale.
+			SaveMiniPlayerSize();
 			_isMiniPlayerMode = false;
+			// Fenetre "cloaked" (invisible mais toujours rendue) pendant toute la transition : on ne
+			// la revele qu'une fois la frame finale (taille normale) rendue -> plus de frame du mini.
+			SetWindowCloak(true);
+			UpdatePlayerButtonsColor();
 			((UIElement)RootGrid).Opacity = 0.0;
 			((UIElement)MiniPlayerGrid).Visibility = Visibility.Collapsed;
 			((UIElement)AppTitleBar).Visibility = Visibility.Visible;
@@ -7115,8 +7991,8 @@ public void UpdateQueue(List<Track> newQueue)
 			if (App.AudioEngine.CurrentTrack != null)
 			{
 				((UIElement)PlayerBar).Visibility = Visibility.Visible;
+				RefreshOverlayTheme(PlayerBar);
 			}
-			((Window)this).AppWindow.Hide();
 			await Task.Delay(30);
 			AppWindowPresenter presenter = ((Window)this).AppWindow.Presenter;
 			OverlappedPresenter val = presenter as OverlappedPresenter;
@@ -7133,8 +8009,48 @@ public void UpdateQueue(List<Track> newQueue)
 			catch { }
 			await Task.Delay(30);
 			UpdateGradientOverflowLayout();
-			((UIElement)RootGrid).Opacity = 1.0;
+			((FrameworkElement)MiniPlayerGrid).SizeChanged -= MiniPlayerGrid_SizeChanged;
+			// Libere les pochettes du mini lecteur (rechargees a la prochaine entree en mode mini).
+			MiniPlayerBackground.Background = null;
+			if (MiniCoverImage != (Image)null) MiniCoverImage.Source = null;
+			_miniCoverBitmap = null;
+			_miniCoverPath = null;
+			if (_lyricsLineCurrent != null) { _lyricsLineCurrent.FontSize = 28; _lyricsLineCurrent.MaxWidth = 540; }
+			if (_lyricsLinePrev != null) { _lyricsLinePrev.FontSize = 22; _lyricsLinePrev.MaxWidth = 540; }
+			if (_lyricsLineNext != null) { _lyricsLineNext.FontSize = 22; _lyricsLineNext.MaxWidth = 540; }
 			((Window)this).AppWindow.Show();
+			((UIElement)RootGrid).Opacity = 1.0;
+			await WaitForRenderedFrameAsync(150);
+			await WaitForRenderedFrameAsync(150);
+			SetWindowCloak(false);
+		}
+
+		private void SetWindowCloak(bool cloak)
+		{
+			try
+			{
+				nint hwnd = WindowNative.GetWindowHandle((object)this);
+				int value = cloak ? 1 : 0;
+				DwmSetWindowAttribute(hwnd, 13, ref value, sizeof(int)); // DWMWA_CLOAK
+			}
+			catch { }
+		}
+
+		// Attend le prochain rendu XAML (avec timeout de securite).
+		private static Task WaitForRenderedFrameAsync(int timeoutMs)
+		{
+			var tcs = new TaskCompletionSource();
+			EventHandler<Microsoft.UI.Xaml.Media.RenderedEventArgs>? handler = null;
+			handler = (s, e) =>
+			{
+				Microsoft.UI.Xaml.Media.CompositionTarget.Rendered -= handler;
+				tcs.TrySetResult();
+			};
+			Microsoft.UI.Xaml.Media.CompositionTarget.Rendered += handler;
+			return Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ContinueWith(_ =>
+			{
+				Microsoft.UI.Xaml.Media.CompositionTarget.Rendered -= handler;
+			}, TaskScheduler.FromCurrentSynchronizationContext());
 		}
 
 		private void RestoreMainWindow_Click(object sender, RoutedEventArgs e)
@@ -7156,6 +8072,7 @@ public void UpdateQueue(List<Track> newQueue)
 
 		private void TrayExit_Click(object sender, RoutedEventArgs e)
 		{
+			if (_isMiniPlayerMode) SaveMiniPlayerSize(sync: true);
 			Application.Current.Exit();
 		}
 
@@ -7181,7 +8098,11 @@ public void UpdateQueue(List<Track> newQueue)
 				MiniArtist.Text = track.Artist;
 				if (!string.IsNullOrEmpty(track.CoverArtPath))
 				{
-					BitmapImage val = new BitmapImage(new Uri(track.CoverArtPath));
+					BitmapImage val = (_miniCoverBitmap != null && _miniCoverPath == track.CoverArtPath)
+						? _miniCoverBitmap
+						: new BitmapImage(new Uri(track.CoverArtPath)) { DecodePixelWidth = 720 };
+					_miniCoverPath = track.CoverArtPath;
+					_miniCoverBitmap = val;
 					MiniPlayerBackground.Background = (Brush)new ImageBrush
 					{
 						ImageSource = (ImageSource)val,
@@ -7225,3 +8146,58 @@ public void UpdateQueue(List<Track> newQueue)
 		}
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

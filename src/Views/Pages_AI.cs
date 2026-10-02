@@ -80,6 +80,35 @@ public static class AIHelper
 {
     private static bool _isDialogShowing = false;
 
+    /// <summary>
+    /// Force un rendu sombre/texte blanc sur un TextBox affiche dans un dialogue (les dialogues ont un look fixe,
+    /// independant du theme : en theme blanc le texte saisi/colle pouvait rester noir). Les ressources sont posees
+    /// sur le TextBox lui-meme, donc prioritaires sur celles du theme applicatif muté.
+    /// </summary>
+    private static void StyleDialogTextBox(TextBox box)
+    {
+        var white = Windows.UI.Color.FromArgb(255, 255, 255, 255);
+        var white60 = Windows.UI.Color.FromArgb(160, 255, 255, 255);
+        var fill = Windows.UI.Color.FromArgb(24, 255, 255, 255);
+        var stroke = Windows.UI.Color.FromArgb(0x28, 255, 255, 255);
+        Microsoft.UI.Xaml.Media.SolidColorBrush B(Windows.UI.Color c) => new Microsoft.UI.Xaml.Media.SolidColorBrush(c);
+
+        box.RequestedTheme = ElementTheme.Dark;
+        box.Foreground = B(white);
+        box.PlaceholderForeground = B(white60);
+        foreach (var k in new[] { "TextControlForeground", "TextControlForegroundPointerOver", "TextControlForegroundFocused", "TextControlForegroundDisabled",
+                                  "TextBoxForeground", "TextBoxForegroundBrush", "TextBoxForegroundPointerOver", "TextBoxForegroundPressed",
+                                  "TextBoxForegroundDisabled", "TextBoxForegroundSelected", "TextFillColorPrimaryBrush" })
+            box.Resources[k] = B(white);
+        foreach (var k in new[] { "TextControlPlaceholderForeground", "TextControlPlaceholderForegroundPointerOver", "TextControlPlaceholderForegroundFocused" })
+            box.Resources[k] = B(white60);
+        foreach (var k in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused", "TextControlBackgroundDisabled",
+                                  "TextBoxBackground", "TextBoxBackgroundPointerOver", "TextBoxBackgroundFocused" })
+            box.Resources[k] = B(fill);
+        foreach (var k in new[] { "TextControlBorderBrush", "TextControlBorderBrushPointerOver", "TextBoxBorderBrush", "TextBoxBorderBrushPointerOver", "TextBoxBorderBrushFocused" })
+            box.Resources[k] = B(stroke);
+    }
+
     public static async Task<string?> ShowManualAIDialog(XamlRoot xamlRoot, string title, string instructions, string hiddenData)
     {
         if (_isDialogShowing) return null;
@@ -113,6 +142,8 @@ public static class AIHelper
                 Margin = new Thickness(0, 8, 0, 0)
             };
 
+            StyleDialogTextBox(promptBox);
+            StyleDialogTextBox(responseBox);
             var panel = new StackPanel();
             panel.Children.Add(new TextBlock { Text = Resona.Models.Strings.Current.CS_AIDialog_Step1, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
             panel.Children.Add(promptBox);

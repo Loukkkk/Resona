@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Input;
+using Microsoft.UI.Input;
 using Windows.UI.Core;
 using Microsoft.UI.Xaml.Shapes;
 using System.Runtime.CompilerServices;
@@ -105,12 +105,17 @@ public sealed partial class PlaylistDetailPage : Page
 		}
 	}
 
-	public void SetNowPlayingId(string? trackId, string? trackFilePath = null)
+		public void SetNowPlayingId(string? trackId, string? trackFilePath = null)
 	{
+		SyncNowPlayingId();
 	}
 
 	private void SyncNowPlayingId()
 	{
+		foreach (var track in DisplayedTracks)
+		{
+			track.IsPlaying = !string.IsNullOrEmpty(App.NowPlayingFilePath) && string.Equals(track.FilePath, App.NowPlayingFilePath, StringComparison.OrdinalIgnoreCase);
+		}
 	}
 
 	protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -336,7 +341,7 @@ public sealed partial class PlaylistDetailPage : Page
 		}
 	}
 
-	private void PlayOverlay_Tapped(object sender, TappedRoutedEventArgs e)
+		private void PlayOverlay_Tapped(object sender, TappedRoutedEventArgs e)
 	{
 		if (MainWindow.LastClickWasXButton) { MainWindow.LastClickWasXButton = false; return; }
 		if (sender is FrameworkElement { DataContext: Track dataContext } frameworkElement)
@@ -347,19 +352,41 @@ public sealed partial class PlaylistDetailPage : Page
 			}
 			else
 			{
+				if (frameworkElement is Border && frameworkElement.Parent is Grid coverGrid)
+				{
+					_activeIndicatorGrid = coverGrid;
+					UpdateCoverIndicator(coverGrid, isPlaying: true, isHovered: false);
+				}
 				App.MainWindowInstance?.PlayTrack(dataContext, _tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + _playlist.Name);
 			}
-			if (frameworkElement is Border && frameworkElement.Parent is Grid coverGrid)
+			if (frameworkElement is Border && frameworkElement.Parent is Grid coverGrid2)
 			{
-				UpdateCoverIndicator(coverGrid, dataContext.IsPlaying, isHovered: true);
-			}
+				_ = Task.Run(async () =>
+				{
+					await Task.Delay(50);
+					DispatcherQueue.TryEnqueue(() =>
+					{
+						UpdateCoverIndicator(coverGrid2, dataContext.IsPlaying, isHovered: true);
+					});
+				});
 		}
 	}
+}
 
 	private void TrackListView_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
 	{
 		if ((e.OriginalSource as FrameworkElement)?.DataContext is Track track)
 		{
+			ListViewItem listViewItem = TrackListView.ContainerFromItem(track) as ListViewItem;
+			if (listViewItem != null)
+			{
+				Grid grid = FindChildByName<Grid>(listViewItem, "ItemRootGrid")?.Children.FirstOrDefault() as Grid;
+				if (grid != null)
+				{
+					_activeIndicatorGrid = grid;
+					UpdateCoverIndicator(grid, isPlaying: true, isHovered: false);
+				}
+			}
 			App.MainWindowInstance?.PlayTrack(track, _tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "La playlist : " : "Playlist: ") + _playlist.Name);
 			TrackListView?.SelectedItems.Clear();
 		}
@@ -719,3 +746,10 @@ public sealed partial class PlaylistDetailPage : Page
 		App.MainWindowInstance?.RefreshQueueIfMatches(_tracks);
 	}
 }
+
+
+
+
+
+
+

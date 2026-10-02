@@ -31,9 +31,13 @@
                         Style="{ThemeResource AccentButtonStyle}" Padding="24,12"
                         Click="ChooseFolder_Click">
                     <Button.Resources>
-                        <SolidColorBrush x:Key="AccentButtonForeground" Color="Black" />
-                        <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="White" />
-                        <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="White" />
+                        <!-- Fixe sur AppAccentForegroundBrush (calcule par contraste dans
+                             ApplyThemeResources : noir si accent clair, blanc si accent sombre)
+                             au lieu d'un Black/White code en dur, sinon le texte reste blanc
+                             au survol meme quand le fond du bouton est clair (illisible). -->
+                        <StaticResource x:Key="AccentButtonForeground" ResourceKey="AppAccentForegroundBrush" />
+                        <StaticResource x:Key="AccentButtonForegroundPointerOver" ResourceKey="AppAccentForegroundBrush" />
+                        <StaticResource x:Key="AccentButtonForegroundPressed" ResourceKey="AppAccentForegroundBrush" />
                     </Button.Resources>
                 </Button>
                 <Button Content="{x:Bind models:Strings.Current.OnboardingPage_Content_Passercettetape, Mode=OneWay}" HorizontalAlignment="Center"

@@ -40,28 +40,62 @@ public sealed partial class DownloadPage : Page
 		SearchResultsPanel.Children.Clear();
 	}
 
+	private bool isUrlTabSelected = true;
+
+    private Microsoft.UI.Xaml.Media.Brush GetHoverBrush()
+    {
+        bool isLight = App.Current.RequestedTheme == Microsoft.UI.Xaml.ApplicationTheme.Light;
+        return new Microsoft.UI.Xaml.Media.SolidColorBrush(isLight ? Windows.UI.Color.FromArgb(15, 0, 0, 0) : Windows.UI.Color.FromArgb(20, 255, 255, 255));
+    }
+
 	private void TabUrl_Click(object sender, RoutedEventArgs e)
 	{
-		PanelUrl.Visibility = Visibility.Visible;
-		PanelSearch.Visibility = Visibility.Collapsed;
-		SearchResultsPanel.Visibility = Visibility.Collapsed;
-		TabUrlButton.Background = (Brush)Application.Current.Resources["AppAccentBrush"];
-		TabUrlButton.Foreground = (Brush)Application.Current.Resources["AppAccentForegroundBrush"];
-		TabSearchButton.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
-		TabSearchButton.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-		DownloadButton.Visibility = Visibility.Visible;
+        isUrlTabSelected = true;
+		PanelUrl.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+		PanelSearch.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+		SearchResultsPanel.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+		TabUrlButton.Background = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["AppAccentBrush"];
+		TabUrlButton.Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["AppAccentForegroundBrush"];
+		TabSearchButton.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+		TabSearchButton.Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
+		DownloadButton.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
 	}
 
 	private void TabSearch_Click(object sender, RoutedEventArgs e)
 	{
-		PanelUrl.Visibility = Visibility.Collapsed;
-		PanelSearch.Visibility = Visibility.Visible;
-		TabSearchButton.Background = (Brush)Application.Current.Resources["AppAccentBrush"];
-		TabSearchButton.Foreground = (Brush)Application.Current.Resources["AppAccentForegroundBrush"];
-		TabUrlButton.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
-		TabUrlButton.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-		DownloadButton.Visibility = Visibility.Collapsed;
+        isUrlTabSelected = false;
+		PanelUrl.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+		PanelSearch.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+		TabSearchButton.Background = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["AppAccentBrush"];
+		TabSearchButton.Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["AppAccentForegroundBrush"];
+		TabUrlButton.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+		TabUrlButton.Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
+		DownloadButton.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
 	}
+
+    private void TabUrl_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (!isUrlTabSelected)
+            TabUrlButton.Background = GetHoverBrush();
+    }
+
+    private void TabUrl_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (!isUrlTabSelected)
+            TabUrlButton.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+    }
+
+    private void TabSearch_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (isUrlTabSelected)
+            TabSearchButton.Background = GetHoverBrush();
+    }
+
+    private void TabSearch_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (isUrlTabSelected)
+            TabSearchButton.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+    }
 
 	private void SearchBox_KeyDown(object sender, KeyRoutedEventArgs e)
 	{
@@ -153,7 +187,7 @@ public sealed partial class DownloadPage : Page
 					Padding = new Thickness(10.0, 6.0, 10.0, 6.0),
 					VerticalAlignment = VerticalAlignment.Center
 				};
-				ToolTipService.SetToolTip(button, "TÃƒÆ’Ã‚Â©lÃƒÆ’Ã‚Â©charger ce morceau");
+				ToolTipService.SetToolTip(button, "Télécharger ce morceau");
 				string capturedUrl = item3;
 				button.Click += delegate(object s2, RoutedEventArgs e2)
 				{
@@ -172,7 +206,7 @@ public sealed partial class DownloadPage : Page
 				grid.Children.Add(button);
 				SearchResultsPanel.Children.Add(grid);
 			}
-			StatusText.Text = $"{list.Count} rÃƒÆ’Ã‚Â©sultats";
+			StatusText.Text = $"{list.Count} résultats";
 		}
 		catch (Exception ex)
 		{
@@ -244,7 +278,7 @@ public sealed partial class DownloadPage : Page
 			});
 		});
 		ProgressRing.IsActive = false;
-		StatusText.Text = (DownloadService.IsYtDlpPresent ? string.Empty : "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â \ufe0f Installation ÃƒÆ’Ã‚Â©chouÃƒÆ’Ã‚Â©e ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â vÃƒÆ’Ã‚Â©rifiez votre connexion.");
+		StatusText.Text = (DownloadService.IsYtDlpPresent ? string.Empty : "⚠\ufe0f Installation échouée — vérifiez votre connexion.");
 	}
 
 	private async void DownloadButton_Click(object sender, RoutedEventArgs e)
@@ -261,7 +295,7 @@ public sealed partial class DownloadPage : Page
 		}
 		if (string.IsNullOrWhiteSpace(url))
 		{
-			await ShowDialog("URL manquante", "Colle l'URL d'une vidÃƒÆ’Ã‚Â©o ou d'une playlist.");
+			await ShowDialog("URL manquante", "Colle l'URL d'une vidéo ou d'une playlist.");
 			return;
 		}
 		AppSettings current = App.Settings.Current;
@@ -278,7 +312,7 @@ public sealed partial class DownloadPage : Page
 			_isDownloading = true;
 			DownloadButton.IsEnabled = false;
 			ProgressRing.IsActive = true;
-			StatusText.Text = Models.Strings.Current.IsFr ? "PrÃƒÂ©paration..." : "Preparing...";
+			StatusText.Text = Models.Strings.Current.IsFr ? "Préparation..." : "Preparing...";
 			LogBox.Text = string.Empty;
 			DownloadOptions opts = new DownloadOptions
 			{
@@ -341,7 +375,7 @@ public sealed partial class DownloadPage : Page
 				ProgressRing.IsActive = false;
 			}
 		}
-		await ShowDialog("Dossier introuvable", "Configure d'abord le dossier dans ParamÃƒÆ’Ã‚Â¨tres ? TÃƒÆ’Ã‚Â©lÃƒÆ’Ã‚Â©chargement.");
+		await ShowDialog("Dossier introuvable", "Configure d'abord le dossier dans Paramètres > Téléchargement.");
 	}
 
 	private async void PasteButton_Click(object sender, RoutedEventArgs e)
@@ -371,6 +405,8 @@ public sealed partial class DownloadPage : Page
 		}.ShowAsync();
 	}
 }
+
+
 
 
 

@@ -1,4 +1,4 @@
-ï»¿using System;
+using System;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -22,7 +22,7 @@ namespace Resona
                 {
                     string latestTag = tagElem.GetString() ?? "";
                     
-                    string currentTag = "v3.0";
+                    string currentTag = "v3.1";
                     bool hasUpdate = latestTag != currentTag && !string.IsNullOrEmpty(latestTag) && latestTag != "v1.0";
                     
                     if (hasUpdate)
@@ -31,9 +31,9 @@ namespace Resona
                         {
                             var dialog = new ContentDialog
                             {
-                                Title = Models.Strings.Current.IsFr ? "Mise Ã  jour disponible" : "Update Available",
+                                Title = Models.Strings.Current.IsFr ? "Mise à jour disponible" : "Update Available",
                                 Content = Models.Strings.Current.IsFr ? $"La version {latestTag} est disponible !" : $"Version {latestTag} is available!",
-                                PrimaryButtonText = Models.Strings.Current.IsFr ? "TÃ©lÃ©charger" : "Download",
+                                PrimaryButtonText = Models.Strings.Current.IsFr ? "Télécharger" : "Download",
                                 CloseButtonText = Models.Strings.Current.IsFr ? "Plus tard" : "Later",
                                 XamlRoot = xamlRoot
                             };
@@ -50,9 +50,10 @@ namespace Resona
                     {
                         var dialog = new ContentDialog
                         {
-                            Title = Models.Strings.Current.IsFr ? "Ã€ jour" : "Up to date",
-                            Content = Models.Strings.Current.IsFr ? "Vous avez la derniÃ¨re version." : "You have the latest version.",
+                            Title = Models.Strings.Current.IsFr ? "À jour" : "Up to date",
+                            Content = Models.Strings.Current.IsFr ? "Vous avez la dernière version." : "You have the latest version.",
                             CloseButtonText = "OK",
+                            CenterCloseButton = true,
                             XamlRoot = xamlRoot
                         };
                         await dialog.ShowAsync();
@@ -66,8 +67,9 @@ namespace Resona
                     var dialog = new ContentDialog
                     {
                         Title = Models.Strings.Current.IsFr ? "Erreur" : "Error",
-                        Content = Models.Strings.Current.IsFr ? "Impossible de vÃ©rifier les mises Ã  jour." : "Could not check for updates.",
+                        Content = Models.Strings.Current.IsFr ? "Impossible de vérifier les mises à jour." : "Could not check for updates.",
                         CloseButtonText = "OK",
+                        CenterCloseButton = true,
                         XamlRoot = xamlRoot
                     };
                     await dialog.ShowAsync();
@@ -76,3 +78,4 @@ namespace Resona
         }
     }
 }
+

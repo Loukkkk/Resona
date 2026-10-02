@@ -35,29 +35,40 @@
             <StackPanel Spacing="8">
                 <!-- Onglets style "pill" : même hauteur garantie, bordure partagée -->
                 <Grid HorizontalAlignment="Left">
+                    <Grid.Resources>
+                        <ControlTemplate x:Key="TabButtonTemplate" TargetType="Button">
+                            <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Grid.Resources>
                     <Rectangle RadiusX="10" RadiusY="10" 
                                Fill="{StaticResource AppSurfaceBrush}"
                                Stroke="{StaticResource AppAccentBrush}"
                                StrokeThickness="1" />
                     <StackPanel Orientation="Horizontal" Spacing="2" Padding="3">
                         <Button x:Name="TabUrlButton" Click="TabUrl_Click"
+                                PointerEntered="TabUrl_PointerEntered" PointerExited="TabUrl_PointerExited"
+                                Template="{StaticResource TabButtonTemplate}"
                                 Background="{StaticResource AppAccentBrush}" 
                                 Foreground="{StaticResource AppAccentForegroundBrush}"
                                 BorderThickness="0" CornerRadius="7" Padding="14,6"
                                 MinHeight="0">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE71B;" FontSize="12" Foreground="{StaticResource AppAccentForegroundBrush}" />
-                                <TextBlock Text="{x:Bind models:Strings.Current.DownloadPage_Text_URL, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AppAccentForegroundBrush}" />
+                                <FontIcon x:Name="TabUrlIcon" Glyph="&#xE71B;" FontSize="12" />
+                                <TextBlock x:Name="TabUrlText" Text="{x:Bind models:Strings.Current.DownloadPage_Text_URL, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="TabSearchButton" Click="TabSearch_Click"
-                                Background="Transparent" BorderThickness="0"
-                                CornerRadius="7" Padding="14,6"
-                                MinHeight="0" Foreground="{ThemeResource TextFillColorPrimaryBrush}">
+                                PointerEntered="TabSearch_PointerEntered" PointerExited="TabSearch_PointerExited"
+                                Template="{StaticResource TabButtonTemplate}"
+                                Background="Transparent" 
+                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                BorderThickness="0" CornerRadius="7" Padding="14,6"
+                                MinHeight="0">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE721;" FontSize="12" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                <TextBlock Text="{x:Bind models:Strings.Current.DownloadPage_Text_RechercheYouTube, Mode=OneWay}" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <FontIcon x:Name="TabSearchIcon" Glyph="&#xE721;" FontSize="12" />
+                                <TextBlock x:Name="TabSearchText" Text="{x:Bind models:Strings.Current.DownloadPage_Text_RechercheYouTube, Mode=OneWay}" FontSize="12" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -158,6 +169,10 @@
     </Grid>
     </ScrollViewer>
 </Page>
+
+
+
+
 
 
 

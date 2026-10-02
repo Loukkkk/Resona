@@ -67,33 +67,45 @@ Since this is AI-generated code, transparency is key:
 
 ```
 Resona/
-├── .github/                   # GitHub Actions workflows for automated releases
-├── .gitignore                 # Standard Visual Studio gitignore
-├── README.md                  # Project documentation
-└── src/
-    ├── Resona.csproj          # The WinUI 3 project file
-    ├── app.manifest           # Windows application manifest (permissions, DPI)
-    ├── icon.ico               # Application icon
-    ├── Program.cs             # Native entry point for WinUI 3
-    ├── App.xaml(.cs)          # Application lifecycle and service registration
-    ├── MainWindow.xaml(.cs)   # Main UI, navigation, and playback bar overlay
-    ├── Converters/            # XAML value converters (UI data binding)
-    ├── Helpers/               # Utility classes (animations, UI extensions)
-    ├── Models/
-    │   ├── Models.cs          # Core track metadata, playlist entity, settings
-    │   └── Strings.cs         # Localization strings (FR/EN)
-    ├── Services/
-    │   ├── Services.cs              # Centralized services (AudioEngine, LibraryCache, CoverArt, AutoTag, Playlist...)
-    │   ├── AIService.cs             # AI interaction and API endpoints for smart playlists
-    │   ├── DiscordRpcService.cs     # Discord Rich Presence integration
-    │   ├── TrayIconService.cs       # Windows system tray integration
-    │   └── BackupService.cs         # AI backup data management
-    └── Views/
-        ├── LibraryPage.xaml(.cs)    # Main library grid
-        ├── AlbumsPage.xaml(.cs)     # Album grouping
-        ├── PlaylistsPage.xaml(.cs)  # Playlist management
-        ├── SettingsPage.xaml(.cs)   # Application settings
-        └── QueuePage.xaml(.cs)      # Up next queue and manual reordering
+│ .github/                   # GitHub Actions workflows for automated releases
+│ .gitignore                 # Standard Visual Studio gitignore
+│ README.md                  # Project documentation
+│ src/
+    │ Resona.csproj          # The WinUI 3 project file
+    │ app.manifest           # Windows application manifest (permissions, DPI)
+    │ icon.ico               # Application icon
+    │ Program.cs             # Native entry point for WinUI 3
+    │ App.xaml(.cs)          # Application lifecycle and theme resources
+    │ MainWindow.xaml(.cs)   # Main UI, navigation, and playback bar overlay
+    │ UpdateManager.cs       # GitHub automatic release checking
+    │ GlobalUsings.cs        # Global namespace imports
+    │ Converters/            # XAML value converters (UI data binding)
+    │ Helpers/               # Utility classes (animations, dialogs, pagination)
+    │ Models/
+    │   │ Models.cs          # Core track metadata, playlist entity, settings
+    │   │ Strings.cs         # Localization strings (FR/EN)
+    │ Services/
+    │   │ Services.cs                 # Centralized services (AudioEngine, Tagging, YT-DLP, Playlist, Wikipedia...)
+    │   │ AIService.cs                # AI interaction and API endpoints for smart playlists
+    │   │ DiscordRpcService.cs        # Discord Rich Presence integration
+    │   │ TrayIconService.cs          # Windows system tray integration
+    │   │ BackupService.cs            # AI backup data management
+    │   │ EqualizerSampleProvider.cs  # 10-band audio graphic equalizer logic
+    │ Views/
+        │ LibraryPage.xaml(.cs)       # Main library grid
+        │ AlbumsPage.xaml(.cs)        # Album grouping
+        │ ArtistsPage.xaml(.cs)       # Artist grouping and biographies
+        │ GenresPage.xaml(.cs)        # Genre grouping
+        │ FoldersPage.xaml(.cs)       # Folder-based browsing
+        │ PlaylistsPage.xaml(.cs)     # Playlist management
+        │ PlaylistDetailPage.xaml(.cs)# Specific playlist content
+        │ QueuePage.xaml(.cs)         # Up next queue and manual reordering
+        │ NowPlayingPage.xaml(.cs)    # Full-screen player view
+        │ LyricsPage.xaml(.cs)        # Synchronized lyrics view
+        │ DownloadPage.xaml(.cs)      # Music downloading via YouTube/yt-dlp
+        │ StatisticsPage.xaml(.cs)    # Listening habits and database stats
+        │ SettingsPage.xaml(.cs)      # Application settings
+        │ OnboardingPage.xaml(.cs)    # First launch setup wizard
 ```
 
 ---

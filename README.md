@@ -6,6 +6,7 @@
 
 ![Aperçu des thèmes de Resona](images/Visuel-App-Themes.png)
 
+---
 
 ## ✨ Features
 
@@ -45,7 +46,7 @@ Since this is AI-generated code, transparency is key:
 
 ## 🛠️ Built With
 
-* **C# / .NET 8**
+* **C# / .NET 10**
 * **WinUI 3 (Windows App SDK)**
 * **NAudio** - Core audio playback engine
 * **TagLibSharp** - Metadata extraction

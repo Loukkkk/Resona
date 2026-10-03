@@ -17,10 +17,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup .NET 8
+    - name: Setup .NET 10
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x
+        dotnet-version: 10.0.x
 
     - name: Publish the application
       run: |
@@ -28,13 +28,13 @@ jobs:
 
     - name: Create Zip Archive
       run: |
-        $publishDir = "src\obj\x64\Release\net8.0-windows10.0.19041.0\win-x64\PubTmp\Out"
+        $publishDir = "src\obj\x64\Release\net10.0-windows10.0.19041.0\win-x64\PubTmp\Out"
         # Fallback if standard publish directory is used
         if (-not (Test-Path $publishDir)) {
-            $publishDir = "src\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\publish"
+            $publishDir = "src\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\publish"
         }
         if (-not (Test-Path $publishDir)) {
-            $publishDir = "src\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish"
+            $publishDir = "src\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish"
         }
         Compress-Archive -Path "$publishDir\*" -DestinationPath "Resona-${{ github.ref_name }}-win-x64.zip" -Force
 

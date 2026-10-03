@@ -31,7 +31,7 @@
 This application was fully coded by AI. Since no other audio player on the market currently offers this blend of modern design, and all these handy features, this AI-generated solution fills the gap.
 
 > [!NOTE]
-> The day a human developer creates a similar open-source application with equivalent or superior quality, this repository will be permanently deleted.
+> The day a human developer creates a similar open-source application with equivalent or superior quality, development will be stopped to prioritize human creation.
 
 ---
 

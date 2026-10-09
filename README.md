@@ -26,6 +26,68 @@
 
 ---
 
+## 🗺️ Roadmap / To-Do
+
+Here is a big list of features and ideas I'd like to add to Resona. It is simply everything that comes to my mind, so I might not do all of it, and the order doesn't mean anything.
+
+<details>
+<summary><b>Click to see what's planned</b></summary>
+
+<br>
+
+#### 🎧 Player & Playback
+- [ ] Use all the available space for the playback bar when the text (title, album, artist) is long, with the small cover to its left in the player
+- [ ] Check the alignment of the elements in the player
+- [ ] Sound wave / equalizer animation (optional and toggleable, for example in the large central cover view)
+- [ ] Keyboard shortcut to skip 5 seconds
+- [ ] Weighted shuffle: avoid replaying recent tracks (favor favorites?)
+- [ ] Smart silence skipping at the start and end of tracks
+- [ ] Volume ducking when another app plays a sound
+- [ ] Transition animation between two tracks
+- [ ] Light DJ mode: two decks with manual crossfade and tempo adjustment
+- [ ] Power-saving mode?
+- [ ] Interaction sound design (UI sounds, just for fun)
+
+#### 📚 Library & Playlists
+- [ ] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played"...
+- [ ] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
+- [ ] Playlist folders to group playlists into categories
+- [ ] Playlist downloading
+- [ ] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
+- [ ] More info columns in the track lists
+- [ ] Library quality check: tracks without cover, corrupted files, inconsistent tags... with quick suggested fixes
+- [ ] Broken path repair: when a file has been moved, offer to find it again by fingerprint or by name in the watched folders
+- [ ] Mood analysis: sort tracks by energy, tempo or vibe, from metadata or a local calculation (BPM, spectrum)
+- [ ] "Discovery" mode: similar artist suggestions
+- [ ] Never-played reminder: a discreet "You've never played this track" suggestion
+- [ ] Right-click context menu: open file location
+
+#### 🎤 Lyrics
+- [ ] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics
+- [ ] Additional fallback lyrics source(s)
+
+#### 🎨 Themes & Interface
+- [ ] Color theme animations that react to the sound
+- [ ] Collapsible sections in the Settings page, so it is less overwhelming now that there are so many options
+
+#### 🌐 Sharing & Integrations
+- [ ] Richer Discord Rich Presence: progress bar, real cover art, etc.
+- [ ] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)
+- [ ] "Now listening" share card: generated image with the cover, title and current lyrics
+- [ ] Playlist export as a web page or an image to share, with covers and track list
+- [ ] File associations: set Resona as the default player and open a double-clicked audio file in the current queue
+- [ ] "Open with Resona" Explorer menu for a folder or a selection
+
+#### 🛠️ App & Maintenance
+- [ ] Full import/export of settings and library (playlists, ratings, statistics), in addition to `ai_backup.json`
+- [ ] Automatic update of yt-dlp and fpcalc, with version checking
+- [ ] Release notes shown in the app after an update, with a "See what's new" button
+- [ ] Optional MSIX package or installer, for those who want the Start menu entry and a clean install
+
+</details>
+
+---
+
 ## ⚠️ Disclaimer
 
 This application was fully coded by AI. Since no other audio player on the market currently offers this blend of modern design, and all these handy features, this AI-generated solution fills the gap.
@@ -91,6 +153,7 @@ Resona/
     │   │ DiscordRpcService.cs        # Discord Rich Presence integration
     │   │ TrayIconService.cs          # Windows system tray integration
     │   │ BackupService.cs            # AI backup data management
+    │   │ LogService.cs               # Error log written to %LOCALAPPDATA%\Resona\logs
     │   │ EqualizerSampleProvider.cs  # 10-band audio graphic equalizer logic
     │ Views/
         │ LibraryPage.xaml(.cs)       # Main library grid
@@ -127,6 +190,7 @@ Inside this folder, you will find:
 - `settings.json`: Your saved preferences, UI states, and configuration (language, theme, equalizer presets, etc.).
 - `ai_backup.json`: Backup data for AI-generated playlists and insights.
 - `fpcalc\`: Contains the Chromaprint fingerprinting executable used for the auto-tagging feature.
+- `logs\`: Contains `resona.log`, the error log. It can be viewed, copied or cleared from the Settings page.
 ---
 
 ## 🗑️ Uninstall

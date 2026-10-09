@@ -420,6 +420,15 @@ namespace Resona;
 
 		private bool _isNowPlayingModeActive;
 
+		// Fond flou / pochette centrale du mode "grosse cover" : suivi du chargement pour que les couleurs apparaissent
+		// en meme temps que le texte du nouveau son (voir UpdateNowPlayingBackground / AnimateTrackChange).
+		private string? _npBgPath;                 // pochette actuellement appliquee (ou en cours de chargement)
+		private string? _npBlurAppliedPath;        // pochette dont le fond flou est reellement affiche
+		private int _npBgToken;                    // invalide les calculs asynchrones d'un son depasse
+		private bool _npBlurFadePending;           // le fondu du fond attend que le nouveau flou soit pret
+		private readonly Dictionary<string, byte[]> _npBlurCache = new();
+		private readonly Queue<string> _npBlurCacheOrder = new();
+
 		private Color _lastComputedAvgColor;
 
 		private bool _isManuallyClosingPane;
@@ -654,21 +663,80 @@ namespace Resona;
 			}
 		}
 
+		// Icone de bouton de miniature : le glyphe est centre sur ses pixels REELLEMENT dessines (et non sur MeasureString,
+		// qui ajoute des marges internes et decalait les icones). Pour le triangle "Lecture" on centre le centre de masse
+		// (un triangle centre sur sa boite englobante parait trop a gauche) ; pour les autres glyphes, la boite englobante.
 		private nint GetIconForText(string text)
 		{
 			try
 			{
+				bool useCentroid = text == "\ue768";
+
+				// 1) Mesure : on dessine le glyphe sur un calque plus grand et on releve ses pixels non transparents.
+				float inkX = 16f, inkY = 16f;
+				using (System.Drawing.Bitmap probe = new System.Drawing.Bitmap(96, 96, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+				{
+					using (System.Drawing.Graphics pg = System.Drawing.Graphics.FromImage(probe))
+					using (System.Drawing.Font probeFont = new System.Drawing.Font("Segoe MDL2 Assets", 16f))
+					using (System.Drawing.SolidBrush probeBrush = new System.Drawing.SolidBrush(System.Drawing.Color.White))
+					{
+						pg.Clear(System.Drawing.Color.Transparent);
+						pg.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+						pg.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+						pg.DrawString(text, probeFont, probeBrush, 24f, 24f);
+					}
+
+					int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;
+					double sum = 0, sumX = 0, sumY = 0;
+					for (int y = 0; y < probe.Height; y++)
+					{
+						for (int x = 0; x < probe.Width; x++)
+						{
+							int a = probe.GetPixel(x, y).A;
+							if (a <= 8) continue;
+							if (x < minX) minX = x;
+							if (x > maxX) maxX = x;
+							if (y < minY) minY = y;
+							if (y > maxY) maxY = y;
+							sum += a;
+							sumX += a * (x + 0.5);
+							sumY += a * (y + 0.5);
+						}
+					}
+					if (maxX >= 0 && sum > 0)
+					{
+						if (useCentroid)
+						{
+							inkX = (float)(0.75 * (sumX / sum) + 0.25 * ((minX + maxX + 1) / 2.0));
+							// En hauteur, la boite englobante reste la reference (le triangle est symetrique verticalement).
+							inkY = (minY + maxY + 1) / 2f;
+						}
+						else
+						{
+							inkX = (minX + maxX + 1) / 2f;
+							inkY = (minY + maxY + 1) / 2f;
+						}
+					}
+					else
+					{
+						inkX = 32f;   // rien de dessine (police absente) : repli sur l'ancien centrage approximatif
+						inkY = 32f;
+					}
+				}
+
+				// 2) Dessin final : le glyphe etait dessine en (24, 24) sur le calque de mesure, son point de reference y etait (inkX, inkY),
+				//    donc a (inkX - 24, inkY - 24) de son origine. On le dessine pour que ce point tombe au centre (16, 16) de l'icone 32 x 32.
+				float drawX = 40f - inkX + (text == "\ue769" ? 1f : 0f);
+				float drawY = 40f - inkY;
+
 				using System.Drawing.Bitmap bitmap = new System.Drawing.Bitmap(32, 32);
 				using System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bitmap);
 				graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-				graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+				graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
 				using (System.Drawing.Font font = new System.Drawing.Font("Segoe MDL2 Assets", 16f))
 				{
 					using System.Drawing.SolidBrush brush = new System.Drawing.SolidBrush(System.Drawing.Color.White);
-					System.Drawing.SizeF sizeF = graphics.MeasureString(text, font);
-					float offsetX = (text == "\ue768" || text == "\ue769") ? 2f : 0f;
-                    float offsetY = (text == "\ue769") ? 1f : 0f;
-					graphics.DrawString(text, font, brush, (32f - sizeF.Width) / 2f + offsetX, (32f - sizeF.Height) / 2f + offsetY);
+					graphics.DrawString(text, font, brush, drawX, drawY);
 				}
 				return bitmap.GetHicon();
 			}
@@ -976,17 +1044,32 @@ namespace Resona;
 		{
 			if (string.IsNullOrEmpty(coverPath))
 			{
+				_npBgPath = null;
+				_npBlurAppliedPath = null;
+				_npBgToken++;
 				NowPlayingBlurredBackground.Source = null;
 				NowPlayingCenterCoverImage.Source = null;
 				((UIElement)NowPlayingCenterPlaceholder).Visibility = Visibility.Visible;
+				if (_npBlurFadePending) { _npBlurFadePending = false; StartNowPlayingBlurFade(); }
 				return;
 			}
+			// Deja applique (ou en cours) pour cette pochette : rien a refaire (evite un double calcul et un double decalage).
+			if (string.Equals(coverPath, _npBgPath, StringComparison.OrdinalIgnoreCase) && NowPlayingCenterCoverImage.Source != null)
+			{
+				return;
+			}
+			_npBgPath = coverPath;
+			int bgToken = ++_npBgToken;
 			try
 			{
 				NowPlayingCenterCoverImage.Source = (ImageSource)new BitmapImage(new Uri(coverPath)) { DecodePixelWidth = 800 };
 				((UIElement)NowPlayingCenterPlaceholder).Visibility = Visibility.Collapsed;
 				byte[] bytes = await Task.Run(delegate
 				{
+					lock (_npBlurCache)
+					{
+						if (_npBlurCache.TryGetValue(coverPath, out byte[]? hit)) return hit;
+					}
 					byte[] array = File.ReadAllBytes(coverPath);
 					using MemoryStream stream = new MemoryStream(array);
 					using System.Drawing.Image original = System.Drawing.Image.FromStream(stream);
@@ -1006,8 +1089,22 @@ namespace Resona;
 					{
 						return array;
 					}
-					return memoryStream.ToArray();
+					byte[] blurred = memoryStream.ToArray();
+					lock (_npBlurCache)
+					{
+						if (!_npBlurCache.ContainsKey(coverPath))
+						{
+							_npBlurCache[coverPath] = blurred;
+							_npBlurCacheOrder.Enqueue(coverPath);
+							while (_npBlurCacheOrder.Count > 12)
+							{
+								_npBlurCache.Remove(_npBlurCacheOrder.Dequeue());
+							}
+						}
+					}
+					return blurred;
 				});
+				if (bgToken != _npBgToken) return;   // un son plus recent a pris la place pendant le calcul
 				InMemoryRandomAccessStream ras = new InMemoryRandomAccessStream();
 				try
 				{
@@ -1019,7 +1116,15 @@ namespace Resona;
 						ras.Seek(0uL);
 						BitmapImage bmp = new BitmapImage();
 						await bmp.SetSourceAsync(ras);
+						if (bgToken != _npBgToken) return;
 						NowPlayingBlurredBackground.Source = (ImageSource)bmp;
+						_npBlurAppliedPath = coverPath;
+						// Le fondu du fond attendait ce flou : on le lance maintenant (sans montrer l'ancienne image en fondu).
+						if (_npBlurFadePending)
+						{
+							_npBlurFadePending = false;
+							StartNowPlayingBlurFade();
+						}
 					}
 					finally
 					{
@@ -1061,17 +1166,70 @@ namespace Resona;
 			};
 			Storyboard.SetTarget((Timeline)(object)val3, (DependencyObject)NowPlayingCenterCoverBorder);
 			Storyboard.SetTargetProperty((Timeline)(object)val3, "Opacity");
-			DoubleAnimation val4 = new DoubleAnimation
+			val.Children.Add((Timeline)(object)val2);
+			val.Children.Add((Timeline)(object)val3);
+			val.Begin();
+
+			// Fond flou : le fondu demarre des que le NOUVEAU flou est affiche. Avant, il demarrait tout de suite alors que
+			// l'image n'etait remplacee qu'apres un calcul asynchrone : les couleurs arrivaient en retard sur le texte,
+			// et l'ancienne image apparaissait un instant en fondu avant d'etre remplacee.
+			if (string.IsNullOrEmpty(_npBgPath) || string.Equals(_npBlurAppliedPath, _npBgPath, StringComparison.OrdinalIgnoreCase))
 			{
+				_npBlurFadePending = false;
+				StartNowPlayingBlurFade();
+			}
+			else
+			{
+				_npBlurFadePending = true;
+				HideNowPlayingBlur();   // cache l'ancien flou (meme si un precedent fondu le "tient" a 1) jusqu'a ce que le nouveau soit pret
+			}
+		}
+
+		// Si la page "grosse cover" est deja affichee, met a jour pochette + fond + animation IMMEDIATEMENT (au moment ou
+		// les textes changent) au lieu d'attendre le bloc a priorite basse de PlayTrack, qui les faisait arriver en retard.
+		// Renvoie vrai si c'est fait (le bloc a priorite basse ne les refait alors pas).
+		private bool TryEarlyNowPlayingUpdate(Track track, bool isGoingBack)
+		{
+			if (!_isNowPlayingModeActive || _isMiniPlayerMode) return false;
+			if (((ContentControl)ContentFrame).Content is not NowPlayingPage npPage) return false;
+			if (App.Settings.Current.AutoOpenNowPlaying)
+			{
+				NavigateToNowPlaying(track, isGoingBack);
+			}
+			else
+			{
+				npPage.UpdateTrackInfo(track);
+			}
+			return true;
+		}
+
+		private void HideNowPlayingBlur()
+		{
+			Storyboard hide = new Storyboard();
+			DoubleAnimation anim = new DoubleAnimation
+			{
+				To = 0.0,
+				Duration = TimeSpan.FromMilliseconds(1.0)
+			};
+			Storyboard.SetTarget((Timeline)(object)anim, (DependencyObject)NowPlayingBlurredBackground);
+			Storyboard.SetTargetProperty((Timeline)(object)anim, "Opacity");
+			hide.Children.Add((Timeline)(object)anim);
+			hide.Begin();
+		}
+
+		private void StartNowPlayingBlurFade()
+		{
+			Storyboard fade = new Storyboard();
+			DoubleAnimation anim = new DoubleAnimation
+			{
+				From = 0.0,
 				To = 1.0,
 				Duration = TimeSpan.FromMilliseconds(600.0)
 			};
-			Storyboard.SetTarget((Timeline)(object)val4, (DependencyObject)NowPlayingBlurredBackground);
-			Storyboard.SetTargetProperty((Timeline)(object)val4, "Opacity");
-			val.Children.Add((Timeline)(object)val2);
-			val.Children.Add((Timeline)(object)val3);
-			val.Children.Add((Timeline)(object)val4);
-			val.Begin();
+			Storyboard.SetTarget((Timeline)(object)anim, (DependencyObject)NowPlayingBlurredBackground);
+			Storyboard.SetTargetProperty((Timeline)(object)anim, "Opacity");
+			fade.Children.Add((Timeline)(object)anim);
+			fade.Begin();
 		}
 
 		public void NavigateToNowPlaying(Track track, bool isGoingBack = false)
@@ -1908,7 +2066,7 @@ namespace Resona;
 			try
 			{
 				nint windowHandle = WindowNative.GetWindowHandle((object)this);
-				ThemePreset themePreset = ThemePresets.All[Math.Clamp(App.Settings.Current.ThemePresetIndex, 0, ThemePresets.All.Length - 1)];
+				ThemePreset themePreset = ThemePresets.Resolve(App.Settings.Current);
 				string text = themePreset.BackgroundHex.TrimStart('#');
 				byte b = Convert.ToByte(text.Substring(0, 2), 16);
 				byte b2 = Convert.ToByte(text.Substring(2, 2), 16);
@@ -1925,6 +2083,12 @@ namespace Resona;
 
 		public void ApplyBackdrop()
 		{
+			// Theme saisonnier hors periode (ex. app laissee ouverte au changement de mois) : retour a Couleur unie.
+			if (SeasonalThemes.EnforceSeason(App.Settings.Current))
+			{
+				_ = App.Settings.SaveAsync();
+				App.ApplyThemeResources();
+			}
 			AppBackdropStyle appBackdropStyle = App.Settings.Current.Backdrop;
 			try
 			{
@@ -1947,7 +2111,9 @@ namespace Resona;
 				((Window)this).SystemBackdrop = null;
 				appBackdropStyle = AppBackdropStyle.Solid;
 			}
-			bool flag = appBackdropStyle == AppBackdropStyle.Solid;
+			UpdateHalloweenDecorations();
+			UpdateChristmasDecorations();
+			bool flag = appBackdropStyle.IsSolidLike();
 			SolidColorBrush val = new SolidColorBrush(Colors.Transparent);
 			((Panel)RootGrid).Background = (Brush)((!flag) ? ((object)val) : ((Brush)Application.Current.Resources["AppDeepBackgroundBrush"]));
 			if (flag)
@@ -1968,6 +2134,8 @@ namespace Resona;
 				((UIElement)PlayerGradientFadeLayer).Visibility = Visibility.Collapsed;
 				ApplyGradientOverflowChrome(enabled: false);
 			}
+			ApplyCustomBackground();
+			ApplyGrain();
 			ApplyTitleBarButtonColors(flag);
 		}
 
@@ -1982,7 +2150,7 @@ namespace Resona;
 					return;
 				}
 				Color value = Color.FromArgb((byte)0, (byte)0, (byte)0, (byte)0);
-				ThemePreset themePreset = ThemePresets.All[Math.Clamp(App.Settings.Current.ThemePresetIndex, 0, ThemePresets.All.Length - 1)];
+				ThemePreset themePreset = ThemePresets.Resolve(App.Settings.Current);
 				Color val2 = ParseHexColor(themePreset.BackgroundHex);
 				bool flag = val2.R >= 200 && val2.G >= 200 && val2.B >= 200;
 				Color value2 = (flag ? Color.FromArgb(byte.MaxValue, (byte)26, (byte)26, (byte)26) : Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
@@ -2289,7 +2457,7 @@ namespace Resona;
 				}
 				if (_lyricsLineCurrent != null)
 				{
-					Brush lyricsBrush = (App.Settings.Current.ThemePresetIndex == 8 && _isNowPlayingModeActive) ? new SolidColorBrush(Colors.White) : (Brush)val2;
+					Brush lyricsBrush = (App.Settings.Current.Backdrop == AppBackdropStyle.Solid && App.Settings.Current.ThemePresetIndex == 8 && _isNowPlayingModeActive) ? new SolidColorBrush(Colors.White) : (Brush)val2;
 					_lyricsLineCurrent.Foreground = lyricsBrush;
 					if (_lyricsLinePrev != null) _lyricsLinePrev.Foreground = lyricsBrush;
 					if (_lyricsLineNext != null) _lyricsLineNext.Foreground = lyricsBrush;
@@ -2549,7 +2717,7 @@ namespace Resona;
 			RootNav.Resources.Remove("NavigationViewItemForegroundSelectedPointerOver");
 			_lastThemeToggleColor = null;
 			ApplyNavItemsForeground(null);
-			ApplyTitleBarButtonColors(App.Settings.Current.Backdrop == AppBackdropStyle.Solid);
+			ApplyTitleBarButtonColors(App.Settings.Current.Backdrop.IsSolidLike());
 			
 			// Lyrics
 			if (_lyricsLineCurrent != null) 
@@ -2567,7 +2735,7 @@ namespace Resona;
 
 		private void UpdatePlayerBarColorAsync(Track track)
 		{
-			ThemePreset themePreset = ThemePresets.All[Math.Clamp(App.Settings.Current.ThemePresetIndex, 0, ThemePresets.All.Length - 1)];
+			ThemePreset themePreset = ThemePresets.Resolve(App.Settings.Current);
 			Color themeSurface = ParseHexColor(themePreset.SurfaceHex);
 			Task.Run(delegate
 			{
@@ -2605,7 +2773,7 @@ namespace Resona;
 				Color = themeSurface,
 				Offset = 1.0
 			});
-			bool flag = App.Settings.Current.Backdrop == AppBackdropStyle.Solid;
+			bool flag = App.Settings.Current.Backdrop.IsSolidLike();
 			// Gradient du lecteur désactivé : fond uni (couleur de surface) et pas de débordement possible.
 			bool innerGradientOn = App.Settings.Current.PlayerGradientEnabled;
 			if (App.Settings.Current.PlayerGradientOverflowEnabled & flag & innerGradientOn)
@@ -3015,13 +3183,18 @@ namespace Resona;
 			{
 				UpdatePlayerBarColorAsync(_library[_currentIndex]);
 			}
-			else if (App.Settings.Current.Backdrop == AppBackdropStyle.Solid)
+			else if (App.Settings.Current.Backdrop.IsSolidLike())
 			{
 				((Panel)PlayerBar).Background = (Brush)Application.Current.Resources["AppSurfaceBrush"];
 			}
+			ApplyCustomBackground();
 			ApplyNativeWindowBackgroundFix();
 			ForceUIRepaint();
 		}
+
+		// Boutons dont ForceUIRepaint a deja force BorderThickness (voir plus bas) : on ne les confond pas avec ceux
+		// qui ont une bordure explicite dans le XAML.
+		private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Microsoft.UI.Xaml.Controls.Button, object> _borderForcedButtons = new();
 
 		private void ForceUIRepaint()
 		{
@@ -3055,7 +3228,17 @@ namespace Resona;
 			{
 				foreach (var btn in allButtons)
 				{
+					// Un bouton dont le XAML fixe explicitement BorderThickness (ex. Aleatoire / Tri / sens du tri) garde sa bordure :
+					// avant, cette boucle l'ecrasait avec la valeur du theme (0 hors theme blanc) pour tout bouton deja affiche,
+					// donc les boutons de la Bibliotheque (page chargee au demarrage) perdaient leur bordure.
+					// On ne touche donc qu'aux boutons SANS valeur locale, ou deja traites par cette methode.
+					bool alreadyForced = _borderForcedButtons.TryGetValue(btn, out _);
+					if (!alreadyForced && btn.ReadLocalValue(Microsoft.UI.Xaml.Controls.Control.BorderThicknessProperty) != DependencyProperty.UnsetValue)
+					{
+						continue;
+					}
 					btn.BorderThickness = borderThickness;
+					if (!alreadyForced) _borderForcedButtons.Add(btn, new object());
 				}
 			}
 
@@ -3844,6 +4027,7 @@ namespace Resona;
 			_nowPlayingId = track.Id;
 			_nowPlayingTrack = track;
 			_nowPlayingFilePath = track.FilePath;
+			bool earlyNp = false;   // vrai si la pochette / le fond du mode "grosse cover" ont deja ete mis a jour avec les textes
 			if (manualSkip)
 			{
 				// Mise à jour légère immédiate, puis courte attente : si un autre clic arrive, on abandonne ce son
@@ -3856,6 +4040,8 @@ namespace Resona;
 				track.IsPlaying = true;
 				// Couleur du gradient du lecteur : mise à jour immédiate (comme les textes), sans attendre le délai ci-dessous
 				UpdatePlayerBarColorAsync(track);
+				// Mode "grosse cover" : pochette centrale, fond flou et animation en meme temps que les textes
+				earlyNp = TryEarlyNowPlayingUpdate(track, isGoingBack);
 				// Pochette du lecteur : mise à jour immédiate aussi, en même temps que les textes et le gradient
 				if (!string.IsNullOrEmpty(track.CoverArtPath))
 				{
@@ -3931,6 +4117,8 @@ namespace Resona;
 			if (!manualSkip)
 			{
 				UpdatePlayerBarColorAsync(track);
+				// Mode "grosse cover" : pochette centrale, fond flou et animation en meme temps que les textes
+				earlyNp = TryEarlyNowPlayingUpdate(track, isGoingBack);
 			}
 			// Mises à jour d'interface secondaires (pages, Up Next, pochette, couleurs, paroles) : reportées à priorité basse
 			// pour que l'audio démarre sans attendre ; ignorées si un son plus récent a pris la place entre-temps.
@@ -3981,11 +4169,11 @@ namespace Resona;
 				fp.SetNowPlayingId(track.Id, track.FilePath);
 			}
 			content = ((ContentControl)ContentFrame).Content;
-			if (content is NowPlayingPage npp)
+			if (content is NowPlayingPage npp && !earlyNp)
 			{
 				npp.UpdateTrackInfo(track);
 			}
-			if (App.Settings.Current.AutoOpenNowPlaying)
+			if (App.Settings.Current.AutoOpenNowPlaying && !earlyNp)
 			{
 				NavigateToNowPlaying(track, isGoingBack);
 			}
@@ -5581,8 +5769,9 @@ namespace Resona;
 
 		private void UpdateNowPlayingFavoriteIconVisual(bool isFavorite)
 		{
-			bool isBlackTheme = App.Settings.Current.ThemePresetIndex == 7;
-			bool isWhiteTheme = App.Settings.Current.ThemePresetIndex == 8;
+			bool isSolidBackdrop = App.Settings.Current.Backdrop == AppBackdropStyle.Solid;
+			bool isBlackTheme = isSolidBackdrop && App.Settings.Current.ThemePresetIndex == 7;
+			bool isWhiteTheme = isSolidBackdrop && App.Settings.Current.ThemePresetIndex == 8;
 			
 			var glyph = isFavorite ? "\ue00b" : "\ue006";
 			Brush brush;
@@ -7318,7 +7507,7 @@ public void UpdateQueue(List<Track> newQueue)
 				((UIElement)PlayerBar).Opacity = 0.0;
 				RefreshOverlayTheme(PlayerBar);
 				((FrameworkElement)PlayerBar).Height = 0.0;
-				if (App.Settings.Current.PlayerGradientOverflowEnabled && App.Settings.Current.PlayerGradientEnabled && App.Settings.Current.Backdrop == AppBackdropStyle.Solid)
+				if (App.Settings.Current.PlayerGradientOverflowEnabled && App.Settings.Current.PlayerGradientEnabled && App.Settings.Current.Backdrop.IsSolidLike())
 				{
 					((UIElement)PlayerGradientOverflow).Visibility = Visibility.Visible;
 					((UIElement)PlayerGradientFadeLayer).Visibility = Visibility.Visible;
@@ -7873,6 +8062,8 @@ public void UpdateQueue(List<Track> newQueue)
 			if (!_isMiniPlayerMode)
 			{
 				_isMiniPlayerMode = true;
+				UpdateHalloweenDecorations();
+				UpdateChristmasDecorations();
 				_savedMainWindowWidth = ((Window)this).AppWindow.Size.Width;
 				_savedMainWindowHeight = ((Window)this).AppWindow.Size.Height;
 				_savedMainWindowX = ((Window)this).AppWindow.Position.X;
@@ -7980,6 +8171,8 @@ public void UpdateQueue(List<Track> newQueue)
 			// Memorise la taille du mini lecteur avant de revenir a la fenetre principale.
 			SaveMiniPlayerSize();
 			_isMiniPlayerMode = false;
+			UpdateHalloweenDecorations();
+			UpdateChristmasDecorations();
 			// Fenetre "cloaked" (invisible mais toujours rendue) pendant toute la transition : on ne
 			// la revele qu'une fois la frame finale (taille normale) rendue -> plus de frame du mini.
 			SetWindowCloak(true);

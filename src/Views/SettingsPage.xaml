@@ -601,11 +601,13 @@
                             <RadioButton Content="{x:Bind models:Strings.Current.SettingsPage_Content_MicaAltplussombre, Mode=OneWay}" Tag="MicaAlt" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                             <RadioButton Content="{x:Bind models:Strings.Current.SettingsPage_Content_Acryliceffetverredpo, Mode=OneWay}" Tag="Acrylic" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                             <RadioButton Content="{x:Bind models:Strings.Current.SettingsPage_Content_Couleurunie, Mode=OneWay}" Tag="Solid" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <RadioButton Content="{x:Bind models:Strings.Current.SettingsPage_Content_Halloween, Mode=OneWay}" Tag="Halloween" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <RadioButton Content="{x:Bind models:Strings.Current.SettingsPage_Content_Christmas, Mode=OneWay}" Tag="Christmas" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </RadioButtons>
 
                         <StackPanel x:Name="ColorPresetsPanel" Spacing="10" Visibility="Collapsed">
-                            <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
-                            <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_Couleurduthme, Mode=OneWay}" FontWeight="SemiBold"
+                            <Rectangle x:Name="PresetsTopSeparator" Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+                            <TextBlock x:Name="PresetsTitleText" Text="{x:Bind models:Strings.Current.SettingsPage_Text_Couleurduthme, Mode=OneWay}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                             <ItemsControl x:Name="PresetsList">
                                 <ItemsControl.ItemsPanel>
@@ -614,6 +616,52 @@
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                             </ItemsControl>
+
+                            <!-- Theme personnalise : fond en degrade (2 a 5 couleurs) -->
+                            <StackPanel x:Name="CustomGradientPanel" Spacing="10" Visibility="Collapsed">
+                                <ToggleSwitch x:Name="CustomGradientSwitch"
+                                              Header="{x:Bind models:Strings.Current.SettingsPage_Header_CustomGradient, Mode=OneWay}"
+                                              OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                              Toggled="CustomGradientSwitch_Toggled"
+                                              Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                                    <ToggleSwitch.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                        </DataTemplate>
+                                    </ToggleSwitch.HeaderTemplate>
+                                </ToggleSwitch>
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_CustomGradientDesc, Mode=OneWay}"
+                                           TextWrapping="Wrap" Opacity="0.6" FontSize="12"
+                                           Margin="0,-12,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <ItemsControl x:Name="GradientStopsList" Visibility="Collapsed">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="12" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Grain d'arriere-plan : fait partie du theme de couleur -->
+                            <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
+                            <ToggleSwitch x:Name="GrainSwitch"
+                                          Header="{x:Bind models:Strings.Current.SettingsPage_Header_Grain, Mode=OneWay}"
+                                          OnContent="{x:Bind models:Strings.Current.SettingsPage_Content_Activ, Mode=OneWay}" OffContent="{x:Bind models:Strings.Current.SettingsPage_Content_Dsactiv, Mode=OneWay}"
+                                          Toggled="GrainSwitch_Toggled"
+                                          Foreground="{StaticResource ToggleSwitchForegroundBrush}">
+                                <ToggleSwitch.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{StaticResource ToggleSwitchForegroundBrush}" />
+                                    </DataTemplate>
+                                </ToggleSwitch.HeaderTemplate>
+                            </ToggleSwitch>
+                            <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_GrainDesc, Mode=OneWay}"
+                                       TextWrapping="Wrap" Opacity="0.6" FontSize="12"
+                                       Margin="0,-12,0,0" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <StackPanel x:Name="GrainAmountPanel" Visibility="Collapsed" Spacing="8">
+                                <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_GrainAmount, Mode=OneWay}" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <Slider x:Name="GrainAmountSlider" Minimum="5" Maximum="100" StepFrequency="5" TickFrequency="10" TickPlacement="Outside" ValueChanged="GrainAmountSlider_ValueChanged" />
+                            </StackPanel>
 
                             <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,-4" />
 
@@ -649,9 +697,6 @@
                         </StackPanel>
                     </StackPanel>
                 </Grid>
-            
-                
-                <!-- Data & Cache -->
                 <StackPanel Margin="0,20,0,0" Spacing="16">
                     <TextBlock Text="{x:Bind models:Strings.Current.SettingsPage_Text_DataCache, Mode=OneWay}"
                                FontSize="18" FontWeight="SemiBold" VerticalAlignment="Top"

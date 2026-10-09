@@ -2023,7 +2023,7 @@ public class AudioEngineService : IDisposable
 
     private float ComputeLinearGain()
     {
-        double linear = Math.Pow(10, _normalizationGainDb / 20.0) * _userVolume * 0.5;
+        double linear = Math.Pow(10, _normalizationGainDb / 20.0) * _userVolume;
         return (float)Math.Clamp(linear, 0.0, 4.0);
     }
 
@@ -3844,6 +3844,7 @@ public static class LyricsTranslatorService
         catch { return text; }
     }
 }
+
 
 
 

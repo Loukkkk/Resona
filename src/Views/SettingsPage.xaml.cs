@@ -331,6 +331,13 @@ public sealed partial class SettingsPage : Page
 
 		UpdateTranslateVisibility();
 
+		// Themes saisonniers : l'option n'est proposee que pendant sa periode (Halloween = octobre, Noel = decembre).
+		foreach (RadioButton seasonal in BackdropChoice.Items.Cast<RadioButton>().ToList())
+		{
+			if (Enum.TryParse<AppBackdropStyle>(seasonal.Tag?.ToString(), out var seasonalStyle) && !SeasonalThemes.IsAvailable(seasonalStyle))
+				BackdropChoice.Items.Remove(seasonal);
+		}
+
 		foreach (RadioButton item in BackdropChoice.Items.Cast<RadioButton>())
 		{
 			if (item.Tag?.ToString() == current.Backdrop.ToString())
@@ -339,7 +346,12 @@ public sealed partial class SettingsPage : Page
 				break;
 			}
 		}
-		ColorPresetsPanel.Visibility = ((current.Backdrop != AppBackdropStyle.Solid) ? Visibility.Collapsed : Visibility.Visible);
+		CustomGradientSwitch.IsOn = current.CustomGradientEnabled;
+		BuildGradientStopsList();
+		GrainSwitch.IsOn = current.GrainEnabled;
+		GrainAmountSlider.Value = Math.Clamp(current.GrainAmount, 5, 100);
+		GrainAmountPanel.Visibility = current.GrainEnabled ? Visibility.Visible : Visibility.Collapsed;
+		UpdatePresetsPanelVisibility(current.Backdrop);
 		GradientOverflowSwitch.IsOn = current.PlayerGradientOverflowEnabled;
 		PlayerGradientSwitch.IsOn = current.PlayerGradientEnabled;
 		UpdateGradientOverflowAvailability();
@@ -465,7 +477,7 @@ public sealed partial class SettingsPage : Page
 				CornerRadius = new CornerRadius(20.0),
 				UseLayoutRounding = true,
 				Background = presetBrush,
-				BorderThickness = new Thickness((index == App.Settings.Current.ThemePresetIndex) ? 3 : 0),
+				BorderThickness = new Thickness((!App.Settings.Current.UseCustomTheme && index == App.Settings.Current.ThemePresetIndex) ? 3 : 0),
 				BorderBrush = new SolidColorBrush(Colors.White)
 			};
 			// Nom du preset affiché dans une infobulle au survol : on force son fond/texte pour
@@ -473,18 +485,22 @@ public sealed partial class SettingsPage : Page
 			// de dépendre des ressources ToolTip par défaut qui suivent le thème clair/sombre.
 			ToolTip presetTooltip = new ToolTip
 			{
-				Content = themePreset.Name,
+				Content = Models.Strings.Current.ThemePresetName(themePreset.Name),
 				Background = new SolidColorBrush(Color.FromArgb(255, 0x2A, 0x2A, 0x2E)),
 				Foreground = new SolidColorBrush(Colors.White)
 			};
 			ToolTipService.SetToolTip(button, presetTooltip);
 			button.Tapped += async delegate
 			{
+				_customApplyTimer?.Stop();
+				App.Settings.Current.UseCustomTheme = false;
 				App.Settings.Current.ThemePresetIndex = index;
 				await App.Settings.SaveAsync();
 				App.ApplyThemeResources();
 				App.MainWindowInstance?.RefreshThemeDependentUI();
-				BuildPresetsList();
+				// Pas de reconstruction de la liste ici : on ne detruit pas la pastille dont le clic est en cours de traitement.
+				UpdatePresetSelectionBorders();
+				UpdatePresetsPanelVisibility(App.Settings.Current.Backdrop);
 			};
 			// Survol : la pastille s'assombrit legerement, puis revient a sa couleur. On modifie la
 			// couleur du brush directement (pas de template WinUI), donc elle ne peut jamais disparaitre.
@@ -495,6 +511,354 @@ public sealed partial class SettingsPage : Page
 			button.PointerCanceled += (s, e) => presetBrush.Color = baseColor;
 			PresetsList.Items.Add(button);
 		}
+		// Derniere pastille : couleur personnalisee (ouvre un selecteur de couleur).
+		PresetsList.Items.Add(BuildCustomSwatch());
+	}
+
+	// ------------------------------------------------------------------
+	//  Theme de couleur personnalise : selecteur de couleur + fond en degrade
+	// ------------------------------------------------------------------
+
+	private SolidColorBrush? _customSwatchBrush;
+	private FontIcon? _customSwatchIcon;
+	private Border? _customSwatch;
+	private DispatcherQueueTimer? _customApplyTimer;
+
+	private static string ToHex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+	private static Color ReadableOn(Color c)
+		=> (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) > 150 ? Color.FromArgb(255, 0x1A, 0x1A, 0x1A) : Colors.White;
+
+	private static ToolTip MakeSwatchTip(string text) => new ToolTip
+	{
+		Content = text,
+		Background = new SolidColorBrush(Color.FromArgb(255, 0x2A, 0x2A, 0x2E)),
+		Foreground = new SolidColorBrush(Colors.White)
+	};
+
+	private static Color AccentOrDefault(string? hex)
+		=> CustomTheme.IsValidHex(hex) ? ColorFromHex(hex!) : ColorFromHex("#7C5CFF");
+
+	private static ColorPicker MakeColorPicker(Color initial)
+	{
+		// MinSaturation coupe le spectre lui-meme : on ne PEUT plus atteindre la zone "trop blanche" (le bas du graphique).
+		// Avant, je laissais le curseur y aller puis je le replacais : colle au bord, la teinte etait perdue (blanc pur = pas de teinte)
+		// et le curseur ne reagissait plus aux deplacements horizontaux.
+		// Libelles du selecteur et noms de couleurs des infobulles : fournis par le framework, donc alignes sur la langue de l'app.
+		App.ApplyFrameworkLanguage();
+		var picker = new ColorPicker
+		{
+			Language = Models.Strings.Current.IsFr ? "fr-FR" : "en-US",
+			IsAlphaEnabled = false,
+			IsMoreButtonVisible = true,
+			IsHexInputVisible = true,
+			MinSaturation = (int)Math.Round(CustomTheme.MinPickerSaturation * 100.0)
+		};
+		// Couleur de depart (ex. ancien blanc pur enregistre) ramenee dans la plage autorisee, sinon le selecteur peut refuser.
+		var start = CustomTheme.LimitWhiteness(ToHex(initial), CustomTheme.HueOf(ToHex(initial)));
+		picker.Color = start.Changed ? ColorFromHex(start.Hex) : initial;
+		LocalizeColorNameTooltip(picker);
+		return picker;
+	}
+
+	// Infobulle du nom de couleur (celle qui suit le curseur sur le spectre) : le ColorSpectrum WinUI la remplit avec
+	// ColorHelper.ToDisplayName, qui suit la langue de WINDOWS et ignore Language / PrimaryLanguageOverride.
+	// En version anglaise on remplace donc le texte par le nom CSS anglais le plus proche (ColorNames.English),
+	// a chaque fois que le spectrum reecrit le contenu de l'infobulle. En francais on ne touche a rien (nom Windows deja en francais).
+	private static void LocalizeColorNameTooltip(ColorPicker picker)
+	{
+		if (Models.Strings.Current.IsFr) return;
+
+		bool TryHook()
+		{
+			var spectrum = FindAllOfType<ColorSpectrum>(picker).FirstOrDefault();
+			if (spectrum == null) return false;
+			// Dans le template WinUI, l'infobulle "ColorNameToolTip" est posee sur l'ellipse de selection (pas sur le spectrum lui-meme).
+			var ellipse = FindAllOfType<Ellipse>(spectrum).FirstOrDefault(el => el.Name == "SelectionEllipse");
+			if (ellipse == null) return false;
+			if (ToolTipService.GetToolTip(ellipse) is not ToolTip tip) return false;
+			if ((tip.Tag as string) == "ResonaColorNameLocalized") return true;   // deja branche
+			tip.Tag = "ResonaColorNameLocalized";
+
+			bool fixing = false;
+			void Fix()
+			{
+				if (fixing) return;   // evite la boucle : on reecrit nous-memes le contenu ci-dessous
+				fixing = true;
+				try
+				{
+					Color c = spectrum.Color;
+					string english = ColorNames.English(c.R, c.G, c.B);
+					if (!string.Equals(tip.Content as string, english, StringComparison.Ordinal)) tip.Content = english;
+				}
+				finally { fixing = false; }
+			}
+
+			tip.RegisterPropertyChangedCallback(ContentControl.ContentProperty, (s, dp) => Fix());
+			Fix();
+			return true;
+		}
+
+		// Le template du selecteur (donc le ColorSpectrum et son infobulle) n'existe qu'une fois le controle charge.
+		picker.Loaded += (s, e) =>
+		{
+			if (!TryHook()) picker.DispatcherQueue?.TryEnqueue(DispatcherQueuePriority.Low, () => TryHook());
+		};
+	}
+
+	private Border BuildCustomSwatch()
+	{
+		var cur = App.Settings.Current;
+		Color color = AccentOrDefault(cur.CustomAccentHex);
+		_customSwatchBrush = new SolidColorBrush(color);
+		_customSwatchIcon = new FontIcon { Glyph = "\uE790", FontSize = 18, Foreground = new SolidColorBrush(ReadableOn(color)) };
+		var swatch = new Border
+		{
+			Width = 40.0,
+			Height = 40.0,
+			CornerRadius = new CornerRadius(20.0),
+			UseLayoutRounding = true,
+			Background = _customSwatchBrush,
+			BorderThickness = new Thickness(cur.UseCustomTheme ? 3 : 0),
+			BorderBrush = new SolidColorBrush(Colors.White),
+			Child = _customSwatchIcon
+		};
+		ToolTipService.SetToolTip(swatch, MakeSwatchTip(Models.Strings.Current.SettingsPage_Text_CustomColor));
+		swatch.Tapped += (s, e) => OnCustomSwatchTapped();
+		_customSwatch = swatch;
+		return swatch;
+	}
+
+	private void OnCustomSwatchTapped()
+	{
+		var cur = App.Settings.Current;
+		if (!cur.UseCustomTheme)
+		{
+			cur.UseCustomTheme = true;
+			// Index remis a 0 : evite les cas speciaux Noir Absolu / Blanc Pur (7 / 8) tant que le theme perso est actif.
+			cur.ThemePresetIndex = 0;
+			_ = App.Settings.SaveAsync();
+			App.ApplyThemeResources();
+			App.MainWindowInstance?.RefreshThemeDependentUI();   // rafraichissement complet, une seule fois (sortie eventuelle du theme blanc)
+			UpdatePresetSelectionBorders();
+			UpdatePresetsPanelVisibility(cur.Backdrop);
+			// Le selecteur s'ouvre APRES le retablissement differe du theme (ForceUIRepaint), pas pendant : ouvrir un flyout
+			// pendant que le theme est en train de basculer est risque. La pastille n'est plus reconstruite, donc elle est deja en place.
+			DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+			{
+				if (_customSwatch != null) ShowAccentFlyout(_customSwatch);
+			});
+			return;
+		}
+		if (_customSwatch != null) ShowAccentFlyout(_customSwatch);
+	}
+
+	// Met a jour la bordure blanche de selection des pastilles SANS reconstruire la liste.
+	private void UpdatePresetSelectionBorders()
+	{
+		var cur = App.Settings.Current;
+		int i = 0;
+		foreach (var item in PresetsList.Items)
+		{
+			if (item is Border b)
+			{
+				bool selected = ReferenceEquals(b, _customSwatch)
+					? cur.UseCustomTheme
+					: (!cur.UseCustomTheme && i == cur.ThemePresetIndex);
+				b.BorderThickness = new Thickness(selected ? 3 : 0);
+			}
+			i++;
+		}
+	}
+
+	// Validation finale (selecteur ferme, ajout/suppression de couleur...) : sauvegarde + application complete UNE fois.
+	private void CommitCustomTheme()
+	{
+		_customApplyTimer?.Stop();
+		_ = App.Settings.SaveAsync();
+		App.ApplyThemeResources();
+		App.MainWindowInstance?.RefreshCustomThemeLight(updatePlayerBar: true);
+	}
+
+	private void ShowAccentFlyout(FrameworkElement anchor)
+	{
+		var picker = MakeColorPicker(AccentOrDefault(App.Settings.Current.CustomAccentHex));
+		double lastHue = CustomTheme.HueOf(App.Settings.Current.CustomAccentHex);
+		bool adjusting = false;
+		picker.ColorChanged += (s, e) =>
+		{
+			if (adjusting) return;
+			// Couleur trop blanche : on la ramene a la limite autorisee et on replace le curseur du selecteur dessus.
+			var limited = CustomTheme.LimitWhiteness(ToHex(e.NewColor), lastHue);
+			lastHue = limited.Hue;
+			Color c = e.NewColor;
+			if (limited.Changed)
+			{
+				c = ColorFromHex(limited.Hex);
+				adjusting = true;
+				try { picker.Color = c; } finally { adjusting = false; }
+			}
+			App.Settings.Current.CustomAccentHex = ToHex(c);
+			if (_customSwatchBrush != null) _customSwatchBrush.Color = c;
+			if (_customSwatchIcon != null) _customSwatchIcon.Foreground = new SolidColorBrush(ReadableOn(c));
+			ScheduleCustomThemeApply();
+		};
+		var flyout = new Flyout { Content = picker, Placement = FlyoutPlacementMode.Bottom };
+		flyout.Closed += (s, e) => CommitCustomTheme();
+		flyout.ShowAt(anchor);
+	}
+
+	// Apercu EN DIRECT pendant le glisser : limite a ~6 mises a jour par seconde et uniquement les couleurs (pas de
+	// ForceUIRepaint, pas de ThemeApplied, pas de sauvegarde disque). La validation complete se fait a la fermeture.
+	private void ScheduleCustomThemeApply()
+	{
+		if (_customApplyTimer == null)
+		{
+			_customApplyTimer = DispatcherQueue.CreateTimer();
+			_customApplyTimer.Interval = TimeSpan.FromMilliseconds(160);
+			_customApplyTimer.IsRepeating = false;
+			_customApplyTimer.Tick += (s, e) =>
+			{
+				App.ApplyThemeResources(notify: false);
+				App.MainWindowInstance?.RefreshCustomThemeLight(updatePlayerBar: false);
+			};
+		}
+		if (!_customApplyTimer.IsRunning) _customApplyTimer.Start();   // pas de Stop/Start : sinon aucun apercu tant que ca bouge
+	}
+
+	private void GrainSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (_isLoading) return;
+		App.Settings.Current.GrainEnabled = GrainSwitch.IsOn;
+		GrainAmountPanel.Visibility = GrainSwitch.IsOn ? Visibility.Visible : Visibility.Collapsed;
+		_ = App.Settings.SaveAsync();
+		App.MainWindowInstance?.ApplyGrain();
+	}
+
+	private void GrainAmountSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+	{
+		// IsLoaded : le slider notifie aussi pendant InitializeComponent (valeur 0 -> minimum), il ne faut pas ecraser le reglage.
+		if (_isLoading || !IsLoaded) return;
+		App.Settings.Current.GrainAmount = (int)e.NewValue;
+		_ = App.Settings.SaveAsync();
+		App.MainWindowInstance?.ApplyGrain();   // ne change que l'opacite de la couche : instantane
+	}
+
+	private void CustomGradientSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (_isLoading) return;
+		var cur = App.Settings.Current;
+		cur.CustomGradientEnabled = CustomGradientSwitch.IsOn;
+		if (cur.CustomGradientEnabled && cur.CustomGradientColors.Count < CustomTheme.MinGradientColors)
+		{
+			string first = CustomTheme.IsValidHex(cur.CustomAccentHex) ? cur.CustomAccentHex : "#7C5CFF";
+			cur.CustomGradientColors = new List<string> { first, CustomTheme.ShiftHue(first, 50) };
+		}
+		BuildGradientStopsList();
+		UpdatePresetsPanelVisibility(cur.Backdrop);
+		CommitCustomTheme();
+	}
+
+	private void BuildGradientStopsList()
+	{
+		GradientStopsList.Items.Clear();
+		var cur = App.Settings.Current;
+		for (int i = 0; i < cur.CustomGradientColors.Count; i++)
+		{
+			int index = i;
+			var brush = new SolidColorBrush(AccentOrDefault(cur.CustomGradientColors[i]));
+			var swatch = new Border
+			{
+				Width = 36.0,
+				Height = 36.0,
+				CornerRadius = new CornerRadius(18.0),
+				UseLayoutRounding = true,
+				Background = brush,
+				BorderThickness = new Thickness(1.5),
+				BorderBrush = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255))
+			};
+			swatch.Tapped += (s, e) => ShowGradientStopFlyout(swatch, brush, index);
+			GradientStopsList.Items.Add(swatch);
+		}
+		if (cur.CustomGradientColors.Count < CustomTheme.MaxGradientColors)
+		{
+			var add = new Border
+			{
+				Width = 36.0,
+				Height = 36.0,
+				CornerRadius = new CornerRadius(18.0),
+				UseLayoutRounding = true,
+				Background = new SolidColorBrush(Colors.Transparent),   // fond non nul : sinon le clic ne passe pas dans le vide
+				BorderThickness = new Thickness(1.5),
+				BorderBrush = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)),
+				Child = new FontIcon { Glyph = "\uE710", FontSize = 14, Foreground = new SolidColorBrush(Colors.White) }
+			};
+			ToolTipService.SetToolTip(add, MakeSwatchTip(Models.Strings.Current.SettingsPage_Text_AddGradientColor));
+			add.Tapped += (s, e) =>
+			{
+				var c = App.Settings.Current;
+				if (c.CustomGradientColors.Count >= CustomTheme.MaxGradientColors) return;
+				string last = c.CustomGradientColors.Count > 0 ? c.CustomGradientColors[c.CustomGradientColors.Count - 1] : c.CustomAccentHex;
+				c.CustomGradientColors.Add(CustomTheme.ShiftHue(last, 40));
+				BuildGradientStopsList();
+				CommitCustomTheme();
+			};
+			GradientStopsList.Items.Add(add);
+		}
+	}
+
+	private void ShowGradientStopFlyout(FrameworkElement anchor, SolidColorBrush swatchBrush, int index)
+	{
+		var cur = App.Settings.Current;
+		if (index < 0 || index >= cur.CustomGradientColors.Count) return;
+		var flyout = new Flyout { Placement = FlyoutPlacementMode.Bottom };
+		var picker = MakeColorPicker(AccentOrDefault(cur.CustomGradientColors[index]));
+		double lastHue = CustomTheme.HueOf(cur.CustomGradientColors[index]);
+		bool adjusting = false;
+		picker.ColorChanged += (s, e) =>
+		{
+			if (adjusting) return;
+			var c = App.Settings.Current;
+			if (index >= c.CustomGradientColors.Count) return;
+			// Meme limite "pas trop blanc" que pour la couleur principale.
+			var limited = CustomTheme.LimitWhiteness(ToHex(e.NewColor), lastHue);
+			lastHue = limited.Hue;
+			Color chosen = e.NewColor;
+			if (limited.Changed)
+			{
+				chosen = ColorFromHex(limited.Hex);
+				adjusting = true;
+				try { picker.Color = chosen; } finally { adjusting = false; }
+			}
+			c.CustomGradientColors[index] = ToHex(chosen);
+			swatchBrush.Color = chosen;
+			ScheduleCustomThemeApply();
+		};
+		var panel = new StackPanel { Spacing = 12 };
+		panel.Children.Add(picker);
+		if (cur.CustomGradientColors.Count > CustomTheme.MinGradientColors)
+		{
+			var remove = new Button
+			{
+				Content = Models.Strings.Current.SettingsPage_Content_RemoveGradientColor,
+				HorizontalAlignment = HorizontalAlignment.Stretch,
+				Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]
+			};
+			remove.Click += (s, e) =>
+			{
+				var c = App.Settings.Current;
+				if (index < c.CustomGradientColors.Count && c.CustomGradientColors.Count > CustomTheme.MinGradientColors)
+				{
+					c.CustomGradientColors.RemoveAt(index);
+					BuildGradientStopsList();
+				}
+				flyout.Hide();   // la fermeture declenche la validation (CommitCustomTheme)
+			};
+			panel.Children.Add(remove);
+		}
+		flyout.Content = panel;
+		flyout.Closed += (s, e) => CommitCustomTheme();
+		flyout.ShowAt(anchor);
 	}
 
 	private static Color ColorFromHex(string hex)
@@ -768,8 +1132,25 @@ public sealed partial class SettingsPage : Page
 			App.MainWindowInstance?.ApplyBackdrop();
 			App.ApplyThemeResources();
 			App.MainWindowInstance?.RefreshThemeDependentUI();
-			ColorPresetsPanel.Visibility = ((style != AppBackdropStyle.Solid) ? Visibility.Collapsed : Visibility.Visible);
+			UpdatePresetsPanelVisibility(style);
 		}
+	}
+
+	// Solid : palette + reglages du gradient. Halloween : seulement les reglages du gradient (la palette est
+	// remplacee par le preset Halloween). Mica / Acrylic : rien (accent neutre, flou systeme).
+	private void UpdatePresetsPanelVisibility(AppBackdropStyle style)
+	{
+		ColorPresetsPanel.Visibility = style.IsSolidLike() ? Visibility.Visible : Visibility.Collapsed;
+		Visibility palette = (style == AppBackdropStyle.Solid) ? Visibility.Visible : Visibility.Collapsed;
+		PresetsTopSeparator.Visibility = palette;
+		PresetsTitleText.Visibility = palette;
+		PresetsList.Visibility = palette;
+		bool solid = style == AppBackdropStyle.Solid;
+		bool customActive = solid && App.Settings.Current.UseCustomTheme;
+		// Hors theme personnalise : l'option reste VISIBLE mais grisee (meme rendu que les autres interrupteurs indisponibles).
+		CustomGradientPanel.Visibility = solid ? Visibility.Visible : Visibility.Collapsed;
+		SetToggleAvailable(CustomGradientSwitch, customActive);
+		GradientStopsList.Visibility = (customActive && App.Settings.Current.CustomGradientEnabled) ? Visibility.Visible : Visibility.Collapsed;
 	}
 
 	private void GradientOverflowSwitch_Toggled(object sender, RoutedEventArgs e)

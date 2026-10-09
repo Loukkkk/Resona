@@ -365,6 +365,35 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string SettingsPage_Content_Bibliothque => IsFr ? "Bibliothèque" : "Library";
     public string SettingsPage_Content_Choisir => IsFr ? "Choisir" : "Choose";
     public string SettingsPage_Content_Couleurunie => IsFr ? "Couleur unie" : "Solid color";
+    public string SettingsPage_Content_Halloween => IsFr ? "Halloween (thème spécial)" : "Halloween (special theme)";
+    public string SettingsPage_Content_Christmas => IsFr ? "Noël (thème spécial)" : "Christmas (special theme)";
+    public string SettingsPage_Text_CustomColor => IsFr ? "Couleur personnalisée" : "Custom color";
+    public string SettingsPage_Header_CustomGradient => IsFr ? "Fond en dégradé" : "Gradient background";
+    public string SettingsPage_Text_CustomGradientDesc => IsFr ? "Mélange 2 à 5 couleurs de ton choix en fond d'application. Elles sont légèrement assombries si besoin pour que le texte reste lisible. Disponible avec la couleur personnalisée." : "Blend 2 to 5 colors of your choice as the app background. They are slightly darkened if needed so the text stays readable. Available with the custom color.";
+    public string SettingsPage_Text_AddGradientColor => IsFr ? "Ajouter une couleur" : "Add a color";
+    public string SettingsPage_Content_RemoveGradientColor => IsFr ? "Supprimer cette couleur" : "Remove this color";
+    public string SettingsPage_Header_Grain => IsFr ? "Grain d'arrière-plan" : "Background grain";
+    public string SettingsPage_Text_GrainDesc => IsFr ? "Ajoute une texture granuleuse sur le fond de l'application (couleur unie, personnalisée, Halloween, Noël)." : "Adds a grainy texture to the app background (solid color, custom, Halloween, Christmas).";
+
+    // Noms des couleurs de la palette (infobulles). ThemePresets.All garde les noms francais comme identifiants ; on traduit a l'affichage.
+    public string ThemePresetName(string name)
+    {
+        if (IsFr) return name;
+        return name switch
+        {
+            "Violet Nuit" => "Night Violet",
+            "Bleu Océan" => "Ocean Blue",
+            "Émeraude" => "Emerald",
+            "Corail" => "Coral",
+            "Rose Magenta" => "Magenta Pink",
+            "Ambre" => "Amber",
+            "Gris Ardoise" => "Slate Gray",
+            "Noir Absolu" => "Pure Black",
+            "Blanc Pur" => "Pure White",
+            _ => name
+        };
+    }
+    public string SettingsPage_Text_GrainAmount => IsFr ? "Intensité du grain" : "Grain intensity";
     public string SettingsPage_Content_Dossiers => IsFr ? "Dossiers" : "Folders";
     public string SettingsPage_Content_Dsactiv => IsFr ? "Désactivé" : "Disabled";
     public string SettingsPage_Content_Englishen => IsFr ? "English (en)" : "English (en)";

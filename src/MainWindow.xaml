@@ -19,6 +19,10 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+
+        <!-- Grain d'arriere-plan : premier enfant = dessine juste au-dessus du fond, sous toute l'interface (MainWindow.Grain.cs) -->
+        <Image x:Name="AppGrainLayer" Grid.Row="0" Grid.RowSpan="2" Stretch="UniformToFill"
+               IsHitTestVisible="False" Visibility="Collapsed" Opacity="0" />
 <tb:TaskbarIcon x:Name="TrayIcon"
                         Visibility="Collapsed"
                         ToolTipText="Resona"
@@ -373,6 +377,13 @@
         </Grid>
         
         <!-- Up Next Overlay (Light Dismiss) -->
+        <!-- Decorations Halloween : couche non cliquable au-dessus de l'app, remplie par code (MainWindow.Halloween.cs) -->
+        <Grid x:Name="HalloweenLayer" Grid.Row="0" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed" Canvas.ZIndex="500" />
+        <Grid x:Name="HalloweenIntroLayer" Grid.Row="0" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed" Canvas.ZIndex="900" />
+        <!-- Decorations Noel : memes principes que Halloween (remplies par code, MainWindow.Christmas.cs) -->
+        <Grid x:Name="ChristmasLayer" Grid.Row="0" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed" Canvas.ZIndex="500" />
+        <Grid x:Name="ChristmasIntroLayer" Grid.Row="0" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed" Canvas.ZIndex="900" />
+
         <Grid x:Name="UpNextOverlay" Grid.Row="0" Grid.RowSpan="2" Background="Transparent" Visibility="Collapsed" Canvas.ZIndex="1001" PointerPressed="UpNextOverlay_PointerPressed" />
         
         <!-- Up Next Panel -->

@@ -188,7 +188,59 @@ public class Playlist
 //  AppSettings
 // ------------------------------------------------------------
 
-public enum AppBackdropStyle { Mica, MicaAlt, Acrylic, Solid }
+// Halloween est AJOUTE EN DERNIER : les valeurs existantes (Mica=0, MicaAlt=1, Acrylic=2, Solid=3) restent
+// inchangees, donc les settings.json existants restent valides (aucune migration necessaire).
+// Christmas est AJOUTE apres Halloween pour la meme raison (valeurs existantes inchangees).
+public enum AppBackdropStyle { Mica, MicaAlt, Acrylic, Solid, Halloween, Christmas }
+
+public static class AppBackdropStyleExtensions
+{
+    /// <summary>Vrai pour les fonds "couleur unie" (Solid, Halloween, Christmas) : pas de materiau systeme, couleurs issues d'un preset.</summary>
+    public static bool IsSolidLike(this AppBackdropStyle style)
+        => style == AppBackdropStyle.Solid || style == AppBackdropStyle.Halloween || style == AppBackdropStyle.Christmas;
+
+    /// <summary>Vrai pour les themes saisonniers (disponibles uniquement pendant leur periode).</summary>
+    public static bool IsSeasonal(this AppBackdropStyle style)
+        => style == AppBackdropStyle.Halloween || style == AppBackdropStyle.Christmas;
+}
+
+/// <summary>
+/// Disponibilite des themes saisonniers : Halloween = octobre, Noel = decembre.
+/// Hors periode, l'option n'est plus proposee dans les parametres et un theme saisonnier deja choisi repasse en "Couleur unie".
+/// Pour tester hors saison : build Debug (tout est disponible) ou variable d'environnement
+/// RESONA_FORCE_SEASON = halloween | christmas | all.
+/// </summary>
+public static class SeasonalThemes
+{
+    public static bool IsAvailable(AppBackdropStyle style, DateTime? now = null)
+    {
+        if (!style.IsSeasonal()) return true;
+#if DEBUG
+        return true;
+#else
+        string? force = Environment.GetEnvironmentVariable("RESONA_FORCE_SEASON")?.Trim().ToLowerInvariant();
+        if (force == "all") return true;
+        if (force == "halloween" && style == AppBackdropStyle.Halloween) return true;
+        if (force == "christmas" && style == AppBackdropStyle.Christmas) return true;
+
+        int month = (now ?? DateTime.Now).Month;
+        return style switch
+        {
+            AppBackdropStyle.Halloween => month == 10,
+            AppBackdropStyle.Christmas => month == 12,
+            _ => true,
+        };
+#endif
+    }
+
+    /// <summary>Si le theme saisonnier choisi est hors periode, repasse en Couleur unie. Renvoie vrai si le reglage a change.</summary>
+    public static bool EnforceSeason(AppSettings settings)
+    {
+        if (IsAvailable(settings.Backdrop)) return false;
+        settings.Backdrop = AppBackdropStyle.Solid;
+        return true;
+    }
+}
 
 public enum DownloadFormat
 {
@@ -253,6 +305,15 @@ public class AppSettings
     // Apparence
     public AppBackdropStyle Backdrop                   { get; set; } = AppBackdropStyle.Solid;
     public int              ThemePresetIndex           { get; set; } = 0;
+    // Theme de couleur personnalise (selecteur de couleur + fond en degrade). Valeurs par defaut = comportement existant
+    // inchange : les anciens settings.json restent valides (proprietes absentes -> valeurs par defaut).
+    public bool             UseCustomTheme             { get; set; } = false;
+    public string           CustomAccentHex            { get; set; } = "#7C5CFF";
+    public bool             CustomGradientEnabled      { get; set; } = false;
+    public List<string>     CustomGradientColors       { get; set; } = new();
+    // Grain d'arriere-plan (texture de bruit au-dessus du fond, sous l'interface) : valeurs par defaut = desactive.
+    public bool             GrainEnabled               { get; set; } = false;
+    public int              GrainAmount                { get; set; } = 35;   // 5..100
     public bool             PlayerGradientOverflowEnabled { get; set; } = true;
     // Gradient à l'intérieur du lecteur (si désactivé, le gradient qui dépasse est aussi désactivé)
     public bool             PlayerGradientEnabled         { get; set; } = true;
@@ -326,6 +387,22 @@ public record ThemePreset(
 
 public static class ThemePresets
 {
+    // Preset du fond Halloween : volontairement HORS de All, pour ne pas apparaitre comme pastille de couleur
+    // dans la palette du mode Couleur unie.
+    public static readonly ThemePreset Halloween = new("Halloween", "#FF7A1A", "#9B4DFF", "#120A1C", "#241437");
+
+    // Preset du fond Noel : meme principe (hors de All). Rouge de Noel + vert sapin sur un fond bleu nuit enneige.
+    public static readonly ThemePreset Christmas = new("Christmas", "#E63946", "#2FBF71", "#0A1A2B", "#12304A");
+
+    /// <summary>Preset effectivement applique : celui d'Halloween si ce fond est actif, sinon la pastille choisie.</summary>
+    public static ThemePreset Resolve(AppSettings settings)
+    {
+        if (settings.Backdrop == AppBackdropStyle.Halloween) return Halloween;
+        if (settings.Backdrop == AppBackdropStyle.Christmas) return Christmas;
+        if (settings.Backdrop == AppBackdropStyle.Solid && settings.UseCustomTheme) return CustomTheme.Build(settings);
+        return All[Math.Clamp(settings.ThemePresetIndex, 0, All.Length - 1)];
+    }
+
     public static readonly ThemePreset[] All =
     {
         new("Violet Nuit",  "#7C5CFF", "#FF5CA8", "#161129", "#241E42"),
@@ -338,6 +415,174 @@ public static class ThemePresets
         new("Noir Absolu",  "#000000", "#222222", "#000000", "#0D0D0D"),
         new("Blanc Pur",    "#FFFFFF", "#CCCCCC", "#F0F0F0", "#E0E0E0"),
     };
+}
+
+// ------------------------------------------------------------
+//  CustomTheme : theme de couleur choisi avec un selecteur (+ degrade optionnel)
+// ------------------------------------------------------------
+
+public static class CustomTheme
+{
+    public const int MinGradientColors = 2;
+    public const int MaxGradientColors = 5;
+    private const string DefaultAccent = "#7C5CFF";
+    // Les fonds en degrade sont assombris au-dela de cette valeur (HSV, 0..1) pour que le texte clair reste lisible.
+    // HSV (comme le selecteur de couleur de Windows) : la teinte et la saturation choisies sont conservees, seule la clarte baisse.
+    private const double MaxBackgroundValue = 0.5;
+
+    public static bool IsValidHex(string? hex)
+        => !string.IsNullOrWhiteSpace(hex) && hex.TrimStart('#').Length == 6
+           && int.TryParse(hex.TrimStart('#'), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    private static string Sanitize(string? hex, string fallback = DefaultAccent) => IsValidHex(hex) ? "#" + hex!.TrimStart('#').ToUpperInvariant() : fallback;
+
+    /// <summary>Couleurs du degrade de fond, deja assombries si besoin. Liste vide si le degrade n'est pas actif.</summary>
+    public static List<string> EffectiveGradient(AppSettings s)
+    {
+        var result = new List<string>();
+        if (s.Backdrop != AppBackdropStyle.Solid || !s.UseCustomTheme || !s.CustomGradientEnabled) return result;
+        foreach (string hex in s.CustomGradientColors)
+        {
+            if (!IsValidHex(hex)) continue;
+            var (h, sat, v) = ToHsv(hex);
+            result.Add(FromHsv(h, sat, Math.Min(v, MaxBackgroundValue)));
+            if (result.Count == MaxGradientColors) break;
+        }
+        return result.Count >= MinGradientColors ? result : new List<string>();
+    }
+
+    public static ThemePreset Build(AppSettings s)
+    {
+        string accent = Sanitize(s.CustomAccentHex);
+        var (h, sat, l) = ToHsl(accent);
+        string secondary = FromHsl((h + 40) % 360, sat, l);
+
+        string background, surface;
+        var gradient = EffectiveGradient(s);
+        if (gradient.Count >= MinGradientColors)
+        {
+            // Moyenne des couleurs du degrade : sert a la detection clair/sombre et aux surfaces (lecteur, cartes).
+            double r = 0, g = 0, b = 0;
+            foreach (string c in gradient) { var (cr, cg, cb) = ToRgb(c); r += cr; g += cg; b += cb; }
+            int n = gradient.Count;
+            string avg = FromRgb((int)(r / n), (int)(g / n), (int)(b / n));
+            var (ah, asat, al) = ToHsl(avg);
+            background = avg;
+            surface = FromHsl(ah, asat, Math.Min(0.5, al + 0.07));
+        }
+        else
+        {
+            // Fond uni : il SUIT la couleur choisie, comme chaque couleur d'un degrade (meme teinte, meme saturation), au lieu
+            // d'un fond quasi noir avec une simple teinte. Plus la couleur est pale (on descend dans le selecteur), plus le fond
+            // s'eclaircit, de facon continue. Il reste plafonne (MaxBackgroundValue) pour que le texte blanc reste lisible.
+            var (hv, sv, vv) = ToHsv(accent);
+            double bgV = Math.Min(MaxBackgroundValue, (0.16 + 0.34 * (1.0 - sv)) * (0.35 + 0.65 * vv));
+            background = FromHsv(hv, Math.Min(0.85, sv), bgV);
+            surface = FromHsv(hv, Math.Min(0.80, sv * 0.9), Math.Min(MaxBackgroundValue + 0.04, bgV + 0.07));
+        }
+        return new ThemePreset("Custom", accent, secondary, background, surface);
+    }
+
+    // Saturation minimale (HSV, 0..1) autorisee dans le selecteur : en dessous, la couleur est trop proche du blanc/gris,
+    // le theme ne peut plus la montrer (fond neutre, accent illisible). Le curseur du selecteur s'arrete a cette limite.
+    public const double MinPickerSaturation = 0.30;
+
+    public static double HueOf(string? hex) => ToHsv(Sanitize(hex)).H;
+
+    /// <summary>
+    /// Rend une couleur choisie trop blanche (saturation sous le minimum) a la limite autorisee, en gardant sa teinte et sa clarte.
+    /// Quand la couleur est blanche/grise pure, sa teinte est indefinie : on garde la derniere teinte connue (lastHue).
+    /// </summary>
+    public static (string Hex, double Hue, bool Changed) LimitWhiteness(string hex, double lastHue)
+    {
+        var (h, s, v) = ToHsv(Sanitize(hex));
+        double hue = s < 0.02 ? lastHue : h;
+        // Petite tolerance : l'aller-retour RGB entier <-> HSV ne doit pas relancer la correction en boucle.
+        if (s < MinPickerSaturation - 0.015)
+            return (FromHsv(hue, MinPickerSaturation, v), hue, true);
+        return (Sanitize(hex), hue, false);
+    }
+
+    /// <summary>Decale la teinte d'une couleur (utilise pour proposer une 2e couleur de degrade).</summary>
+    public static string ShiftHue(string hex, double degrees)
+    {
+        var (h, sat, l) = ToHsl(Sanitize(hex));
+        return FromHsl(((h + degrees) % 360 + 360) % 360, sat, l);
+    }
+
+    private static (int R, int G, int B) ToRgb(string hex)
+    {
+        hex = hex.TrimStart('#');
+        return (Convert.ToInt32(hex.Substring(0, 2), 16), Convert.ToInt32(hex.Substring(2, 2), 16), Convert.ToInt32(hex.Substring(4, 2), 16));
+    }
+
+    private static string FromRgb(int r, int g, int b)
+        => $"#{Math.Clamp(r, 0, 255):X2}{Math.Clamp(g, 0, 255):X2}{Math.Clamp(b, 0, 255):X2}";
+
+    private static (double H, double S, double V) ToHsv(string hex)
+    {
+        var (ri, gi, bi) = ToRgb(hex);
+        double r = ri / 255.0, g = gi / 255.0, b = bi / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min;
+        double h = 0;
+        if (d > 1e-9)
+        {
+            if (max == r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60.0;
+            else if (max == g) h = ((b - r) / d + 2) * 60.0;
+            else h = ((r - g) / d + 4) * 60.0;
+        }
+        return (h, max <= 1e-9 ? 0 : d / max, max);
+    }
+
+    private static string FromHsv(double h, double s, double v)
+    {
+        h = ((h % 360) + 360) % 360;
+        s = Math.Clamp(s, 0, 1); v = Math.Clamp(v, 0, 1);
+        double c = v * s;
+        double x = c * (1 - Math.Abs((h / 60.0) % 2 - 1));
+        double m = v - c;
+        double r, g, b;
+        if (h < 60) (r, g, b) = (c, x, 0);
+        else if (h < 120) (r, g, b) = (x, c, 0);
+        else if (h < 180) (r, g, b) = (0, c, x);
+        else if (h < 240) (r, g, b) = (0, x, c);
+        else if (h < 300) (r, g, b) = (x, 0, c);
+        else (r, g, b) = (c, 0, x);
+        return FromRgb((int)Math.Round((r + m) * 255), (int)Math.Round((g + m) * 255), (int)Math.Round((b + m) * 255));
+    }
+
+    private static (double H, double S, double L) ToHsl(string hex)
+    {
+        var (ri, gi, bi) = ToRgb(hex);
+        double r = ri / 255.0, g = gi / 255.0, b = bi / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+        double l = (max + min) / 2.0, h = 0, s = 0, d = max - min;
+        if (d > 1e-9)
+        {
+            s = l > 0.5 ? d / (2.0 - max - min) : d / (max + min);
+            if (max == r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60.0;
+            else if (max == g) h = ((b - r) / d + 2) * 60.0;
+            else h = ((r - g) / d + 4) * 60.0;
+        }
+        return (h, s, l);
+    }
+
+    private static string FromHsl(double h, double s, double l)
+    {
+        h = ((h % 360) + 360) % 360;
+        s = Math.Clamp(s, 0, 1); l = Math.Clamp(l, 0, 1);
+        double c = (1 - Math.Abs(2 * l - 1)) * s;
+        double x = c * (1 - Math.Abs((h / 60.0) % 2 - 1));
+        double m = l - c / 2;
+        double r, g, b;
+        if (h < 60) (r, g, b) = (c, x, 0);
+        else if (h < 120) (r, g, b) = (x, c, 0);
+        else if (h < 180) (r, g, b) = (0, c, x);
+        else if (h < 240) (r, g, b) = (0, x, c);
+        else if (h < 300) (r, g, b) = (x, 0, c);
+        else (r, g, b) = (c, 0, x);
+        return FromRgb((int)Math.Round((r + m) * 255), (int)Math.Round((g + m) * 255), (int)Math.Round((b + m) * 255));
+    }
 }
 
 // ----------------------------------------------------------------

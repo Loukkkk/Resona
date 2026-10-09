@@ -48,7 +48,7 @@
                      BorderThickness="1"
                      BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
 
-            <Button VerticalAlignment="Center" Click="ShuffleAll_Click" ToolTipService.ToolTip="{x:Bind models:Strings.Current.LibraryPage_ToolTipService_ToolTip_LectureAlatoire, Mode=OneWay}" 
+            <Button VerticalAlignment="Center" Height="32" Padding="12,0" UseLayoutRounding="True" Click="ShuffleAll_Click" ToolTipService.ToolTip="{x:Bind models:Strings.Current.LibraryPage_ToolTipService_ToolTip_LectureAlatoire, Mode=OneWay}" 
                     Foreground="{ThemeResource TextFillColorPrimaryBrush}" 
                     Background="{ThemeResource ControlFillColorSecondaryBrush}"
                     BorderThickness="1"
@@ -61,7 +61,7 @@
 
             <StackPanel Orientation="Horizontal" Spacing="4">
                 <Button VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind models:Strings.Current.LibraryPage_ToolTipService_ToolTip_Trierlaliste, Mode=OneWay}"
-                        Height="32" Padding="12,0"
+                        Height="32" Padding="12,0" UseLayoutRounding="True"
                         Foreground="{ThemeResource TextFillColorPrimaryBrush}" 
                         Background="{ThemeResource ControlFillColorSecondaryBrush}"
                         BorderThickness="1"
@@ -80,7 +80,7 @@
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
-                <Button x:Name="SortDirectionIconBtn" Height="32" Width="32" Padding="0" Click="SortDirection_Click" Background="{ThemeResource ControlFillColorSecondaryBrush}" BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}">
+                <Button x:Name="SortDirectionIconBtn" Height="32" Width="32" Padding="0" UseLayoutRounding="True" Click="SortDirection_Click" Background="{ThemeResource ControlFillColorSecondaryBrush}" BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}">
                     <FontIcon x:Name="SortDirectionIcon" Glyph="&#xE74B;" FontSize="14" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 </Button>
             </StackPanel>

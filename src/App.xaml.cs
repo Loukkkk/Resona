@@ -34,6 +34,10 @@ public partial class App : Application
 
     /// <summary>Vrai quand le theme actif est la couleur unie blanche.</summary>
     public static bool IsPureWhiteTheme { get; private set; }
+    // Le style d'info-bulle ne depend pas du theme : on ne le (re)cree qu'une fois (le remplacer en boucle pendant que des
+    // info-bulles / flyouts sont ouverts est inutile et risque de planter le XAML).
+    private static bool _toolTipThemeApplied;
+    private static bool _navBackgroundsApplied;
 
     /// <summary>Declenche a la fin de ApplyThemeResources (les pages peuvent adapter leurs controles).</summary>
     public static event Action? ThemeApplied;
@@ -73,6 +77,9 @@ public partial class App : Application
         // certain (le thread s'attend lui-même indéfiniment, à 0% CPU).
         // On utilise donc une version 100% synchrone, sans aucune Task impliquée.
         Settings.LoadSync();
+        // Themes saisonniers (Halloween = octobre, Noel = decembre) : hors periode, retour a Couleur unie.
+        if (Models.SeasonalThemes.EnforceSeason(Settings.Current)) _ = Settings.SaveAsync();
+        ApplyFrameworkLanguage();
         ApplyThemeResources();
 
         _window = new MainWindow();
@@ -205,13 +212,31 @@ public partial class App : Application
     /// leurs propriétés se répercute instantanément partout dans l'UI, sans avoir
     /// besoin de recréer ou recharger la fenêtre.
     /// </summary>
-    public static void ApplyThemeResources()
+    /// <summary>
+    /// Aligne la langue des controles fournis par WinUI (libelles du selecteur de couleur, noms de couleurs des infobulles...)
+    /// sur la langue choisie dans l'application : sans ca ils suivent la langue de Windows, pas celle de l'app.
+    /// </summary>
+    public static void ApplyFrameworkLanguage()
+    {
+        try
+        {
+            Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride =
+                Models.Strings.Current.IsFr ? "fr-FR" : "en-US";
+        }
+        catch
+        {
+            // Non supporte dans ce contexte : on garde la langue de Windows, sans consequence.
+        }
+    }
+
+    public static void ApplyThemeResources(bool notify = true)
     {
         var res = Application.Current.Resources;
         var settings = Settings.Current;
 
-        bool isSolid = settings.Backdrop == Models.AppBackdropStyle.Solid;
-        var preset = Models.ThemePresets.All[Math.Clamp(settings.ThemePresetIndex, 0, Models.ThemePresets.All.Length - 1)];
+        // Halloween se comporte comme une couleur unie (pas de materiau systeme) avec son propre preset.
+        bool isSolid = Models.AppBackdropStyleExtensions.IsSolidLike(settings.Backdrop);
+        var preset = Models.ThemePresets.Resolve(settings);
 
         // En Mica/Acrylic, on garde un accent neutre pour ne pas teinter le flou
         // système de violet ; en mode Couleur unie, on applique le preset choisi.
@@ -248,13 +273,19 @@ public partial class App : Application
         var functionalAccentLight1 = isBlackAccent ? Windows.UI.Color.FromArgb(255, 0x8A, 0x94, 0xA8) : Lighten(accent, 0.2);
         var functionalAccentLight2 = isBlackAccent ? Windows.UI.Color.FromArgb(255, 0xA8, 0xB2, 0xC6) : Lighten(accent, 0.4);
 
-        SetColor(res, "SystemAccentColor", accent);
-        SetColor(res, "SystemAccentColorLight1", Lighten(accent, 0.2));
-        SetColor(res, "SystemAccentColorLight2", Lighten(accent, 0.4));
-        SetColor(res, "SystemAccentColorLight3", Lighten(accent, 0.6));
-        SetColor(res, "SystemAccentColorDark1", Darken(accent, 0.85));
-        SetColor(res, "SystemAccentColorDark2", Darken(accent, 0.7));
-        SetColor(res, "SystemAccentColorDark3", Darken(accent, 0.55));
+        // notify == false : apercu en direct pendant le glisser du selecteur de couleur. On saute alors le remplacement des
+        // entrees Color du dictionnaire (re-evaluation lourde de tout l'arbre, y compris du selecteur ouvert) : les brushes
+        // d'accent ci-dessous, eux, sont simplement mutes.
+        if (notify)
+        {
+            SetColor(res, "SystemAccentColor", accent);
+            SetColor(res, "SystemAccentColorLight1", Lighten(accent, 0.2));
+            SetColor(res, "SystemAccentColorLight2", Lighten(accent, 0.4));
+            SetColor(res, "SystemAccentColorLight3", Lighten(accent, 0.6));
+            SetColor(res, "SystemAccentColorDark1", Darken(accent, 0.85));
+            SetColor(res, "SystemAccentColorDark2", Darken(accent, 0.7));
+            SetColor(res, "SystemAccentColorDark3", Darken(accent, 0.55));
+        }
 
         SetBrushColor(res, "AccentFillColorDefaultBrush", functionalAccent);
         SetBrushColor(res, "AccentFillColorSecondaryBrush", functionalAccentLight1);
@@ -276,7 +307,9 @@ public partial class App : Application
         // Info-bulles : leur fond reste sombre (thème de base sombre) alors que TextFillColorPrimaryBrush est mutée en noir
         // en thème blanc -> texte noir sur fond sombre. On fixe un blanc indépendant pour le texte des info-bulles,
         // et ce dans TOUS les thèmes (le fond des info-bulles est sombre quel que soit le thème choisi).
+        if (!_toolTipThemeApplied)
         {
+            _toolTipThemeApplied = true;
             res["ToolTipForeground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255));
             // Style implicite des info-bulles (basé sur le style par défaut de WinUI) avec texte blanc : plus fiable
             // que de compter sur la ressource ToolTipForeground seule.
@@ -652,15 +685,21 @@ public partial class App : Application
         // défaut (souvent un gris/noir système) qui flashe brièvement pendant la
         // navigation entre pages, par-dessus l'effet Mica/Acrylic. On la force en
         // transparent pour laisser le flou système s'afficher sans interruption.
-        res["NavigationViewDefaultContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        res["NavigationViewTopContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        res["NavigationViewContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        res["NavigationViewDefaultPaneBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        res["NavigationViewExpandedPaneBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        res["NavigationViewCompactPaneBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        res["NavigationViewContentGridBorderBrush"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        // Valeurs constantes (transparent) : posees une seule fois, inutile de remplacer ces entrees a chaque changement
+        // de theme (chaque remplacement force NavigationView a se re-resoudre).
+        if (!_navBackgroundsApplied)
+        {
+            _navBackgroundsApplied = true;
+            res["NavigationViewDefaultContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            res["NavigationViewTopContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            res["NavigationViewContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            res["NavigationViewDefaultPaneBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            res["NavigationViewExpandedPaneBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            res["NavigationViewCompactPaneBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            res["NavigationViewContentGridBorderBrush"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
 
-        ThemeApplied?.Invoke();
+        if (notify) ThemeApplied?.Invoke();
     }
 
     private static void SetColor(ResourceDictionary res, string key, Windows.UI.Color color)

@@ -26,7 +26,7 @@
 
 ---
 
-## 🗺️ Roadmap / To-Do
+## 🗺️ To-Do List
 
 Here is a big list of features and ideas I'd like to add to Resona. It is simply everything that comes to my mind, so I might not do all of it, and the order doesn't mean anything.
 

@@ -68,7 +68,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 #### 🎨 Themes & Interface
 - [ ] Color theme animations that react to the sound
-- [x] Collapsible sections in the Settings page, so it is less overwhelming now that there are so many options
+- [x] ✅ **Done:** Collapsible sections in the Settings page, so it is less overwhelming now that there are so many options
 
 #### 🌐 Sharing & Integrations
 - [ ] Richer Discord Rich Presence: progress bar, real cover art, etc.

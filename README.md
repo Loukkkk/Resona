@@ -30,6 +30,8 @@
 
 Here is a big list of features and ideas I'd like to add to Resona. It is simply everything that comes to my mind, so I might not do all of it, and the order doesn't mean anything.
 
+> **Note:** Some items may already be checked as done even though you can't use them yet in the latest release. It means they are implemented internally and will be available in the next update.
+
 <details>
 <summary><b>Click to see what's planned</b></summary>
 

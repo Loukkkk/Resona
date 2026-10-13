@@ -26,6 +26,20 @@
 
 ---
 
+## 📥 Download & Install
+
+Each [release](https://github.com/Loukkkk/Resona/releases/latest) comes with two files, pick the one you prefer:
+
+* **`Resona-<version>-win-x64-Setup.exe` (installer):** installs Resona for your user account (no administrator rights needed), adds an entry in the Windows **Apps** list for a clean uninstall, and offers an optional desktop shortcut. Running a newer installer simply updates your existing install.
+* **`Resona-<version>-win-x64.zip` (portable):** extract it anywhere and launch `Resona.exe`, nothing is installed.
+
+When an update is available, the in-app updater lets you download either file directly, with a separate button for each. The one matching your current install is highlighted as recommended.
+
+> [!NOTE]
+> The files are not code-signed, so Windows SmartScreen may show a warning the first time. Click **More info** then **Run anyway**.
+
+---
+
 ## 🗺️ To-Do List
 
 Here is a big list of features and ideas I'd like to add to Resona. It is simply everything that comes to my mind, so I might not do all of it, and the order doesn't mean anything.
@@ -84,7 +98,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Full import/export of settings and library (playlists, ratings, statistics), in addition to `ai_backup.json`
 - [ ] Automatic update of yt-dlp and fpcalc, with version checking
 - [ ] Release notes shown in the app after an update, with a "See what's new" button
-- [ ] Optional MSIX package or installer, for those who want the Start menu entry and a clean install
+- [x] Optional installer (`Setup.exe`), for those who want a clean install, in addition to the portable zip (an MSIX package would require a code-signing certificate)
 
 </details>
 
@@ -132,7 +146,8 @@ Since this is AI-generated code, transparency is key:
 
 ```
 Resona/
-│ .github/                   # GitHub Actions workflows for automated releases
+│ .github/                   # GitHub Actions workflow: builds the zip and the installer for each release
+│ installer/                 # Inno Setup script for the optional Setup.exe
 │ .gitignore                 # Standard Visual Studio gitignore
 │ README.md                  # Project documentation
 │ src/
@@ -197,11 +212,14 @@ Inside this folder, you will find:
 
 ## 🗑️ Uninstall
 
-Resona does not have an installer — to fully remove it:
+**If you used the installer:** uninstall Resona from the Windows **Settings > Apps > Installed apps** list. Your data (library cache, settings, covers) is kept, see the last step below to remove it too.
+
+**If you used the portable zip:**
 
 1. Exit Resona (right-click the tray icon → **Quit** or close the app).
 2. Delete the application folder containing the `.exe` file.
-3. Delete the following cache/settings folder:
+
+In both cases, to also remove your data (cache, settings, logs), delete this folder:
    - `%LOCALAPPDATA%\Resona`
 
 

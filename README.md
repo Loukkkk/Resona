@@ -26,20 +26,6 @@
 
 ---
 
-## 📥 Download & Install
-
-Each [release](https://github.com/Loukkkk/Resona/releases/latest) comes with two files, pick the one you prefer:
-
-* **`Resona-<version>-win-x64-Setup.exe` (installer):** installs Resona for your user account (no administrator rights needed), adds an entry in the Windows **Apps** list for a clean uninstall, and offers an optional desktop shortcut. Running a newer installer simply updates your existing install.
-* **`Resona-<version>-win-x64.zip` (portable):** extract it anywhere and launch `Resona.exe`, nothing is installed.
-
-When an update is available, the in-app updater lets you download either file directly, with a separate button for each. The one matching your current install is highlighted as recommended.
-
-> [!NOTE]
-> The files are not code-signed, so Windows SmartScreen may show a warning the first time. Click **More info** then **Run anyway**.
-
----
-
 ## 🗺️ To-Do List
 
 Here is a big list of features and ideas I'd like to add to Resona. It is simply everything that comes to my mind, so I might not do all of it, and the order doesn't mean anything.
@@ -221,8 +207,3 @@ Inside this folder, you will find:
 
 In both cases, to also remove your data (cache, settings, logs), delete this folder:
    - `%LOCALAPPDATA%\Resona`
-
-
-
-
-

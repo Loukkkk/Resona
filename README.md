@@ -30,7 +30,7 @@
 
 Here is a big list of features and ideas I'd like to add to Resona. It is simply everything that comes to my mind, so I might not do all of it, and the order doesn't mean anything.
 
-> **Note:** Some items may already be checked as done even though you can't use them yet in the latest release. It means they are implemented internally and will be available in the next update.
+> **Note:** A checked item means it is already implemented internally and will be released in the next update.
 
 <details>
 <summary><b>Click to see what's planned</b></summary>
@@ -132,47 +132,71 @@ Since this is AI-generated code, transparency is key:
 
 ```
 Resona/
-│ .github/                   # GitHub Actions workflow: builds the zip and the installer for each release
-│ installer/                 # Inno Setup script for the optional Setup.exe
-│ .gitignore                 # Standard Visual Studio gitignore
-│ README.md                  # Project documentation
-│ src/
-    │ Resona.csproj          # The WinUI 3 project file
-    │ app.manifest           # Windows application manifest (permissions, DPI)
-    │ icon.ico               # Application icon
-    │ Program.cs             # Native entry point for WinUI 3
-    │ App.xaml(.cs)          # Application lifecycle and theme resources
-    │ MainWindow.xaml(.cs)   # Main UI, navigation, and playback bar overlay
-    │ UpdateManager.cs       # GitHub automatic release checking
-    │ GlobalUsings.cs        # Global namespace imports
-    │ Converters/            # XAML value converters (UI data binding)
-    │ Helpers/               # Utility classes (animations, dialogs, pagination)
-    │ Models/
-    │   │ Models.cs          # Core track metadata, playlist entity, settings
-    │   │ Strings.cs         # Localization strings (FR/EN)
-    │ Services/
-    │   │ Services.cs                 # Centralized services (AudioEngine, Tagging, YT-DLP, Playlist, Wikipedia...)
-    │   │ AIService.cs                # AI interaction and API endpoints for smart playlists
-    │   │ DiscordRpcService.cs        # Discord Rich Presence integration
-    │   │ TrayIconService.cs          # Windows system tray integration
-    │   │ BackupService.cs            # AI backup data management
-    │   │ LogService.cs               # Error log written to %LOCALAPPDATA%\Resona\logs
-    │   │ EqualizerSampleProvider.cs  # 10-band audio graphic equalizer logic
-    │ Views/
-        │ LibraryPage.xaml(.cs)       # Main library grid
-        │ AlbumsPage.xaml(.cs)        # Album grouping
-        │ ArtistsPage.xaml(.cs)       # Artist grouping and biographies
-        │ GenresPage.xaml(.cs)        # Genre grouping
-        │ FoldersPage.xaml(.cs)       # Folder-based browsing
-        │ PlaylistsPage.xaml(.cs)     # Playlist management
-        │ PlaylistDetailPage.xaml(.cs)# Specific playlist content
-        │ QueuePage.xaml(.cs)         # Up next queue and manual reordering
-        │ NowPlayingPage.xaml(.cs)    # Full-screen player view
-        │ LyricsPage.xaml(.cs)        # Synchronized lyrics view
-        │ DownloadPage.xaml(.cs)      # Music downloading via YouTube/yt-dlp
-        │ StatisticsPage.xaml(.cs)    # Listening habits and database stats
-        │ SettingsPage.xaml(.cs)      # Application settings
-        │ OnboardingPage.xaml(.cs)    # First launch setup wizard
+├── .github/
+│   └── workflows/
+│       └── build.yml                       # GitHub Actions workflow: builds the zip and the installer for each release
+├── images/
+│   └── Visuel-App-Themes.png               # Themes preview shown at the top of this README
+├── installer/
+│   └── Resona.iss                          # Inno Setup script for the optional Setup.exe
+├── .gitignore                              # Standard Visual Studio gitignore
+├── GEMINI.md                               # Instructions for the AI coding assistant (backward-compatibility rules)
+├── README.md                               # Project documentation
+└── src/
+    ├── Resona.csproj                       # The WinUI 3 project file (app version)
+    ├── app.manifest                        # Windows application manifest (permissions, DPI)
+    ├── icon.ico                            # Application icon
+    ├── Program.cs                          # Native entry point for WinUI 3
+    ├── GlobalUsings.cs                     # Global namespace imports
+    ├── App.xaml(.cs)                       # Application lifecycle and theme resources
+    ├── MainWindow.xaml(.cs)                # Main UI, navigation, and playback bar overlay
+    ├── MainWindow.CustomTheme.cs           # Custom color theme (color picker, gradient background)
+    ├── MainWindow.Grain.cs                 # Background grain texture
+    ├── MainWindow.Halloween.cs             # Halloween seasonal theme
+    ├── MainWindow.Christmas.cs             # Christmas seasonal theme
+    ├── UpdateManager.cs                    # GitHub automatic release checking and download
+    ├── WhatsNewManager.cs                  # Release notes (from GitHub) shown after an update and from the Settings
+    ├── Converters/                         # XAML value converters (UI data binding)
+    │   ├── BoolToOpacityConverter.cs
+    │   ├── BoolToVisibilityConverter.cs
+    │   ├── SecondsToTimeStringConverter.cs
+    │   ├── StringToImageBrushConverter.cs
+    │   └── StringToImageSourceConverter.cs
+    ├── Helpers/
+    │   ├── AnimationHelper.cs              # UI animations
+    │   ├── AppContentDialog.cs             # Dialog with a fixed look, independent of the app theme
+    │   ├── DisplayCountHelper.cs           # "Cards per page" selector shared by the grid pages
+    │   └── VisualTreeHelperExtensions.cs   # Visual tree search helpers
+    ├── Models/
+    │   ├── Models.cs                       # Core track metadata, playlist entity, settings, theme presets
+    │   ├── Strings.cs                      # Localization strings (FR/EN)
+    │   └── ColorNames.cs                   # English color names for the color picker tooltip
+    ├── Services/
+    │   ├── Services.cs                     # Centralized services (AudioEngine, Tagging, YT-DLP, Playlist, Wikipedia...)
+    │   ├── AIService.cs                    # AI interaction and API endpoints for smart playlists
+    │   ├── DiscordRpcService.cs            # Discord Rich Presence integration
+    │   ├── TrayIconService.cs              # Windows system tray integration
+    │   ├── BackupService.cs                # AI backup data management
+    │   ├── LogService.cs                   # Error log written to %LOCALAPPDATA%\Resona\logs
+    │   └── EqualizerSampleProvider.cs      # 10-band audio graphic equalizer logic
+    └── Views/
+        ├── LibraryPage.xaml(.cs)           # Main library grid
+        ├── AlbumsPage.xaml(.cs)            # Album grouping
+        ├── ArtistsPage.xaml(.cs)           # Artist grouping and biographies
+        ├── GenresPage.xaml(.cs)            # Genre grouping
+        ├── FoldersPage.xaml(.cs)           # Folder-based browsing
+        ├── PlaylistsPage.xaml(.cs)         # Playlist management
+        ├── PlaylistDetailPage.xaml(.cs)    # Specific playlist content
+        ├── QueuePage.xaml(.cs)             # Up next queue and manual reordering
+        ├── NowPlayingPage.xaml(.cs)        # Full-screen player view
+        ├── LyricsPage.xaml(.cs)            # Synchronized lyrics view
+        ├── DownloadPage.xaml(.cs)          # Music downloading via YouTube/yt-dlp
+        ├── StatisticsPage.xaml(.cs)        # Listening habits and database stats
+        ├── SettingsPage.xaml(.cs)          # Application settings
+        ├── SettingsPage.Accordion.cs       # Collapsible sections of the Settings page
+        ├── SettingsPage.WhatsNew.cs        # "See what's new" button of the Settings page
+        ├── OnboardingPage.xaml(.cs)        # First launch setup wizard
+        └── Pages_AI.cs                     # AI cleanup of albums, artists and genres
 ```
 
 ---

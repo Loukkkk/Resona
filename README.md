@@ -83,7 +83,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 #### 🛠️ App & Maintenance
 - [ ] Full import/export of settings and library (playlists, ratings, statistics), in addition to `ai_backup.json`
 - [ ] Automatic update of yt-dlp and fpcalc, with version checking
-- [ ] Release notes shown in the app after an update, with a "See what's new" button
+- [x] Release notes shown in the app after an update, with a "See what's new" button
 - [x] Optional installer (`Setup.exe`), for those who want a clean install, in addition to the portable zip (an MSIX package would require a code-signing certificate)
 
 </details>

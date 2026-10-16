@@ -77,12 +77,12 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)
 - [ ] "Now listening" share card: generated image with the cover, title and current lyrics
 - [ ] Playlist export as a web page or an image to share, with covers and track list
-- [ ] File associations: set Resona as the default player and open a double-clicked audio file in the current queue
-- [ ] "Open with Resona" Explorer menu for a folder or a selection
+- [x] File associations: set Resona as the default player and open a double-clicked audio file in the current queue
+- [x] "Open with Resona" Explorer menu for a folder or a selection
 
 #### 🛠️ App & Maintenance
-- [ ] Full import/export of settings and library (playlists, ratings, statistics), in addition to `ai_backup.json`
-- [ ] Automatic update of yt-dlp and fpcalc, with version checking
+- [x] Full import/export of settings and library (playlists, statistics, lyrics...), in addition to `ai_backup.json`, with a choice of what to import/export
+- [x] Optional automatic update of yt-dlp (off by default), so downloads keep working when YouTube changes
 - [x] Release notes shown in the app after an update, with a "See what's new" button
 - [x] Optional installer (`Setup.exe`), for those who want a clean install, in addition to the portable zip (an MSIX package would require a code-signing certificate)
 
@@ -143,6 +143,8 @@ Inside this folder, you will find:
 - `Covers\`: A directory containing all the cached album art. Resona generates unique album hashes to ensure only one image is saved per album (instead of one per track), saving significant disk space.
 - `settings.json`: Your saved preferences, UI states, and configuration (language, theme, equalizer presets, etc.).
 - `ai_backup.json`: Backup data for AI-generated playlists and insights.
+- `backups\`: Automatic safety backups (`before-import-*.zip`) created before each import; the 5 latest are kept.
+- `PlaylistCovers\`: Custom playlist covers restored from an imported backup.
 - `fpcalc\`: Contains the Chromaprint fingerprinting executable used for the auto-tagging feature.
 - `logs\`: Contains `resona.log`, the error log. It can be viewed, copied or cleared from the Settings page.
 ---

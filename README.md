@@ -73,10 +73,9 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [x] Collapsible sections in the Settings page, so it is less overwhelming now that there are so many options
 
 #### 🌐 Sharing & Integrations
-- [ ] Richer Discord Rich Presence: progress bar, real cover art, etc.
+- [x] Richer Discord Rich Presence: progress bar, real cover art, etc.
 - [ ] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)
-- [ ] "Now listening" share card: generated image with the cover, title and current lyrics
-- [ ] Playlist export as a web page or an image to share, with covers and track list
+- [x] Playlist export as a web page or an image to share, with covers and track list
 - [x] File associations: set Resona as the default player and open a double-clicked audio file in the current queue
 - [x] "Open with Resona" Explorer menu for a folder or a selection
 

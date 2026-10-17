@@ -805,6 +805,7 @@ public sealed partial class PlaylistsPage : Page
 				menuFlyout.Items.Add(searchCoverItem);
 				menuFlyout.Items.Add(new MenuFlyoutSeparator());
 			}
+			AddShareMenuItems(menuFlyout, playlist, selectedPlaylists.Count <= 1);   // Exporter en page web / en image (PlaylistsPage.Share.cs)
 			var deleteItem = new MenuFlyoutItem { Text = Models.Strings.Current.CS_Delete, Icon = new FontIcon { Glyph = "\ue74d" }
 	};
 			deleteItem.Click += async (s, args) =>

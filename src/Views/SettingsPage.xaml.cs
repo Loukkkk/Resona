@@ -42,6 +42,7 @@ public sealed partial class SettingsPage : Page
 	{
 		_isLoading = true;
 		InitializeComponent();
+        SetupCollapsibleSections();
         AutoUpdateSwitch.IsOn = App.Settings.Current.AutoUpdateEnabled;
         _isInitializingUpdates = false;
 		LoadEssentialSettings();
@@ -359,6 +360,7 @@ public sealed partial class SettingsPage : Page
 		SaveWindowPositionSwitch.IsOn = current.SaveWindowPosition;
 		SaveWindowSizeSwitch.IsOn = current.SaveWindowSize;
 		StartWithWindowsSwitch.IsOn = current.StartWithWindows;
+		InitWindowsIntegrationUi(current);
 		StartMinimizedSwitch.IsOn = current.StartMinimized;
 		bool flag = current.MinimizeToTrayOnClose && current.StartWithWindows;
 		UpdateStartMinimizedAvailability(flag);
@@ -411,16 +413,6 @@ public sealed partial class SettingsPage : Page
 		AIEnabledSwitch.IsOn = current.AIEnabled;
 		UpNextToggle.IsOn = current.EnableUpNextPanel;
 		_isLoading = false;
-	}
-
-	private void NormalizationTargetSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
-	{
-		if (!_isLoading)
-		{
-			App.Settings.Current.NormalizationTargetRms = e.NewValue;
-			App.Settings.SaveAsync();
-			App.MainWindowInstance?.InvalidateNormalizationAndReanalyze();
-		}
 	}
 
 	private void NormalizationGainSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -1581,6 +1573,94 @@ public sealed partial class SettingsPage : Page
     private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e)
     {
         await UpdateManager.CheckForUpdatesAsync(this.Content.XamlRoot, true);
+    }
+
+    private async void ViewLogsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var s = Resona.Models.Strings.Current;
+        string text = LogService.ReadAll();
+        bool hasLog = !string.IsNullOrWhiteSpace(text);
+
+        var box = new TextBox
+        {
+            Text = hasLog ? text : s.Log_Empty,
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 12,
+            MinWidth = 600,
+            Height = 340
+        };
+        ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+
+        // On ouvre le journal sur les erreurs les plus recentes (fin du fichier).
+        box.Loaded += (_, _) =>
+        {
+            box.UpdateLayout();
+            var sv = FindScrollViewer(box);
+            sv?.ChangeView(null, sv.ScrollableHeight, null, true);
+        };
+
+        var copyButton = new Button { Content = s.Log_Copy };
+        copyButton.Click += (_, _) =>
+        {
+            var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            data.SetText(box.Text);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        };
+
+        var folderButton = new Button { Content = s.Log_OpenFolder };
+        folderButton.Click += (_, _) =>
+        {
+            try
+            {
+                Directory.CreateDirectory(LogService.LogDirectory);
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{LogService.LogDirectory}\"") { UseShellExecute = true });
+            }
+            catch { }
+        };
+
+        var clearButton = new Button { Content = s.Log_Clear };
+        clearButton.Click += (_, _) =>
+        {
+            LogService.Clear();
+            box.Text = s.Log_Empty;
+        };
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        buttons.Children.Add(copyButton);
+        buttons.Children.Add(folderButton);
+        buttons.Children.Add(clearButton);
+
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(box);
+        panel.Children.Add(buttons);
+
+        var dialog = new ContentDialog
+        {
+            Title = s.SettingsPage_Text_Logs,
+            Content = panel,
+            CloseButtonText = s.Log_Close,
+            CenterCloseButton = true,
+            XamlRoot = this.XamlRoot
+        };
+        dialog.Resources["ContentDialogMaxWidth"] = 760.0;
+        await dialog.ShowAsync();
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject root)
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is ScrollViewer sv) return sv;
+            var found = FindScrollViewer(child);
+            if (found != null) return found;
+        }
+        return null;
     }
 
 

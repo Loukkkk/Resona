@@ -62,7 +62,6 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Mood analysis: sort tracks by energy, tempo or vibe, from metadata or a local calculation (BPM, spectrum)
 - [ ] "Discovery" mode: similar artist suggestions
 - [ ] Never-played reminder: a discreet "You've never played this track" suggestion
-- [ ] Right-click context menu: open file location
 
 #### 🎤 Lyrics
 - [ ] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics
@@ -70,20 +69,9 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 #### 🎨 Themes & Interface
 - [ ] Color theme animations that react to the sound
-- [x] Collapsible sections in the Settings page, so it is less overwhelming now that there are so many options
 
 #### 🌐 Sharing & Integrations
-- [x] Richer Discord Rich Presence: progress bar, real cover art, etc.
 - [ ] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)
-- [x] Playlist export as a web page or an image to share, with covers and track list
-- [x] File associations: set Resona as the default player and open a double-clicked audio file in the current queue
-- [x] "Open with Resona" Explorer menu for a folder or a selection
-
-#### 🛠️ App & Maintenance
-- [x] Full import/export of settings and library (playlists, statistics, lyrics...), in addition to `ai_backup.json`, with a choice of what to import/export
-- [x] Optional automatic update of yt-dlp (off by default), so downloads keep working when YouTube changes
-- [x] Release notes shown in the app after an update, with a "See what's new" button
-- [x] Optional installer (`Setup.exe`), for those who want a clean install, in addition to the portable zip (an MSIX package would require a code-signing certificate)
 
 </details>
 

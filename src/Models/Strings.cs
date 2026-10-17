@@ -465,10 +465,102 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string SettingsPage_Text_AutoUpdate => IsFr ? "Vérifier les mises à jour au lancement" : "Check for updates on startup";
     public string SettingsPage_Text_ClearCovers => IsFr ? "Vider le cache des pochettes automatiques" : "Clear automatic cover cache";
     public string SettingsPage_Text_CheckUpdate => IsFr ? "Rechercher une mise à jour" : "Check for updates";
+    public string SettingsPage_Text_Logs => IsFr ? "Journal des erreurs" : "Error log";
+    public string SettingsPage_Text_LogsDesc => IsFr ? "Consulter les erreurs enregistrées par Resona (utile pour signaler un problème)." : "View the errors recorded by Resona (useful when reporting a problem).";
+    public string SettingsPage_Text_ViewLogs => IsFr ? "Voir le journal" : "View log";
+    public string Log_Empty => IsFr ? "Aucune erreur enregistrée." : "No errors recorded.";
+    public string Log_Copy => IsFr ? "Copier" : "Copy";
+    public string Log_OpenFolder => IsFr ? "Ouvrir le dossier" : "Open folder";
+    public string Log_Clear => IsFr ? "Vider le journal" : "Clear log";
+    public string Log_Close => IsFr ? "Fermer" : "Close";
     public string Update_NewVersion_Title => IsFr ? "Nouvelle mise à jour" : "New update available";
     public string Update_NewVersion_Message => IsFr ? "Une nouvelle version de Resona est disponible. Voulez-vous la télécharger ?" : "A new version of Resona is available. Do you want to download it?";
     public string Update_Download => IsFr ? "Télécharger" : "Download";
     public string Update_Close => IsFr ? "Fermer" : "Close";
+
+    // Nouveautes (patch note de la version, pris sur la release GitHub)
+    public string SettingsPage_Text_WhatsNew => IsFr ? "Voir les nouveaut\u00e9s" : "See what's new";
+    public string WhatsNew_Title => IsFr ? "Nouveaut\u00e9s" : "What's new";
+    public string WhatsNew_Close => IsFr ? "Fermer" : "Close";
+    public string WhatsNew_ViewOnGitHub => IsFr ? "Voir sur GitHub" : "View on GitHub";
+
+    // ---- Sauvegarde (import / export des reglages et de la bibliotheque) ----
+    public string SettingsPage_Text_Backup => IsFr ? "Sauvegarde" : "Backup";
+    public string Backup_Desc => IsFr
+        ? "Exporte ou importe tes r\u00e9glages et les donn\u00e9es de ta biblioth\u00e8que (playlists, statistiques...) pour les sauvegarder ou les transf\u00e9rer sur un autre PC."
+        : "Export or import your settings and library data (playlists, statistics...) to back them up or move them to another PC.";
+    public string Backup_ExportBtn => IsFr ? "Exporter..." : "Export...";
+    public string Backup_ImportBtn => IsFr ? "Importer..." : "Import...";
+    public string Backup_ExportTitle => IsFr ? "Exporter une sauvegarde" : "Export a backup";
+    public string Backup_ImportTitle => IsFr ? "Importer une sauvegarde" : "Import a backup";
+    public string Backup_ChooseExport => IsFr ? "Choisis ce que tu veux exporter :" : "Choose what to export:";
+    public string Backup_ChooseImport => IsFr ? "Choisis ce que tu veux importer :" : "Choose what to import:";
+    public string Backup_Export => IsFr ? "Exporter" : "Export";
+    public string Backup_Import => IsFr ? "Importer" : "Import";
+    public string Backup_Cancel => IsFr ? "Annuler" : "Cancel";
+    public string Backup_Close => IsFr ? "Fermer" : "Close";
+    public string Backup_FileType => IsFr ? "Sauvegarde Resona" : "Resona backup";
+
+    public string Backup_Cat_Settings => IsFr ? "R\u00e9glages de l'application" : "App settings";
+    public string Backup_Cat_SettingsDesc => IsFr
+        ? "Th\u00e8me, audio, \u00e9galiseur, affichage, syst\u00e8me... (sans les dossiers ni les chemins propres \u00e0 ce PC)"
+        : "Theme, audio, equalizer, display, system... (without folders or paths specific to this PC)";
+    public string Backup_Cat_Folders => IsFr ? "Dossiers de la biblioth\u00e8que" : "Library folders";
+    public string Backup_Cat_FoldersDesc => IsFr
+        ? "Dossiers de musique, dossier de t\u00e9l\u00e9chargement et fichiers retir\u00e9s de l'app"
+        : "Music folders, download folder and files removed from the app";
+    public string Backup_Cat_Playlists => IsFr ? "Playlists et Favoris" : "Playlists and Favorites";
+    public string Backup_Cat_PlaylistsDesc => IsFr ? "Avec leurs pochettes personnalis\u00e9es" : "Including their custom covers";
+    public string Backup_Cat_Statistics => IsFr ? "Statistiques d'\u00e9coute" : "Listening statistics";
+    public string Backup_Cat_StatisticsDesc => IsFr ? "Nombre d'\u00e9coutes par titre et temps d'\u00e9coute total" : "Play counts per track and total listening time";
+    public string Backup_Cat_Ai => IsFr ? "Donn\u00e9es IA" : "AI data";
+    public string Backup_Cat_AiDesc => IsFr
+        ? "Correspondances artistes / albums / genres et sauvegarde des tags (ai_backup.json)"
+        : "Artist / album / genre mappings and tag backup (ai_backup.json)";
+    public string Backup_Cat_Lyrics => IsFr ? "Paroles en cache" : "Cached lyrics";
+    public string Backup_Cat_LyricsDesc => IsFr ? "Peut alourdir nettement le fichier" : "Can make the file significantly larger";
+
+    public string Backup_NothingSelected => IsFr ? "S\u00e9lectionne au moins une cat\u00e9gorie." : "Select at least one category.";
+    public string Backup_ImportNote => IsFr
+        ? "Les r\u00e9glages sont remplac\u00e9s ; les dossiers, playlists et statistiques sont fusionn\u00e9s avec l'existant. Une sauvegarde automatique de l'\u00e9tat actuel est cr\u00e9\u00e9e avant l'import."
+        : "Settings are replaced; folders, playlists and statistics are merged with what you already have. An automatic backup of the current state is created before importing.";
+    public string Backup_ImportFrom => IsFr ? "Sauvegarde du {0} (Resona {1})" : "Backup from {0} (Resona {1})";
+    public string Backup_Exporting => IsFr ? "Export en cours..." : "Exporting...";
+    public string Backup_Importing => IsFr ? "Import en cours..." : "Importing...";
+    public string Backup_ExportDone => IsFr ? "Sauvegarde export\u00e9e :" : "Backup exported:";
+    public string Backup_ExportError => IsFr ? "L'export a \u00e9chou\u00e9 :" : "Export failed:";
+    public string Backup_ImportError => IsFr ? "L'import a \u00e9chou\u00e9 :" : "Import failed:";
+    public string Backup_ImportInvalid => IsFr ? "Ce fichier n'est pas une sauvegarde Resona valide." : "This file is not a valid Resona backup.";
+    public string Backup_ImportDoneTitle => IsFr ? "Import termin\u00e9" : "Import complete";
+    public string Backup_ReportSettings => IsFr ? "R\u00e9glages : appliqu\u00e9s" : "Settings: applied";
+    public string Backup_ReportFolders => IsFr ? "Dossiers : {0} ajout\u00e9(s), {1} introuvable(s) sur ce PC (ignor\u00e9s)" : "Folders: {0} added, {1} not found on this PC (skipped)";
+    public string Backup_ReportPlaylists => IsFr ? "Playlists : {0} import\u00e9e(s), {1} titre(s) ajout\u00e9(s), {2} titre(s) introuvable(s) dans ta biblioth\u00e8que" : "Playlists: {0} imported, {1} track(s) added, {2} track(s) not found in your library";
+    public string Backup_ReportStats => IsFr ? "Statistiques : {0} titre(s) mis \u00e0 jour" : "Statistics: {0} track(s) updated";
+    public string Backup_ReportAi => IsFr ? "Donn\u00e9es IA : {0} correspondance(s) fusionn\u00e9e(s)" : "AI data: {0} mapping(s) merged";
+    public string Backup_ReportAiBackupKept => IsFr ? "Sauvegarde des tags IA : conserv\u00e9e (une existe d\u00e9j\u00e0 sur ce PC)" : "AI tag backup: kept (one already exists on this PC)";
+    public string Backup_ReportAiBackupWritten => IsFr ? "Sauvegarde des tags IA : import\u00e9e" : "AI tag backup: imported";
+    public string Backup_ReportLyrics => IsFr ? "Paroles : {0} titre(s) compl\u00e9t\u00e9(s)" : "Lyrics: {0} track(s) filled in";
+    public string Backup_ReportSafety => IsFr ? "Ancien \u00e9tat sauvegard\u00e9 dans :" : "Previous state saved to:";
+    public string Backup_RestartPrompt => IsFr ? "Resona doit red\u00e9marrer pour appliquer l'import." : "Resona needs to restart to apply the import.";
+    public string Backup_RestartNow => IsFr ? "Red\u00e9marrer maintenant" : "Restart now";
+    public string Backup_Later => IsFr ? "Plus tard" : "Later";
+
+    // ---- Mise a jour automatique de yt-dlp ----
+    public string YtDlp_AutoUpdate => IsFr ? "Mettre \u00e0 jour yt-dlp automatiquement" : "Update yt-dlp automatically";
+    public string YtDlp_AutoUpdateDesc => IsFr
+        ? "V\u00e9rifie au plus une fois par jour, en arri\u00e8re-plan. Garde les t\u00e9l\u00e9chargements fonctionnels quand YouTube change."
+        : "Checks at most once a day, in the background. Keeps downloads working when YouTube changes.";
+    public string YtDlp_UpdateNow => IsFr ? "Mettre \u00e0 jour yt-dlp maintenant" : "Update yt-dlp now";
+    public string YtDlp_Version => IsFr ? "Version de yt-dlp : {0}" : "yt-dlp version: {0}";
+    public string YtDlp_NotInstalled => IsFr ? "pas encore install\u00e9 (t\u00e9l\u00e9charg\u00e9 au premier t\u00e9l\u00e9chargement)" : "not installed yet (downloaded with your first download)";
+    public string YtDlp_Updating => IsFr ? "Mise \u00e0 jour..." : "Updating...";
+    public string YtDlp_UpToDate => IsFr ? "yt-dlp est d\u00e9j\u00e0 \u00e0 jour." : "yt-dlp is already up to date.";
+    public string YtDlp_Updated => IsFr ? "yt-dlp mis \u00e0 jour : {0}" : "yt-dlp updated: {0}";
+    public string YtDlp_Failed => IsFr ? "La mise \u00e0 jour de yt-dlp a \u00e9chou\u00e9 (v\u00e9rifie ta connexion, ou que le dossier de l'app est modifiable)." : "Could not update yt-dlp (check your connection, or that the app folder is writable).";
+    public string YtDlp_Busy => IsFr ? "Un t\u00e9l\u00e9chargement est en cours, r\u00e9essaie dans un instant." : "A download is in progress, try again in a moment.";
+    public string WhatsNew_NoNotes => IsFr ? "Cette version n'a pas de notes de mise \u00e0 jour." : "This version has no release notes.";
+    public string WhatsNew_NotFound => IsFr ? "Impossible de trouver les notes de cette version sur GitHub." : "Could not find the release notes for this version on GitHub.";
+    public string WhatsNew_Error => IsFr ? "Impossible de r\u00e9cup\u00e9rer les nouveaut\u00e9s. V\u00e9rifiez votre connexion Internet." : "Could not load the release notes. Check your internet connection.";
     public string Update_UpToDate_Title => IsFr ? "Vous êtes à jour" : "You are up to date";
     public string Update_UpToDate_Message => IsFr ? "Vous possédez déjà la dernière version de Resona." : "You already have the latest version of Resona.";
 

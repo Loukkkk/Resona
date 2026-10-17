@@ -159,6 +159,11 @@ public class Track : INotifyPropertyChanged
     }
 
     public bool     IsAnalyzed   { get; set; }
+
+    // Son ouvert depuis Windows (double-clic, "Ouvrir avec Resona") : lu uniquement, jamais ajoute a la bibliotheque
+    // (jamais enregistre dans le cache de la bibliotheque, qui ignore ces sons).
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool     IsExternal   { get; set; }
     public DateTime DateAdded    { get; set; } = DateTime.UtcNow;
     public DateTime LastModified { get; set; }
 
@@ -265,6 +270,17 @@ public class AppSettings
 {
     public string LastKnownVersion { get; set; } = "";
     public bool AutoUpdateEnabled { get; set; } = false;
+    // Derniere version de l'app dont le patch note a ete affiche ("" = jamais). Sert a afficher les nouveautes
+    // une seule fois, au premier lancement apres une mise a jour. Absent des anciens settings.json -> valeur par defaut.
+    public string LastSeenVersion { get; set; } = "";
+
+    // Mise a jour automatique de yt-dlp (desactivee par defaut) : verification au plus une fois par jour, en arriere-plan.
+    // LastYtDlpUpdateCheckUtc = date (ISO 8601, UTC) de la derniere verification reussie.
+    public bool   AutoUpdateYtDlp           { get; set; } = false;
+    public string LastYtDlpUpdateCheckUtc   { get; set; } = "";
+
+    // Parametres : cles des sections repliees (vide = tout est deplie)
+    public List<string> CollapsedSettingsSections { get; set; } = new();
 
     // Localisation
     public string AppLanguage { get; set; } = "";
@@ -286,7 +302,9 @@ public class AppSettings
     public double Volume               { get; set; } = 100.0;
     public int SavedPlaybackMode       { get; set; } = 0;
     public bool NormalizationEnabled   { get; set; } = false;
-    public double NormalizationTargetRms { get; set; } = -18.0;
+
+    // Integration a Windows : entrees "Ouvrir avec Resona" dans le menu de l'Explorateur (dossiers et sons)
+    public bool ExplorerContextMenuEnabled { get; set; } = true;
     public double NormalizationMaxGain   { get; set; } = 12.0;
     public bool LyricsEnabled          { get; set; } = true;
     public bool TranslateLyricsEnabled { get; set; } = false;

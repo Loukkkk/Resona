@@ -46,6 +46,18 @@ namespace Resona
 
         private static void OnActivated(object sender, AppActivationArguments args)
         {
+            // Son / dossier ouvert depuis Windows (double-clic, "Ouvrir avec Resona") pendant que Resona tourne deja :
+            // la 2e instance nous transmet sa ligne de commande avant de se fermer.
+            try
+            {
+                if (args.Kind == ExtendedActivationKind.Launch
+                    && args.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch)
+                {
+                    ExternalOpenService.SubmitFromCommandLine(launch.Arguments);
+                }
+            }
+            catch (Exception ex) { Resona.Services.LogService.Write("ExternalOpen", ex, "Activation redirigee"); }
+
             App.MainWindowInstance?.DispatcherQueue.TryEnqueue(() =>
             {
                 var window = App.MainWindowInstance;

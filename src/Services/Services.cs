@@ -858,6 +858,9 @@ public class SettingsService
 
 public class LibraryScannerService
 {
+    public static bool IsSupportedAudio(string path)
+        => SupportedExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+
     private static readonly string[] SupportedExtensions =
     {
         ".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".wma", ".alac", ".aiff", ".aif",
@@ -1207,8 +1210,10 @@ public async Task ClearAnalysisAsync()
                 CoverArtPath        = SafeGetStringOrNull(reader, "CoverArtPath"),
                 Lyrics              = SafeGetStringOrNull(reader, "Lyrics"),
                 LyricsSynced        = SafeGetInt32(reader, "LyricsSynced") == 1,
-                NormalizationGainDb = SafeGetDouble(reader, "NormalizationGainDb"),
-                IsAnalyzed          = SafeGetInt32(reader, "IsAnalyzed") == 1,
+                // IsAnalyzed = 3 : analyse faite avec la normalisation LUFS (loudness) + plafond anti-saturation. Les anciennes analyses
+                // (1 = niveau moyen, 2 = pics) sont ignorees : le son est reanalyse automatiquement.
+                NormalizationGainDb = SafeGetInt32(reader, "IsAnalyzed") == 3 ? SafeGetDouble(reader, "NormalizationGainDb") : 0.0,
+                IsAnalyzed          = SafeGetInt32(reader, "IsAnalyzed") == 3,
                 DateAdded           = SafeGetDateTime(reader, "DateAdded"),
                 LastModified        = SafeGetDateTime(reader, "LastModified")
             });
@@ -1218,6 +1223,7 @@ public async Task ClearAnalysisAsync()
 
     public async Task UpsertTrackAsync(Track track)
     {
+        if (track.IsExternal) return;   // son ouvert depuis Windows : jamais ajoute a la bibliotheque
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
@@ -1250,7 +1256,7 @@ public async Task ClearAnalysisAsync()
         cmd.Parameters.AddWithValue("$lyrics",      (object?)track.Lyrics         ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$synced",      track.LyricsSynced ? 1 : 0);
         cmd.Parameters.AddWithValue("$gain",        track.NormalizationGainDb);
-        cmd.Parameters.AddWithValue("$analyzed",    track.IsAnalyzed ? 1 : 0);
+        cmd.Parameters.AddWithValue("$analyzed",    track.IsAnalyzed ? 3 : 0);
         cmd.Parameters.AddWithValue("$added",       track.DateAdded.ToString("o"));
         cmd.Parameters.AddWithValue("$modified",    track.LastModified.ToString("o"));
         await cmd.ExecuteNonQueryAsync();
@@ -1258,6 +1264,7 @@ public async Task ClearAnalysisAsync()
 
     public async Task UpsertTracksBatchedAsync(IEnumerable<Track> tracks)
     {
+        tracks = tracks.Where(t => !t.IsExternal);
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         using var tx = await conn.BeginTransactionAsync();
@@ -1314,7 +1321,7 @@ public async Task ClearAnalysisAsync()
             pLyrics.Value = track.Lyrics ?? (object)DBNull.Value;
             pSynced.Value = track.LyricsSynced ? 1 : 0;
             pGain.Value = track.NormalizationGainDb;
-            pAnalyzed.Value = track.IsAnalyzed ? 1 : 0;
+            pAnalyzed.Value = track.IsAnalyzed ? 3 : 0;
             pAdded.Value = track.DateAdded.ToString("o");
             pModified.Value = track.LastModified.ToString("o");
             await cmd.ExecuteNonQueryAsync();
@@ -1344,7 +1351,7 @@ public async Task ClearAnalysisAsync()
         cmd.Parameters.AddWithValue("$genre",       track.Genre);
         cmd.Parameters.AddWithValue("$cover",       (object?)track.CoverArtPath   ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$gain",        track.NormalizationGainDb);
-        cmd.Parameters.AddWithValue("$analyzed",    track.IsAnalyzed ? 1 : 0);
+        cmd.Parameters.AddWithValue("$analyzed",    track.IsAnalyzed ? 3 : 0);
         cmd.Parameters.AddWithValue("$modified",    track.LastModified.ToString("o"));
         await cmd.ExecuteNonQueryAsync();
     }
@@ -1834,7 +1841,7 @@ public class AudioEngineService : IDisposable
                 for (int i = 0; i < bands.Length && i < 10; i++)
                     _equalizer.SetBand(i, (float)bands[i]);
             }
-            _finalProvider  = _equalizer;
+            _finalProvider  = new SafetyLimiterSampleProvider(_equalizer);
 
             await wasapiTask;
 
@@ -2023,8 +2030,9 @@ public class AudioEngineService : IDisposable
 
     private float ComputeLinearGain()
     {
+        // Plafond a +30 dB : la normalisation des pics peut devoir remonter beaucoup un son tres faible.
         double linear = Math.Pow(10, _normalizationGainDb / 20.0) * _userVolume;
-        return (float)Math.Clamp(linear, 0.0, 4.0);
+        return (float)Math.Clamp(linear, 0.0, 32.0);
     }
 
     public void SetUserVolume(float volume01)
@@ -2431,48 +2439,46 @@ public class RmsCaptureSampleProvider : ISampleProvider
 
 public class NormalizationService
 {
-    public async Task<double> AnalyzeAsync(string filePath)
-        => await Task.Run(() => { try { return AnalyzeInternal(filePath); } catch { return 0.0; } });
+    // Normalisation par LOUDNESS (LUFS, norme EBU R128 / ITU BS.1770) : chaque son est amene au meme volume RESSENTI.
+    // Garde-fou anti-saturation : on ne remonte jamais un son au-dela du plafond de vrai pic (TruePeakCeilingDb).
+    // Rien n'est modifie dans les fichiers : le gain est seulement applique a la lecture (et memorise dans le cache de l'app).
+    private const double TargetLufs         = -14.0;  // volume cible (LUFS integres), standard des plateformes de streaming
+    private const double TruePeakCeilingDb  = -1.0;   // plafond de vrai pic (dBTP) a ne pas depasser quand on remonte un son
+    private const double PeakMaxGainDb      = 30.0;   // gain maximum accepte pour remonter un son tres faible
+    private const double SilenceLufs        = -70.0;  // en dessous : quasi silence, rien a normaliser
 
-    private double AnalyzeInternal(string filePath)
+    /// <summary>Gain (dB) a appliquer pour amener le son a TargetLufs sans depasser le plafond de vrai pic quand on le remonte.</summary>
+    private static double ComputeGainDb(double loudnessLufs, double truePeakDb, double maxGainSetting)
     {
-        double targetRms = App.Settings.Current.NormalizationTargetRms;
-        double maxGain = App.Settings.Current.NormalizationMaxGain;
-        double minGain = -20.0;
-        double targetDb = -0.1;
-
-        try
+        if (double.IsNaN(loudnessLufs) || double.IsInfinity(loudnessLufs) || loudnessLufs <= SilenceLufs) return 0.0;
+        double maxGain = Math.Max(maxGainSetting, PeakMaxGainDb);
+        double gain = TargetLufs - loudnessLufs;
+        if (gain > 0)
         {
-            using var file = TagLib.File.Create(filePath);
-            if (file.Tag != null)
-            {
-                // Format standard reconnu par TagLib#
-                if (!double.IsNaN(file.Tag.ReplayGainTrackGain))
-                {
-                    return Math.Clamp(file.Tag.ReplayGainTrackGain, minGain, maxGain);
-                }
-
-                // Recherche manuelle dans les tags ID3v2 (cas fréquent si ajouté par d'autres logiciels)
-                var id3v2 = file.GetTag(TagLib.TagTypes.Id3v2) as TagLib.Id3v2.Tag;
-                if (id3v2 != null)
-                {
-                    foreach (var frame in id3v2.GetFrames("TXXX").OfType<TagLib.Id3v2.UserTextInformationFrame>())
-                    {
-                        if (frame.Description.Equals("replaygain_track_gain", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var text = frame.Text.Length > 0 ? frame.Text[0] : null;
-                            if (text != null)
-                            {
-                                var match = System.Text.RegularExpressions.Regex.Match(text, @"([-+]?[0-9]*\.?[0-9]+)");
-                                if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double gain))
-                                    return Math.Clamp(gain, minGain, maxGain);
-                            }
-                        }
-                    }
-                }
-            }
+            // Anti-saturation : le pic du son apres gain ne doit pas depasser le plafond.
+            double headroom = TruePeakCeilingDb - truePeakDb;
+            gain = Math.Min(gain, Math.Max(0.0, headroom));
         }
-        catch { }
+        return Math.Clamp(gain, -30.0, maxGain);
+    }
+
+    // Analyses en cours, par fichier : si le meme son est demande deux fois (analyse de fond + lecture), on partage la meme analyse.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task<double>> _inflight = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Analyse un son et renvoie le gain (dB) de normalisation. highPriority : priorite normale au lieu de "en dessous de la normale"
+    /// (utilise quand l'utilisateur attend le resultat, par ex. pour lancer un son pas encore analyse).</summary>
+    public Task<double> AnalyzeAsync(string filePath, bool highPriority = false)
+    {
+        var task = _inflight.GetOrAdd(filePath, p => Task.Run(() => { try { return AnalyzeInternal(p, highPriority); } catch { return 0.0; } }));
+        _ = task.ContinueWith(_ => _inflight.TryRemove(new KeyValuePair<string, Task<double>>(filePath, task)), TaskScheduler.Default);
+        return task;
+    }
+
+    private double AnalyzeInternal(string filePath, bool highPriority)
+    {
+        double maxGainSetting = App.Settings.Current.NormalizationMaxGain;
+
+        // NB : les tags ReplayGain ne sont volontairement pas utilises : on mesure nous-memes pour que tous les sons soient comparables.
 
         if (DownloadService.IsFfmpegPresent)
         {
@@ -2482,7 +2488,9 @@ public class NormalizationService
                 var psi = new ProcessStartInfo
                 {
                     FileName = exe,
-                    Arguments = $"-i \"{filePath}\" -af volumedetect -f null -",
+                    // -vn/-sn/-dn : on ne decode que l'audio (sans ca, la pochette integree des mp3/flac est decodee pour rien).
+                    // -threads 1 : plusieurs analyses tournent deja en parallele, un seul thread par fichier est plus efficace.
+                    Arguments = $"-hide_banner -nostats -threads 1 -i \"{filePath}\" -vn -sn -dn -af ebur128=peak=sample:framelog=quiet -f null -",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardError = true
@@ -2490,25 +2498,28 @@ public class NormalizationService
                 using var proc = Process.Start(psi);
                 if (proc != null)
                 {
-                    try { proc.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+                    try { proc.PriorityClass = highPriority ? ProcessPriorityClass.Normal : ProcessPriorityClass.BelowNormal; } catch { }
                     string output = proc.StandardError.ReadToEnd();
                     proc.WaitForExit();
-                    var matchMax = System.Text.RegularExpressions.Regex.Match(output, @"max_volume:\s*([-+]?[0-9]*\.?[0-9]+)\s*dB");
-                    var matchMean = System.Text.RegularExpressions.Regex.Match(output, @"mean_volume:\s*([-+]?[0-9]*\.?[0-9]+)\s*dB");
-                    
-                    if (matchMax.Success && double.TryParse(matchMax.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double maxVol))
+                    // Resume ebur128 : "I: -9.6 LUFS" (loudness integre) puis "Peak: 1.9 dBFS" (vrai pic). On prend la derniere occurrence.
+                    var mI = System.Text.RegularExpressions.Regex.Matches(output, @"\bI:\s*(-?inf|[-+]?[0-9]+(?:\.[0-9]+)?)\s*LUFS");
+                    var mP = System.Text.RegularExpressions.Regex.Matches(output, @"\bPeak:\s*(-?inf|[-+]?[0-9]+(?:\.[0-9]+)?)\s*dBFS");
+
+                    if (mI.Count > 0)
                     {
-                        double meanVol = maxVol; // Fallback to maxVol if mean is not found
-                        if (matchMean.Success && double.TryParse(matchMean.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double m))
+                        string sI = mI[mI.Count - 1].Groups[1].Value;
+                        double lufs = sI.Contains("inf") ? -120.0
+                            : double.Parse(sI, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
+
+                        double truePeak = 0.0;   // si le pic n'est pas lu : hypothese prudente (0 dBFS)
+                        if (mP.Count > 0)
                         {
-                            meanVol = m;
+                            string sP = mP[mP.Count - 1].Groups[1].Value;
+                            truePeak = sP.Contains("inf") ? -120.0
+                                : double.Parse(sP, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
                         }
-
-                        double gainRms = targetRms - meanVol;
-                        double maxAllowedGain = targetDb - maxVol;
-                        double gain = Math.Min(gainRms, maxAllowedGain);
-
-                        return Math.Clamp(gain, minGain, maxGain);
+                        // Pic d'echantillon (2x plus rapide que le vrai pic) + 0,5 dB de marge pour les pics inter-echantillons ; le limiteur de fin de chaine rattrape le reste.
+                        return ComputeGainDb(lufs, truePeak + 0.5, maxGainSetting);
                     }
                 }
             }
@@ -2552,37 +2563,177 @@ public class NormalizationService
 
         try
         {
-            var buffer = new float[8192];
-            double globalPeak = 0;
-            double sumSquares = 0;
-            long totalSamples = 0;
-            int read;
-
-            while ((read = sampleProvider.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                for (int i = 0; i < read; i++)
-                {
-                    float v = Math.Abs(buffer[i]);
-                    if (v > globalPeak) globalPeak = v;
-                    sumSquares += v * v;
-                    totalSamples++;
-                }
-            }
-
-            if (globalPeak <= 0 || totalSamples == 0) return 0.0;
-
-            double meanSquare = sumSquares / totalSamples;
-            double meanVol = 10 * Math.Log10(meanSquare); // RMS in dB
-            double peakDb = 20 * Math.Log10(globalPeak); // Peak in dB
-            
-            double gainRms = targetRms - meanVol;
-            double maxAllowedGain = targetDb - peakDb;
-            
-            double gain = Math.Min(gainRms, maxAllowedGain);
-
-            return Math.Clamp(gain, minGain, maxGain);
+            // Repli sans ffmpeg : mesure LUFS integree (BS.1770) + pic d'echantillon (+0,5 dB de marge pour les pics inter-echantillons).
+            var (lufs, samplePeakDb) = LoudnessMeter.Measure(sampleProvider);
+            if (double.IsNaN(lufs) || double.IsInfinity(lufs)) return 0.0;
+            return ComputeGainDb(lufs, samplePeakDb + 0.5, maxGainSetting);
         }
         finally { reader?.Dispose(); }
+    }
+}
+
+/// <summary>Mesure du loudness integre (LUFS) selon ITU-R BS.1770-4 / EBU R128 : ponderation K, blocs de 400 ms, double seuil (-70 LUFS puis -10 LU).</summary>
+internal static class LoudnessMeter
+{
+    private struct Biquad
+    {
+        public double B0, B1, B2, A1, A2, Z1, Z2;
+        public double Process(double x)
+        {
+            double y = B0 * x + Z1;
+            Z1 = B1 * x - A1 * y + Z2;
+            Z2 = B2 * x - A2 * y;
+            return y;
+        }
+    }
+
+    private static Biquad HighShelf(double fs)
+    {
+        double f0 = 1681.974450955533, g = 3.999843853973347, q = 0.7071752369554196;
+        double k  = Math.Tan(Math.PI * f0 / fs);
+        double vh = Math.Pow(10.0, g / 20.0);
+        double vb = Math.Pow(vh, 0.4996667741545416);
+        double a0 = 1.0 + k / q + k * k;
+        return new Biquad
+        {
+            B0 = (vh + vb * k / q + k * k) / a0,
+            B1 = 2.0 * (k * k - vh) / a0,
+            B2 = (vh - vb * k / q + k * k) / a0,
+            A1 = 2.0 * (k * k - 1.0) / a0,
+            A2 = (1.0 - k / q + k * k) / a0
+        };
+    }
+
+    private static Biquad HighPass(double fs)
+    {
+        double f0 = 38.13547087602444, q = 0.5003270373238773;
+        double k  = Math.Tan(Math.PI * f0 / fs);
+        double a0 = 1.0 + k / q + k * k;
+        return new Biquad
+        {
+            B0 = 1.0, B1 = -2.0, B2 = 1.0,
+            A1 = 2.0 * (k * k - 1.0) / a0,
+            A2 = (1.0 - k / q + k * k) / a0
+        };
+    }
+
+    private static double Weight(int channel, int channels)
+    {
+        if (channels >= 6) return channel == 3 ? 0.0 : (channel >= 4 ? 1.41 : 1.0);   // 5.1 : LFE ignore, surrounds +1,5 dB
+        return 1.0;
+    }
+
+    /// <summary>Renvoie (loudness integre en LUFS, pic d'echantillon en dBFS). LUFS = -infini si le son est silencieux.</summary>
+    public static (double Lufs, double PeakDb) Measure(ISampleProvider source)
+    {
+        int channels = Math.Max(1, source.WaveFormat.Channels);
+        double fs    = source.WaveFormat.SampleRate;
+        int subSize  = Math.Max(1, (int)Math.Round(fs * 0.1));   // sous-blocs de 100 ms (blocs de 400 ms = 4 sous-blocs, recouvrement 75 %)
+
+        var shelf = new Biquad[channels];
+        var hp    = new Biquad[channels];
+        var weights = new double[channels];
+        for (int c = 0; c < channels; c++) { shelf[c] = HighShelf(fs); hp[c] = HighPass(fs); weights[c] = Weight(c, channels); }
+
+        var subEnergy = new List<double>();
+        double acc = 0; int frames = 0, ch = 0;
+        double peak = 0;
+        var buffer = new float[8192];
+        int read;
+
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            for (int i = 0; i < read; i++)
+            {
+                double x = buffer[i];
+                double ax = Math.Abs(x);
+                if (ax > peak) peak = ax;
+
+                double y = hp[ch].Process(shelf[ch].Process(x));
+                acc += weights[ch] * y * y;
+
+                if (++ch == channels)
+                {
+                    ch = 0;
+                    if (++frames == subSize)
+                    {
+                        subEnergy.Add(acc / subSize);
+                        acc = 0; frames = 0;
+                    }
+                }
+            }
+        }
+
+        double peakDb = peak > 0 ? 20.0 * Math.Log10(peak) : -120.0;
+        int n = subEnergy.Count - 3;
+        if (n <= 0) return (double.NegativeInfinity, peakDb);
+
+        var blocks = new double[n];
+        for (int i = 0; i < n; i++)
+            blocks[i] = (subEnergy[i] + subEnergy[i + 1] + subEnergy[i + 2] + subEnergy[i + 3]) / 4.0;
+
+        static double ToLufs(double z) => -0.691 + 10.0 * Math.Log10(z);
+
+        // Seuil absolu (-70 LUFS)
+        double sum = 0; int count = 0;
+        foreach (var z in blocks) if (z > 0 && ToLufs(z) > -70.0) { sum += z; count++; }
+        if (count == 0) return (double.NegativeInfinity, peakDb);
+
+        // Seuil relatif (-10 LU sous la moyenne des blocs retenus)
+        double relThreshold = ToLufs(sum / count) - 10.0;
+        sum = 0; count = 0;
+        foreach (var z in blocks) if (z > 0 && ToLufs(z) > relThreshold) { sum += z; count++; }
+        if (count == 0) return (double.NegativeInfinity, peakDb);
+
+        return (ToLufs(sum / count), peakDb);
+    }
+}
+
+/// <summary>Filet de securite en fin de chaine : empeche tout depassement de 0 dBFS (donc la saturation / l'ecretage) dû au gain de
+/// normalisation ou a l'egaliseur. Attaque instantanee, relachement doux. Sans effet tant que le signal reste sous 0 dBFS.</summary>
+public class SafetyLimiterSampleProvider : ISampleProvider
+{
+    private readonly ISampleProvider _source;
+    private readonly int   _channels;
+    private readonly float _releaseCoef;
+    private float _env = 1f;
+
+    public WaveFormat WaveFormat => _source.WaveFormat;
+
+    public SafetyLimiterSampleProvider(ISampleProvider source)
+    {
+        _source   = source;
+        _channels = Math.Max(1, source.WaveFormat.Channels);
+        _releaseCoef = (float)(1.0 - Math.Exp(-1.0 / (0.150 * source.WaveFormat.SampleRate)));   // relachement ~150 ms
+    }
+
+    public int Read(float[] buffer, int offset, int count)
+    {
+        int read = _source.Read(buffer, offset, count);
+        for (int i = 0; i + _channels <= read; i += _channels)
+        {
+            float peak = 0f;
+            for (int c = 0; c < _channels; c++)
+            {
+                float a = Math.Abs(buffer[offset + i + c]);
+                if (a > peak) peak = a;
+            }
+
+            float needed = peak > 1f ? 1f / peak : 1f;
+            if (needed < _env) _env = needed;                         // attaque instantanee
+            else               _env += (needed - _env) * _releaseCoef; // relachement progressif
+            if (_env > 0.9999f) _env = 1f;
+
+            if (_env < 1f)
+            {
+                for (int c = 0; c < _channels; c++)
+                {
+                    float v = buffer[offset + i + c] * _env;
+                    buffer[offset + i + c] = v > 1f ? 1f : (v < -1f ? -1f : v);
+                }
+            }
+        }
+        return read;
     }
 }
 
@@ -2594,6 +2745,23 @@ public class PlayStatsService
 
     public long     TotalPlays       => _playCounts.Values.Sum(v => (long)v);
     public TimeSpan TotalListenTime  => _totalListenTime;
+
+    // Acces pour la sauvegarde (import / export des statistiques)
+    public Dictionary<string, int> SnapshotCounts() => new(_playCounts);
+    public long ListenSeconds => (long)_totalListenTime.TotalSeconds;
+
+    /// <summary>Fusionne des statistiques importees : pour chaque titre on garde la valeur la plus elevee (pas de doublon si on reimporte).
+    /// Ne sauvegarde pas : l'appelant appelle SaveAsync ensuite. Renvoie le nombre de titres mis a jour.</summary>
+    public int MergeCounts(IEnumerable<KeyValuePair<string, int>> counts, long listenSeconds)
+    {
+        int updated = 0;
+        foreach (var kv in counts)
+        {
+            if (kv.Value > GetPlayCount(kv.Key)) { _playCounts[kv.Key] = kv.Value; updated++; }
+        }
+        if (listenSeconds > (long)_totalListenTime.TotalSeconds) _totalListenTime = TimeSpan.FromSeconds(listenSeconds);
+        return updated;
+    }
 
     public int GetPlayCount(string trackId)
         => _playCounts.TryGetValue(trackId, out int c) ? c : 0;
@@ -2807,7 +2975,109 @@ public class DownloadService
         catch { return false; }
     }
 
+    public enum YtDlpUpdateStatus { NotInstalled, Busy, UpToDate, Updated, Failed }
+    public sealed record YtDlpUpdateResult(YtDlpUpdateStatus Status, string Version);
+
+    private static int _activeDownloads;
+    private static readonly SemaphoreSlim YtDlpUpdateLock = new(1, 1);
+    public static bool IsDownloading => Volatile.Read(ref _activeDownloads) > 0;
+    /// <summary>Vrai si yt-dlp.exe est le fichier local de l'app (c'est le seul qu'on met a jour).</summary>
+    public static bool IsYtDlpLocal => File.Exists(YtDlpPath);
+
+    private static async Task<string> ReadLocalYtDlpVersionAsync()
+    {
+        try
+        {
+            using var proc = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = YtDlpPath, Arguments = "--version",
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                    UseShellExecute = false, CreateNoWindow = true,
+                }
+            };
+            proc.Start();
+            string output = await proc.StandardOutput.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+            return output.Trim();
+        }
+        catch { return string.Empty; }
+    }
+
+    /// <summary>Met a jour yt-dlp.exe avec sa commande integree (-U). Jamais pendant un telechargement.</summary>
+    public static async Task<YtDlpUpdateResult> UpdateYtDlpAsync()
+    {
+        if (!File.Exists(YtDlpPath)) return new YtDlpUpdateResult(YtDlpUpdateStatus.NotInstalled, "");
+        if (IsDownloading) return new YtDlpUpdateResult(YtDlpUpdateStatus.Busy, "");
+        if (!await YtDlpUpdateLock.WaitAsync(0)) return new YtDlpUpdateResult(YtDlpUpdateStatus.Busy, "");
+        try
+        {
+            string before = await ReadLocalYtDlpVersionAsync();
+            int exitCode;
+            using (var proc = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = YtDlpPath, Arguments = "-U",
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                    UseShellExecute = false, CreateNoWindow = true,
+                    WorkingDirectory = BinDir,
+                }
+            })
+            {
+                proc.Start();
+                var outTask = proc.StandardOutput.ReadToEndAsync();
+                var errTask = proc.StandardError.ReadToEndAsync();
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                try { await proc.WaitForExitAsync(cts.Token); }
+                catch (OperationCanceledException)
+                {
+                    try { proc.Kill(true); } catch { }
+                    return new YtDlpUpdateResult(YtDlpUpdateStatus.Failed, before);
+                }
+                await Task.WhenAll(outTask, errTask);
+                exitCode = proc.ExitCode;
+            }
+
+            string after = await ReadLocalYtDlpVersionAsync();
+            if (!string.IsNullOrEmpty(after) && after != before) return new YtDlpUpdateResult(YtDlpUpdateStatus.Updated, after);
+            if (exitCode == 0) return new YtDlpUpdateResult(YtDlpUpdateStatus.UpToDate, after);
+            return new YtDlpUpdateResult(YtDlpUpdateStatus.Failed, after);
+        }
+        catch { return new YtDlpUpdateResult(YtDlpUpdateStatus.Failed, ""); }
+        finally { YtDlpUpdateLock.Release(); }
+    }
+
+    /// <summary>Mise a jour automatique (si activee dans les parametres) : au plus une verification reussie par 24 h.</summary>
+    public static async Task AutoUpdateYtDlpIfDueAsync()
+    {
+        var s = App.Settings?.Current;
+        if (s == null || !s.AutoUpdateYtDlp || !File.Exists(YtDlpPath)) return;
+        if (DateTime.TryParse(s.LastYtDlpUpdateCheckUtc, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var last)
+            && (DateTime.UtcNow - last) < TimeSpan.FromHours(24)) return;
+
+        var result = await UpdateYtDlpAsync();
+        if (result.Status is YtDlpUpdateStatus.UpToDate or YtDlpUpdateStatus.Updated)
+        {
+            // SaveSync declenche SettingsChanged : on repasse par le thread UI.
+            App.MainWindowInstance?.DispatcherQueue?.TryEnqueue(() =>
+            {
+                s.LastYtDlpUpdateCheckUtc = DateTime.UtcNow.ToString("o");
+                App.Settings.SaveSync();
+            });
+        }
+    }
+
     public async Task DownloadAsync(string url, DownloadOptions opts, Action<string>? onProgress = null)
+    {
+        Interlocked.Increment(ref _activeDownloads);
+        try { await DownloadCoreAsync(url, opts, onProgress); }
+        finally { Interlocked.Decrement(ref _activeDownloads); }
+    }
+
+    private async Task DownloadCoreAsync(string url, DownloadOptions opts, Action<string>? onProgress)
     {
         await EnsureBinariesAsync(onProgress);
 

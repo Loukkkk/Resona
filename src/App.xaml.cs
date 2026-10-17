@@ -18,6 +18,9 @@ public partial class App : Application
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
     public static string? NowPlayingId { get; set; }
+
+    /// <summary>Vrai si des reglages ou un cache existaient deja avant ce lancement (donc pas une toute premiere installation).</summary>
+    public static bool WasExistingInstall { get; private set; }
     public static string? NowPlayingFilePath { get; set; }
 
     // Services partages, instancies une seule fois (singletons legers)
@@ -45,6 +48,12 @@ public partial class App : Application
     public App()
     {
         this.InitializeComponent();
+
+        // Journal d'erreurs : on enregistre les erreurs non gerees (sans changer le comportement de l'app).
+        this.UnhandledException += (s, e) => LogService.Write("Crash", e.Exception, e.Message);
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            LogService.Write("Crash", e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "unknown"));
+        TaskScheduler.UnobservedTaskException += (s, e) => LogService.Write("Task", e.Exception);
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
@@ -58,6 +67,12 @@ public partial class App : Application
             "Resona");
 
         var httpClient = new HttpClient();
+
+        // L'app existait-elle deja avant ce lancement ? (reglages ou cache de bibliotheque presents sur le disque)
+        // A lire AVANT de creer les services, qui creent/ouvrent ces fichiers. Sert a distinguer une toute premiere
+        // installation d'un premier lancement apres une mise a jour (affichage automatique des nouveautes).
+        WasExistingInstall = File.Exists(Path.Combine(appData, "settings.json"))
+                             || File.Exists(Path.Combine(appData, "library_cache.db"));
 
         AudioEngine = new AudioEngineService();
         Normalization = new NormalizationService();
@@ -112,6 +127,37 @@ public partial class App : Application
 
         // 🌟 Démarrage avec Windows 🌟
         ApplyStartWithWindowsSetting();
+
+        // Integration a Windows (types de fichiers audio, menu "Ouvrir avec Resona") : en arriere-plan, sans ralentir le demarrage.
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try { WindowsIntegration.Apply(); }
+            catch (Exception ex) { LogService.Write("WindowsIntegration", ex, "Enregistrement dans Windows"); }
+        });
+
+        // Son(s) / dossier(s) passes en argument (double-clic sur un son, "Ouvrir avec Resona") : lecture seule, hors bibliotheque.
+        try { ExternalOpenService.SubmitPaths(Environment.GetCommandLineArgs().Skip(1)); }
+        catch (Exception ex) { LogService.Write("ExternalOpen", ex, "Arguments de demarrage"); }
+
+        // Mise a jour automatique de yt-dlp (option desactivee par defaut) : en arriere-plan, quelques secondes apres le demarrage.
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(15000);
+                await DownloadService.AutoUpdateYtDlpIfDueAsync();
+            }
+            catch (Exception ex) { LogService.Write("YtDlp", ex, "Mise a jour automatique de yt-dlp"); }
+        });
+
+        // Nouveautes : patch note affiche automatiquement au premier lancement apres une mise a jour.
+        // Pas si l'app demarre reduite dans la zone de notification (fenetre masquee) : ce sera pour le prochain lancement.
+        bool startedHidden = isAutostart && Settings.Current.StartMinimized && Settings.Current.MinimizeToTrayOnClose;
+        if (!startedHidden && _window.Content is FrameworkElement rootElement)
+        {
+            if (rootElement.IsLoaded) _ = WhatsNewManager.ShowOnStartupIfNeededAsync(rootElement.XamlRoot);
+            else rootElement.Loaded += (s, e) => _ = WhatsNewManager.ShowOnStartupIfNeededAsync(rootElement.XamlRoot);
+        }
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]

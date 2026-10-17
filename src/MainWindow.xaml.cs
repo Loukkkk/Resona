@@ -442,6 +442,7 @@ namespace Resona;
 		private bool _scanInProgress;
 
 		private bool _rescanPending;
+		private int _analysisRunning;   // 1 pendant qu'une analyse de normalisation de la bibliotheque est en cours (une seule a la fois)
 
 		private readonly HashSet<string> _dirtyPaths;
 
@@ -797,7 +798,7 @@ namespace Resona;
 			}
 			catch (Exception ex)
 			{
-				File.WriteAllText("smtc_error.txt", ex.ToString());
+				LogService.Write("SMTC", ex);
 			}
 		}
 
@@ -823,7 +824,7 @@ namespace Resona;
 			}
 			catch (Exception ex)
 			{
-				File.WriteAllText(Path.Combine(Path.GetTempPath(), "resona_err.log"), ex.ToString());
+				LogService.Write("Taskbar", ex);
 			}
 		}
 
@@ -1313,12 +1314,24 @@ namespace Resona;
 			RootNav.SelectionChanged += RootNav_SelectionChanged;
 		}
 
+		/// <summary>Son en cours pour l'interface : celui de la bibliotheque, ou un son ouvert depuis Windows (non present dans la bibliotheque).</summary>
+		private Track GetCurrentTrackForUi()
+		{
+			if (_currentIndex >= 0 && _currentIndex < _library.Count)
+			{
+				return _library[_currentIndex];
+			}
+			return _nowPlayingTrack;
+		}
+
 		private void NowPlayingCover_Tapped(object sender, TappedRoutedEventArgs e)
 		{
 			AnimationHelper.ApplyBouncyScale((UIElement)NowPlayingCoverBorder, 1f);
-			if (_currentIndex >= 0 && _currentIndex < _library.Count)
+			// Son ouvert depuis Windows (absent de la bibliotheque, _currentIndex = -1) : on ouvre quand meme la vue "grosse cover" (avec la cover par defaut si pas de pochette).
+			Track npTrack = GetCurrentTrackForUi();
+			if (npTrack != null)
 			{
-				NavigateToNowPlaying(_library[_currentIndex]);
+				NavigateToNowPlaying(npTrack);
 			}
 		}
 
@@ -1520,7 +1533,7 @@ namespace Resona;
 			}
 			catch (Exception ex)
 			{
-				File.WriteAllText(Path.Combine(Path.GetTempPath(), "resona_err.log"), ex.ToString());
+				LogService.Write("Startup", ex);
 			}
 			InitSMTC();
 			InitializeComponent();
@@ -1621,7 +1634,7 @@ namespace Resona;
 			}
 			catch (Exception ex)
 			{
-				File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "resona_err.log"), ex.ToString());
+				LogService.Write("Window", ex);
 			}
 			PointerEventHandler val2 = delegate(object s, PointerRoutedEventArgs e)
 			{
@@ -3397,7 +3410,7 @@ namespace Resona;
 			_genresPageInstance?.LoadData(_library);
 			_foldersPageInstance?.LoadData(_library);
 			FetchMissingCoversInBackgroundAsync(_library.ToList());
-			BackgroundRescanAsync();
+			_ = BackgroundRescanAsync().ContinueWith((Task _) => AutoAnalyzeLibraryIfNeeded(), TaskScheduler.Default);
 		}
 
 		private async Task FetchMissingCoversInBackgroundAsync(List<Track> tracks)
@@ -3570,6 +3583,7 @@ namespace Resona;
 			try
 			{
 				await BackgroundRescanAsync();
+					AutoAnalyzeLibraryIfNeeded();
 			}
 			finally
 			{
@@ -4069,7 +4083,7 @@ namespace Resona;
 			UpdateIsPlayingGlobally(track.FilePath, isPlaying: true);
 			((ContentControl)NowPlayingTitle).Content = track.Title;
 			UpdateMiniPlayerUI(track);
-			App.DiscordRpc?.UpdatePresence(track, isPlaying: true);
+			App.DiscordRpc?.UpdatePresence(track, isPlaying: true, position: TimeSpan.Zero);   // nouveau son : la barre Discord repart de 0
 			((ContentControl)NowPlayingArtist).Content = track.Artist;
 			((ContentControl)NowPlayingAlbum).Content = track.Album;
 			_ = UpdateNowPlayingFavoriteIconAsync(track.Id);
@@ -4194,6 +4208,20 @@ namespace Resona;
 			}));
 			try
 			{
+				// Son ouvert depuis Windows et jamais analyse : on calcule son gain AVANT de lancer la lecture pour que la normalisation
+				// s'applique des la premiere note (sinon il demarrerait sans correction puis sauterait en volume).
+				// Valable aussi pour un son de la bibliotheque que l'analyse de fond n'a pas encore atteint : il passe EN PRIORITE (priorite normale,
+				// et partage l'analyse si elle est deja en cours pour ce son), puis la lecture demarre et l'analyse de fond reprend son cours.
+				if (settings.NormalizationEnabled && !track.IsAnalyzed)
+				{
+					try
+					{
+						track.NormalizationGainDb = await App.Normalization.AnalyzeAsync(track.FilePath, highPriority: true);
+						track.IsAnalyzed = true;
+						if (!track.IsExternal) { _ = App.Cache.UpsertTrackAsync(track); }
+					}
+					catch { }
+				}
 				double gainToApply = (settings.NormalizationEnabled ? track.NormalizationGainDb : 0.0);
 				ContentDialog downloadDialog = null;
 				TextBlock statusText = null;
@@ -4308,34 +4336,49 @@ namespace Resona;
 		{
 			try
 			{
+				// Fichier absent ou vide : on affiche la pochette par defaut (icone musique) au lieu d'une zone vide.
+				if (!File.Exists(path) || new FileInfo(path).Length == 0)
+				{
+					ClearPlayerCover();
+					return;
+				}
 				BitmapImage bitmap = CoverCacheService.GetBitmap(path, 140);
+				var coverBrush = new ImageBrush { Stretch = Stretch.UniformToFill };
+				// Image presente mais impossible a decoder (fichier corrompu, mauvais format) : meme rendu qu'un son sans pochette.
+				coverBrush.ImageFailed += (s, e) =>
+				{
+					if (ReferenceEquals(NowPlayingCoverBorder.Background, coverBrush)) ClearPlayerCover();
+				};
 				if (bitmap != (BitmapImage)null)
 				{
-					NowPlayingCoverBorder.Background = (Brush)new ImageBrush
-					{
-						ImageSource = (ImageSource)bitmap,
-						Stretch = Stretch.UniformToFill
-					};
+					coverBrush.ImageSource = (ImageSource)bitmap;
+					NowPlayingCoverBorder.Background = (Brush)coverBrush;
 				}
 				else
 				{
-					NowPlayingCoverBorder.Background = (Brush)new ImageBrush
+					var fallbackBitmap = new BitmapImage(new Uri(path));
+					fallbackBitmap.ImageFailed += (s, e) =>
 					{
-						ImageSource = (ImageSource)new BitmapImage(new Uri(path)),
-						Stretch = Stretch.UniformToFill
+						if (ReferenceEquals(NowPlayingCoverBorder.Background, coverBrush)) ClearPlayerCover();
 					};
+					coverBrush.ImageSource = (ImageSource)fallbackBitmap;
+					NowPlayingCoverBorder.Background = (Brush)coverBrush;
 				}
 				((UIElement)NowPlayingPlaceholderIcon).Visibility = Visibility.Collapsed;
 				NowPlayingCover.Source = null;
 			}
 			catch
 			{
+				ClearPlayerCover();
 			}
 		}
 
+		/// <summary>Pochette par defaut du lecteur (son sans pochette) : tuile neutre bien visible + icone musique, jamais de zone vide.</summary>
 		private void ClearPlayerCover()
 		{
-			NowPlayingCoverBorder.Background = (Brush)Application.Current.Resources["ApplicationPageBackgroundThemeBrush"];
+			NowPlayingCoverBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
+			NowPlayingPlaceholderIcon.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
+			((UIElement)NowPlayingPlaceholderIcon).Opacity = 0.6;
 			((UIElement)NowPlayingPlaceholderIcon).Visibility = Visibility.Visible;
 			NowPlayingCover.Source = null;
 		}
@@ -4369,10 +4412,15 @@ namespace Resona;
 				return;
 			}
 			track.CoverArtPath = path;
-			await App.Cache.UpdateTrackAsync(track);
+			// Son ouvert depuis Windows : pas dans la bibliotheque, donc rien a enregistrer dans le cache.
+			if (!track.IsExternal)
+			{
+				await App.Cache.UpdateTrackAsync(track);
+			}
 			((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 			{
-				if (_currentIndex >= 0 && _library[_currentIndex].Id == track.Id)
+				// On compare avec le son en cours de lecture (et non avec _library[_currentIndex]) : un son externe n'est pas dans la bibliotheque (_currentIndex = -1).
+				if (_nowPlayingId == track.Id)
 				{
 					SetPlayerCover(path);
 				}
@@ -4477,12 +4525,56 @@ namespace Resona;
 
 		public void ApplyNormalizationSetting()
 		{
-			if (_currentIndex >= 0)
-			{
-				Track track = _library[_currentIndex];
-				App.AudioEngine.SetNormalizationGain(App.Settings.Current.NormalizationEnabled ? track.NormalizationGainDb : 0.0);
+		// Son en cours (y compris un son ouvert depuis Windows, absent de la bibliotheque : _currentIndex vaut alors -1).
+		Track current = _nowPlayingTrack;
+		if (current == null)
+		{
+		 return;
+		 }
+				bool on = App.Settings.Current.NormalizationEnabled;
+				App.AudioEngine.SetNormalizationGain(on ? current.NormalizationGainDb : 0.0);
+				if (on && current.IsExternal && !current.IsAnalyzed)
+				{
+					// Pas dans la bibliotheque : l'analyse de la bibliotheque ne le couvre pas, on l'analyse ici.
+					_ = Task.Run(async () =>
+					{
+						try
+						{
+							double gain = await App.Normalization.AnalyzeAsync(current.FilePath);
+							current.NormalizationGainDb = gain;
+							current.IsAnalyzed = true;
+							DispatcherQueue.TryEnqueue(() =>
+							{
+								if (_nowPlayingId == current.Id && App.Settings.Current.NormalizationEnabled)
+								{
+									App.AudioEngine.SetNormalizationGain(gain);
+								}
+							});
+						}
+						catch { }
+					});
+				}
 			}
-		}
+
+			/// <summary>Apres un scan (demarrage ou ajout de sons) : si la normalisation est activee et que des sons ne sont pas analyses, lance l'analyse.</summary>
+			private void AutoAnalyzeLibraryIfNeeded()
+			{
+				try
+				{
+					if (!App.Settings.Current.NormalizationEnabled)
+					{
+						return;
+					}
+					DispatcherQueue.TryEnqueue(() =>
+					{
+						if (App.Settings.Current.NormalizationEnabled && _library.Any((Track t) => !t.IsAnalyzed))
+						{
+							AnalyzeWholeLibraryInBackground();
+						}
+					});
+				}
+				catch { }
+			}
 
 		public void InvalidateNormalizationAndReanalyze()
 		{
@@ -4516,7 +4608,16 @@ namespace Resona;
 		{
 			Task.Run(async delegate
 			{
+				if (Interlocked.Exchange(ref _analysisRunning, 1) == 1)
+				{
+					return;   // une analyse est deja en cours
+				}
 				List<Track> tracksToAnalyze = _library.Where((Track t) => !t.IsAnalyzed).ToList();
+				if (tracksToAnalyze.Count == 0)
+				{
+					Volatile.Write(ref _analysisRunning, 0);
+					return;
+				}
 				if (tracksToAnalyze.Count == 0)
 				{
 					return;
@@ -4527,35 +4628,12 @@ namespace Resona;
 					tracksToAnalyze.Remove(current);
 					tracksToAnalyze.Insert(0, current);
 				}
-				ContentDialog loadingDialog = null;
-				TextBlock statusText = null;
-				if (tracksToAnalyze.Count > 10)
+				// Plus de fenetre bloquante : une petite bulle de progression (MainWindow.NormalizationProgress.cs), l'app reste utilisable.
+				int totalToAnalyze = tracksToAnalyze.Count;
+				bool showProgress = totalToAnalyze > 10;
+				if (showProgress)
 				{
-					((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
-					{
-						statusText = new TextBlock
-						{
-							Text = (Strings.Current.IsFr ? $"Analyse de {tracksToAnalyze.Count} titres..." : $"Analyzing {tracksToAnalyze.Count} tracks..."),
-							HorizontalAlignment = HorizontalAlignment.Center
-						};
-						StackPanel val = new StackPanel
-						{
-							Spacing = 10.0
-						};
-						((Panel)val).Children.Add((UIElement)new ProgressRing
-						{
-							IsActive = true,
-							HorizontalAlignment = HorizontalAlignment.Center
-						});
-						((Panel)val).Children.Add((UIElement)statusText);
-						loadingDialog = new ContentDialog
-						{
-							Title = (Strings.Current.IsFr ? "Normalisation Audio" : "Audio Normalization"),
-							Content = val,
-							XamlRoot = ((UIElement)ContentFrame).XamlRoot
-						};
-						loadingDialog.ShowAsync();
-					});
+					DispatcherQueue.TryEnqueue(() => ShowNormalizationProgress(totalToAnalyze));
 				}
 				int processed = 0;
 				SemaphoreSlim dbLock = new SemaphoreSlim(1, 1);
@@ -4563,11 +4641,17 @@ namespace Resona;
 				{
 					await Parallel.ForEachAsync(tracksToAnalyze, new ParallelOptions
 					{
-						MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 3)
+						MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount - 1, 2, 8)
 					}, async delegate(Track track, CancellationToken ct)
 					{
 						try
 						{
+							if (track.IsAnalyzed)
+							{
+								// Deja analyse entre-temps (son lance par l'utilisateur, analyse prioritaire) : on passe au suivant.
+								ReportNormalizationProgress(Interlocked.Increment(ref processed), totalToAnalyze, showProgress);
+								return;
+							}
 							double gain = await App.Normalization.AnalyzeAsync(track.FilePath);
 							track.NormalizationGainDb = gain;
 							track.IsAnalyzed = true;
@@ -4581,13 +4665,7 @@ namespace Resona;
 								dbLock.Release();
 							}
 							int currentProcessed = Interlocked.Increment(ref processed);
-							if (statusText != (TextBlock)null)
-							{
-								((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
-								{
-									statusText.Text = (Strings.Current.IsFr ? "Analyse... " : "Analyzing... ") + $"{currentProcessed}/{tracksToAnalyze.Count}";
-								});
-							}
+							ReportNormalizationProgress(currentProcessed, totalToAnalyze, showProgress);
 							((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 							{
 								if (App.Settings.Current.NormalizationEnabled && _nowPlayingId == track.Id)
@@ -4598,22 +4676,26 @@ namespace Resona;
 						}
 						catch
 						{
-							Interlocked.Increment(ref processed);
+							ReportNormalizationProgress(Interlocked.Increment(ref processed), totalToAnalyze, showProgress);
 						}
 					});
-					if (loadingDialog != (ContentDialog)null)
+					if (showProgress)
 					{
-						((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
-						{
-							loadingDialog.Hide();
-						});
+						DispatcherQueue.TryEnqueue(() => HideNormalizationProgress());
 					}
 				}
 				finally
 				{
+					if (showProgress)
+					{
+						DispatcherQueue.TryEnqueue(() => HideNormalizationProgress());   // quoi qu'il arrive, la bulle ne reste pas affichee
+					}
 					if (dbLock != null)
 					{
 						((IDisposable)dbLock).Dispose();
+						}
+						Volatile.Write(ref _analysisRunning, 0);
+						{
 					}
 				}
 			});
@@ -6786,7 +6868,7 @@ public void UpdateQueue(List<Track> newQueue)
 				{
 					double num3 = actualWidth * num2;
 					((FrameworkElement)CustomProgressFill).Width = num3;
-					((FrameworkElement)CustomProgressThumb).Margin = new Thickness(num3, 0.0, 0.0, 0.0);
+					((FrameworkElement)CustomProgressThumb).Margin = new Thickness(num3 + 5.0, 0.0, 0.0, 0.0);   // +5 : la zone de la barre depasse de 5 px de chaque cote (voir MainWindow.xaml), pour que le curseur agrandi ne soit pas coupe
 				}
 			}
 			if (MiniProgressSlider != (Slider)null && MiniCustomProgressFill != (Grid)null && MiniCustomProgressTrack != (Grid)null)
@@ -7073,9 +7155,10 @@ public void UpdateQueue(List<Track> newQueue)
 
 		private void NowPlayingTitle_Click(object sender, RoutedEventArgs e)
 		{
-			if (_currentIndex >= 0 && _currentIndex < _library.Count)
+			Track infoTrack = GetCurrentTrackForUi();
+			if (infoTrack != null)
 			{
-				ShowTrackInfo(_library[_currentIndex]);
+				ShowTrackInfo(infoTrack);
 			}
 		}
 
@@ -7637,6 +7720,8 @@ public void UpdateQueue(List<Track> newQueue)
 			if (totalDuration.TotalSeconds > 0.0)
 			{
 				App.AudioEngine.Seek(TimeSpan.FromSeconds(((RangeBase)ProgressSlider).Value));
+				// La barre de progression Discord suit le deplacement dans le son.
+				App.DiscordRpc?.UpdatePresence(App.AudioEngine.CurrentTrack, isPlaying: (int)App.AudioEngine.State == 1, position: TimeSpan.FromSeconds(((RangeBase)ProgressSlider).Value));
 				if ((int)App.AudioEngine.State == 0 && ((RangeBase)ProgressSlider).Value < totalDuration.TotalSeconds)
 				{
 					App.AudioEngine.Resume();

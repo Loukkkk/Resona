@@ -17,6 +17,16 @@ namespace Resona
     {
         private const string ReleasesPage = "https://github.com/Loukkkk/Resona/releases/latest";
 
+        /// <summary>Tag de la version actuelle de l'app, deduit automatiquement de la version de l'assembly (balise Version du .csproj) :
+        /// 3.2.0 -> "v3.2", 3.2.1 -> "v3.2.1". Sert a la verification des mises a jour ET aux nouveautes (patch note de cette version).</summary>
+        public static string CurrentTag { get; } = ComputeCurrentTag();
+
+        private static string ComputeCurrentTag()
+        {
+            var v = typeof(UpdateManager).Assembly.GetName().Version ?? new Version(0, 0);
+            return v.Build > 0 ? $"v{v.Major}.{v.Minor}.{v.Build}" : $"v{v.Major}.{v.Minor}";
+        }
+
         private static bool Fr => Models.Strings.Current.IsFr;
 
         /// <summary>Fichier de la release GitHub proposable en telechargement direct.</summary>
@@ -35,35 +45,113 @@ namespace Resona
                 {
                     string latestTag = tagElem.GetString() ?? "";
 
-                    string currentTag = "v3.2";
+                    string currentTag = CurrentTag;
                     bool hasUpdate = latestTag != currentTag && !string.IsNullOrEmpty(latestTag) && latestTag != "v1.0";
 
                     if (hasUpdate)
                     {
                         if (manualCheck || latestTag != App.Settings.Current.LastKnownVersion)
                         {
-                            UpdateAsset? asset = PickAsset(doc.RootElement);
+                            UpdateAssets assets = PickAssets(doc.RootElement);
+                            bool installedWithSetup = IsInstalledWithSetup();
 
-                            string message = Fr ? $"La version {latestTag} est disponible !" : $"Version {latestTag} is available!";
-                            if (asset != null)
+                            // Deux boutons quand la release propose a la fois l'installateur et la version portable ;
+                            // sinon un seul bouton de telechargement direct.
+                            UpdateAsset? primary;
+                            UpdateAsset? secondary = null;
+                            if (assets.Installer != null && assets.Portable != null)
                             {
+                                primary = assets.Installer;
+                                secondary = assets.Portable;
+                            }
+                            else
+                            {
+                                primary = assets.Installer ?? assets.Portable ?? assets.Other;
+                            }
+
+                            // Contenu : message + une description par fichier propose + lien vers la page GitHub.
+                            var panel = new StackPanel { Spacing = 12 };
+                            panel.Children.Add(new TextBlock
+                            {
+                                Text = Fr ? $"La version {latestTag} est disponible !" : $"Version {latestTag} is available!",
+                                TextWrapping = TextWrapping.Wrap
+                            });
+
+                            void AddAssetInfo(UpdateAsset asset, string title, string description, bool recommended)
+                            {
+                                var info = new StackPanel { Spacing = 2 };
+                                info.Children.Add(new TextBlock
+                                {
+                                    Text = recommended ? title + (Fr ? " \u2014 recommand\u00e9" : " \u2014 recommended") : title,
+                                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                                    TextWrapping = TextWrapping.Wrap
+                                });
+                                info.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, Opacity = 0.8 });
                                 string size = FormatSize(asset.Size);
-                                message += "\n" + asset.Name + (size.Length > 0 ? $" ({size})" : "");
+                                info.Children.Add(new TextBlock
+                                {
+                                    Text = asset.Name + (size.Length > 0 ? $" ({size})" : ""),
+                                    TextWrapping = TextWrapping.Wrap,
+                                    Opacity = 0.6,
+                                    FontSize = 12
+                                });
+                                panel.Children.Add(info);
+                            }
+
+                            if (secondary != null)
+                            {
+                                // Les deux fichiers : on explique la difference. Recommande = celui qui correspond a l'installation actuelle.
+                                AddAssetInfo(primary!,
+                                    Fr ? "Installateur (Setup)" : "Installer (Setup)",
+                                    Fr ? "Installation propre : mise \u00e0 jour sur place, d\u00e9sinstallation depuis Windows."
+                                       : "Clean install: updates in place, uninstall from Windows.",
+                                    installedWithSetup);
+                                AddAssetInfo(secondary,
+                                    Fr ? "Version portable (zip)" : "Portable version (zip)",
+                                    Fr ? "\u00c0 extraire o\u00f9 vous voulez, rien n'est install\u00e9."
+                                       : "Extract it anywhere, nothing gets installed.",
+                                    !installedWithSetup);
+                            }
+                            else if (primary != null)
+                            {
+                                string size = FormatSize(primary.Size);
+                                panel.Children.Add(new TextBlock
+                                {
+                                    Text = primary.Name + (size.Length > 0 ? $" ({size})" : ""),
+                                    TextWrapping = TextWrapping.Wrap,
+                                    Opacity = 0.8
+                                });
+                            }
+
+                            if (primary != null)
+                            {
+                                panel.Children.Add(new HyperlinkButton
+                                {
+                                    Content = Fr ? "Voir sur GitHub" : "View on GitHub",
+                                    NavigateUri = new Uri(ReleasesPage),
+                                    Padding = new Thickness(0),
+                                    HorizontalAlignment = HorizontalAlignment.Left
+                                });
                             }
 
                             var dialog = new ContentDialog
                             {
                                 Title = Fr ? "Mise \u00e0 jour disponible" : "Update Available",
-                                Content = message,
+                                Content = panel,
                                 CloseButtonText = Fr ? "Plus tard" : "Later",
                                 XamlRoot = xamlRoot
                             };
 
-                            if (asset != null)
+                            if (secondary != null)
+                            {
+                                dialog.PrimaryButtonText = Fr ? "Installateur (Setup)" : "Installer (Setup)";
+                                dialog.SecondaryButtonText = Fr ? "Version portable (zip)" : "Portable (zip)";
+                                dialog.DefaultButton = installedWithSetup ? ContentDialogButton.Primary : ContentDialogButton.Secondary;
+                            }
+                            else if (primary != null)
                             {
                                 // Telechargement direct (choix de l'emplacement) + lien vers la page GitHub.
                                 dialog.PrimaryButtonText = Fr ? "T\u00e9l\u00e9charger directement" : "Download directly";
-                                dialog.SecondaryButtonText = Fr ? "Voir sur GitHub" : "View on GitHub";
                                 dialog.DefaultButton = ContentDialogButton.Primary;
                             }
                             else
@@ -72,18 +160,25 @@ namespace Resona
                                 dialog.PrimaryButtonText = Fr ? "T\u00e9l\u00e9charger" : "Download";
                             }
 
-                            var result = await dialog.ShowAsync();
+                            // Une seule fenetre a la fois : si les nouveautes sont affichees, on attend leur fermeture.
+                            await WhatsNewManager.DialogLock.WaitAsync();
+                            ContentDialogResult result;
+                            try { result = await dialog.ShowAsync(); }
+                            finally { WhatsNewManager.DialogLock.Release(); }
 
                             App.Settings.Current.LastKnownVersion = latestTag;
                             App.Settings.SaveSync();
 
-                            if (asset != null && result == ContentDialogResult.Primary)
+                            if (result == ContentDialogResult.Primary)
                             {
-                                await DownloadAssetAsync(xamlRoot, asset);
+                                if (primary != null)
+                                    await DownloadAssetAsync(xamlRoot, primary);
+                                else
+                                    _ = Windows.System.Launcher.LaunchUriAsync(new Uri(ReleasesPage));
                             }
-                            else if (result == ContentDialogResult.Secondary || (asset == null && result == ContentDialogResult.Primary))
+                            else if (result == ContentDialogResult.Secondary && secondary != null)
                             {
-                                _ = Windows.System.Launcher.LaunchUriAsync(new Uri(ReleasesPage));
+                                await DownloadAssetAsync(xamlRoot, secondary);
                             }
                         }
                     }
@@ -122,7 +217,16 @@ namespace Resona
         //  Choix du fichier de la release
         // ------------------------------------------------------------------
 
-        private static UpdateAsset? PickAsset(JsonElement release)
+        /// <summary>Fichiers proposes pour une release : installateur (Setup.exe), version portable (zip), ou autre paquet.</summary>
+        private sealed record UpdateAssets(UpdateAsset? Installer, UpdateAsset? Portable, UpdateAsset? Other);
+
+        private static UpdateAssets PickAssets(JsonElement release) => new(
+            PickBest(release, ext => ext == ".exe"),
+            PickBest(release, ext => ext == ".zip"),
+            PickBest(release, ext => ext is ".msi" or ".msix" or ".appx" or ".msixbundle"));
+
+        /// <summary>Meilleur fichier de la release parmi les extensions acceptees, selon l'architecture de la machine.</summary>
+        private static UpdateAsset? PickBest(JsonElement release, Func<string, bool> accepts)
         {
             if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
                 return null;
@@ -145,15 +249,9 @@ namespace Resona
                 if (name.Length == 0 || url.Length == 0) continue;
 
                 string lower = name.ToLowerInvariant();
-                int score = Path.GetExtension(lower) switch
-                {
-                    ".exe" => 30,
-                    ".msi" => 25,
-                    ".msix" or ".appx" or ".msixbundle" => 20,
-                    ".zip" => 10,
-                    _ => -100,   // blockmap, sha256, yml, txt... : jamais proposes
-                };
-                if (score < 0) continue;
+                // blockmap, sha256, yml, txt... : jamais proposes (seules les extensions demandees sont acceptees)
+                if (!accepts(Path.GetExtension(lower))) continue;
+                int score = 10;
 
                 // Architecture : bonus si elle correspond a la machine, malus si le nom en annonce une autre.
                 bool has64 = lower.Contains("x64") || lower.Contains("x86_64") || lower.Contains("amd64");
@@ -176,6 +274,16 @@ namespace Resona
                 }
             }
             return best;
+        }
+
+        /// <summary>
+        /// Vrai si Resona a ete installe avec l'installateur : Inno Setup place son desinstalleur (unins000.exe)
+        /// a cote de l'executable. Une version zip portable n'en a pas.
+        /// </summary>
+        private static bool IsInstalledWithSetup()
+        {
+            try { return File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe")); }
+            catch { return false; }
         }
 
         private static string FormatSize(long bytes)
@@ -324,9 +432,20 @@ namespace Resona
                     CloseButtonText = "OK",
                     XamlRoot = xamlRoot
                 };
-                if (await doneDialog.ShowAsync() == ContentDialogResult.Primary)
+                // Installateur : on propose de le lancer tout de suite (il ferme Resona et se met a jour sur place).
+                bool isInstaller = string.Equals(Path.GetExtension(file.Path), ".exe", StringComparison.OrdinalIgnoreCase);
+                if (isInstaller)
+                    doneDialog.SecondaryButtonText = Fr ? "Installer maintenant" : "Install now";
+
+                var doneResult = await doneDialog.ShowAsync();
+                if (doneResult == ContentDialogResult.Primary)
                 {
                     try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{file.Path}\"") { UseShellExecute = true }); } catch { }
+                }
+                else if (doneResult == ContentDialogResult.Secondary && isInstaller)
+                {
+                    try { Process.Start(new ProcessStartInfo(file.Path) { UseShellExecute = true }); }
+                    catch (Exception ex) { Resona.Services.LogService.Write("Update", ex, "Lancement de l'installateur"); }
                 }
             }
             catch (Exception ex)

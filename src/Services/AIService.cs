@@ -205,7 +205,7 @@ public static class AIService
         }
         catch (Exception ex)
         {
-            System.IO.File.AppendAllText("ai_error_log.txt", $"\nErreur JSON :\n{ex.Message}\nTexte brut:\n{aiResponse}\n");
+            LogService.Write("AI", $"Erreur JSON :\n{ex.Message}\nTexte brut:\n{aiResponse}");
             return null;
         }
     }

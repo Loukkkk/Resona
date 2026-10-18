@@ -12,13 +12,14 @@
 
 * 🎨 **Modern Design:** Beautiful WinUI 3 interface with support for 3 backdrop materials: Solid Color, Acrylic, and Mica.
 * 🎧 **Bit-perfect Playback:** Uses NAudio (with an option to activate WASAPI Exclusive mode to bypass the Windows mixer for pure, unaltered sound).
-* 🎛️ **Audio Processing:** Built-in 10-band graphic equalizer with presets to fine-tune your audio experience, and seamless crossfading between tracks.
-* 🖼️ **Mini Player:** A compact, always-on-top mini player mode for controlling playback while you work.
-* 🔊 **Normalization:** ReplayGain-style RMS/peak volume analysis. Gain is applied only during playback, ensuring your original files are never modified.
-* 🎤 **Synchronized Lyrics:** Automatically fetches and caches synchronized lyrics via [LRCLib](https://lrclib.net), complete with a built-in translation option.
-* 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality covers online.
-* 📖 **Artist Biographies:** Automatically fetches and displays artist biographies and information directly from Wikipedia.
+* 📥 **Online Search & Download:** Search for music online and download tracks directly from the app into your library.
 * 🔍 **Auto-Tagging:** Automatically identifies unknown tracks using acoustic fingerprinting (Chromaprint/fpcalc) to fetch accurate metadata (artist, title) from MusicBrainz.
+* 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality covers online.
+* 🖼️ **Mini Player:** A compact, always-on-top mini player mode for controlling playback while you work.
+* 🔊 **Normalization:** LUFS-based loudness analysis for a consistent perceived volume between tracks.
+* 🎤 **Synchronized Lyrics:** Automatically fetches and caches synchronized lyrics via [LRCLib](https://lrclib.net), complete with a built-in translation option.
+* 📖 **Artist Biographies:** Automatically fetches and displays artist biographies and information online.
+* 🎛️ **Audio Processing:** Built-in 10-band graphic equalizer with presets to fine-tune your audio experience, and seamless crossfading between tracks.
 * 📝 **Playlist Management:** Full support for M3U and M3U8 import/export.
 * 🎮 **Discord Rich Presence:** Automatically showcase the track you are currently listening to on your Discord profile.
 * 🤖 **AI DJ:** Provides prompts to AI models to generate smart playlists, suggest tracks, and offer deep insights into your music collection.
@@ -69,6 +70,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 #### 🎨 Themes & Interface
 - [ ] Color theme animations that react to the sound
+- [ ] Be able to choose the order in which categories are displayed in the pane
 
 #### 🌐 Sharing & Integrations
 - [ ] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)

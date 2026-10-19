@@ -70,10 +70,10 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 #### 🎨 Themes & Interface
 - [ ] Color theme animations that react to the sound
-- [ ] Be able to choose the order in which categories are displayed in the pane
+- [x] Be able to choose the order in which categories are displayed in the pane
 
 #### 🌐 Sharing & Integrations
-- [ ] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)
+- [x] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)
 
 </details>
 

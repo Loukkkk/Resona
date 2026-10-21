@@ -66,10 +66,10 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 #### 🎤 Lyrics
 - [ ] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics
-- [ ] Additional fallback lyrics source(s)
+- [x] Additional fallback lyrics source(s)
 
 #### 🎨 Themes & Interface
-- [ ] Color theme animations that react to the sound
+- [x] Color theme animations that react to the sound
 - [x] Be able to choose the order in which categories are displayed in the pane
 
 #### 🌐 Sharing & Integrations

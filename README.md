@@ -52,7 +52,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 #### 📚 Library & Playlists
 - [ ] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played"...
-- [ ] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
+- [x] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
 - [ ] Playlist folders to group playlists into categories
 - [ ] Playlist downloading
 - [ ] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
@@ -61,7 +61,6 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Broken path repair: when a file has been moved, offer to find it again by fingerprint or by name in the watched folders
 - [ ] Mood analysis: sort tracks by energy, tempo or vibe, from metadata or a local calculation (BPM, spectrum)
 - [ ] "Discovery" mode: similar artist suggestions
-- [ ] Never-played reminder: a discreet "You've never played this track" suggestion
 
 #### 🎤 Lyrics
 - [x] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics

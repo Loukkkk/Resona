@@ -40,7 +40,6 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 #### 🎧 Player & Playback
 - [ ] Use all the available space for the playback bar when the text (title, album, artist) is long, with the small cover to its left in the player
-- [ ] Check the alignment of the elements in the player
 - [ ] Sound wave / equalizer animation (optional and toggleable, for example in the large central cover view)
 - [ ] Keyboard shortcut to skip 5 seconds
 - [ ] Weighted shuffle: avoid replaying recent tracks (favor favorites?)
@@ -65,7 +64,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Never-played reminder: a discreet "You've never played this track" suggestion
 
 #### 🎤 Lyrics
-- [ ] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics
+- [x] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics
 - [x] Additional fallback lyrics source(s)
 
 #### 🎨 Themes & Interface

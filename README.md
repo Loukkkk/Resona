@@ -41,8 +41,8 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 #### 🎧 Player & Playback
 - [ ] Use all the available space for the playback bar when the text (title, album, artist) is long, with the small cover to its left in the player
 - [ ] Sound wave / equalizer animation (optional and toggleable, for example in the large central cover view)
-- [ ] Keyboard shortcut to skip 5 seconds
-- [ ] Weighted shuffle: avoid replaying recent tracks (favor favorites?)
+- [x] Keyboard shortcut to skip 5 seconds
+- [x] Weighted shuffle: avoid replaying recent tracks
 - [ ] Smart silence skipping at the start and end of tracks
 - [ ] Volume ducking when another app plays a sound
 - [ ] Transition animation between two tracks
@@ -53,7 +53,6 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 #### 📚 Library & Playlists
 - [ ] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played"...
 - [x] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
-- [ ] Playlist folders to group playlists into categories
 - [ ] Playlist downloading
 - [x] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
 - [ ] More info columns in the track lists

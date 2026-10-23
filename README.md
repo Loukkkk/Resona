@@ -56,10 +56,10 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Playlist downloading
 - [x] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
 - [ ] More info columns in the track lists
-- [ ] Library quality check: tracks without cover, corrupted files, inconsistent tags... with quick suggested fixes
-- [ ] Broken path repair: when a file has been moved, offer to find it again by fingerprint or by name in the watched folders
+- [x] Library quality check: tracks without cover, corrupted files, inconsistent tags... with quick suggested fixes
+- [x] Broken path repair (import playlist)
 - [ ] Mood analysis: sort tracks by energy, tempo or vibe, from metadata or a local calculation (BPM, spectrum)
-- [ ] "Discovery" mode: similar artist suggestions
+- [x] "Discovery" mode: similar artist suggestions
 
 #### 🎤 Lyrics
 - [x] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics

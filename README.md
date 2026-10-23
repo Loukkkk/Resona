@@ -55,7 +55,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [x] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
 - [ ] Playlist folders to group playlists into categories
 - [ ] Playlist downloading
-- [ ] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
+- [x] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
 - [ ] More info columns in the track lists
 - [ ] Library quality check: tracks without cover, corrupted files, inconsistent tags... with quick suggested fixes
 - [ ] Broken path repair: when a file has been moved, offer to find it again by fingerprint or by name in the watched folders

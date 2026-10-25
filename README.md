@@ -51,14 +51,13 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Interaction sound design (UI sounds, just for fun)
 
 #### 📚 Library & Playlists
-- [x] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played"...
+- [x] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played", Mood analysis: sort tracks by BPM, vibe, ...
 - [x] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
 - [x] Playlist downloading
 - [x] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
 - [ ] More info columns in the track lists
 - [x] Library quality check: tracks without cover, corrupted files, inconsistent tags... with quick suggested fixes
 - [x] Broken path repair (import playlist)
-- [ ] Mood analysis: sort tracks by energy, tempo or vibe, from metadata or a local calculation (BPM, spectrum)
 - [x] "Discovery" mode: similar artist suggestions
 
 #### 🎤 Lyrics

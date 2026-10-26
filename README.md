@@ -43,19 +43,18 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [ ] Sound wave / equalizer animation (optional and toggleable, for example in the large central cover view)
 - [x] Keyboard shortcut to skip 5 seconds
 - [x] Weighted shuffle: avoid replaying recent tracks
-- [ ] Smart silence skipping at the start and end of tracks
-- [ ] Volume ducking when another app plays a sound
+- [x] Smart silence skipping at the start and end of tracks
+- [x] Volume ducking when another app plays a sound
 - [ ] Transition animation between two tracks
 - [ ] Light DJ mode: two decks with manual crossfade and tempo adjustment
 - [ ] Power-saving mode?
-- [ ] Interaction sound design (UI sounds, just for fun)
 
 #### 📚 Library & Playlists
 - [x] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played", Mood analysis: sort tracks by BPM, vibe, ...
 - [x] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
 - [x] Playlist downloading
 - [x] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
-- [ ] More info columns in the track lists
+- [x] Properties in the right-click menu
 - [x] Library quality check: tracks without cover, corrupted files, inconsistent tags... with quick suggested fixes
 - [x] Broken path repair (import playlist)
 - [x] "Discovery" mode: similar artist suggestions

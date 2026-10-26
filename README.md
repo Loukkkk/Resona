@@ -46,8 +46,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [x] Smart silence skipping at the start and end of tracks
 - [x] Volume ducking when another app plays a sound
 - [ ] Transition animation between two tracks
-- [ ] Light DJ mode: two decks with manual crossfade and tempo adjustment
-- [ ] Power-saving mode?
+- [x] Light DJ mode: two decks with manual crossfade and tempo adjustment
 
 #### 📚 Library & Playlists
 - [x] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played", Mood analysis: sort tracks by BPM, vibe, ...

@@ -47,7 +47,7 @@ public sealed class FolderWatcherService : IDisposable
 
     public FolderWatcherService()
     {
-        _coverDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "Covers");
+        _coverDir = AppPaths.CoversDir;
         try { Directory.CreateDirectory(_coverDir); } catch { }
     }
 

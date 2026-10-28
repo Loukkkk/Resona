@@ -41,8 +41,7 @@ namespace Resona.Services
         // --- Envoi des pochettes sur un hebergeur d'images temporaire (quand aucune correspondance en ligne) ---
         internal sealed record UploadEntry(string Url, DateTime ExpiresUtc);
         private readonly ConcurrentDictionary<string, UploadEntry> _uploads = new();
-        private static readonly string _uploadsFile = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "discord_covers.json");
+        private static readonly string _uploadsFile = Path.Combine(AppPaths.AppDataDir, "discord_covers.json");
 
         // Un seul envoi a la fois vers Discord, dans l'ordre : empeche une mise a jour tardive (ancien son) d'ecraser la plus recente.
         private readonly object _sendLock = new();

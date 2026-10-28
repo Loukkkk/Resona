@@ -54,7 +54,7 @@ public sealed class PlayHistoryService
 
     public PlayHistoryService()
     {
-        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona");
+        string dir = AppPaths.AppDataDir;
         try { Directory.CreateDirectory(dir); } catch { }
         _filePath = Path.Combine(dir, "playhistory.jsonl");
         Load();

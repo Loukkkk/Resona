@@ -63,7 +63,7 @@ public sealed class MoodAnalysisService
 
     public MoodAnalysisService()
     {
-        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona");
+        string dir = AppPaths.AppDataDir;
         try { Directory.CreateDirectory(dir); } catch { }
         _filePath = Path.Combine(dir, "moodanalysis.json");
         Load();

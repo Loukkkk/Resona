@@ -1804,7 +1804,7 @@ public sealed partial class SettingsPage : Page
                 App.Settings.Current = new Resona.Models.AppSettings();
                 App.Settings.SaveSync();
                 try {
-                    string coversDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "Covers");
+                    string coversDir = AppPaths.CoversDir;
                     if (System.IO.Directory.Exists(coversDir)) System.IO.Directory.Delete(coversDir, true);
                 } catch {}
                 restart = true;
@@ -1836,7 +1836,7 @@ public sealed partial class SettingsPage : Page
                 {
                     await App.Cache.ClearCoversCacheAsync();
                     try {
-                        string coversDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "Covers");
+                        string coversDir = AppPaths.CoversDir;
                         if (System.IO.Directory.Exists(coversDir)) {
                             foreach (var file in System.IO.Directory.GetFiles(coversDir)) System.IO.File.Delete(file);
                         }

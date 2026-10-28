@@ -1021,7 +1021,7 @@ public class LyricsService
             for (int attempt = 0; attempt < 2; attempt++)
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                req.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                req.Headers.UserAgent.TryParseAdd("Resona/4.0 (https://github.com/Resona)");
                 resp = await _http.SendAsync(req, cts.Token);
                 if (resp.IsSuccessStatusCode) break;
                 if ((int)resp.StatusCode == 503 || (int)resp.StatusCode == 429)
@@ -1073,7 +1073,7 @@ public class LyricsService
             for (int attempt = 0; attempt < 2; attempt++)
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, query);
-                req.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                req.Headers.UserAgent.TryParseAdd("Resona/4.0 (https://github.com/Resona)");
                 resp = await _http.SendAsync(req, cts.Token);
                 if (resp.IsSuccessStatusCode) break;
                 if ((int)resp.StatusCode == 503 || (int)resp.StatusCode == 429)
@@ -1153,7 +1153,7 @@ public class LyricsService
             {
                 string directUrl = $"https://api.lyrics.ovh/v1/{Uri.EscapeDataString(artist)}/{Uri.EscapeDataString(title)}";
                 using var directReq = new HttpRequestMessage(HttpMethod.Get, directUrl);
-                directReq.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                directReq.Headers.UserAgent.TryParseAdd("Resona/4.0 (https://github.com/Resona)");
                 using var directResp = await _http.SendAsync(directReq, cts.Token);
 
                 if (directResp.IsSuccessStatusCode)
@@ -1181,7 +1181,7 @@ public class LyricsService
             string suggestQuery = string.IsNullOrWhiteSpace(artist) ? title : $"{artist} {title}";
             string suggestUrl = $"https://api.lyrics.ovh/suggest/{Uri.EscapeDataString(suggestQuery)}";
             using var sugReq = new HttpRequestMessage(HttpMethod.Get, suggestUrl);
-            sugReq.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+            sugReq.Headers.UserAgent.TryParseAdd("Resona/4.0 (https://github.com/Resona)");
             using var sugResp = await _http.SendAsync(sugReq, cts.Token);
 
             if (sugResp.IsSuccessStatusCode)
@@ -1213,7 +1213,7 @@ public class LyricsService
                         {
                             string matchUrl = $"https://api.lyrics.ovh/v1/{Uri.EscapeDataString(sArtist)}/{Uri.EscapeDataString(sTitle)}";
                             using var matchReq = new HttpRequestMessage(HttpMethod.Get, matchUrl);
-                            matchReq.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                            matchReq.Headers.UserAgent.TryParseAdd("Resona/4.0 (https://github.com/Resona)");
                             using var matchResp = await _http.SendAsync(matchReq, cts.Token);
                             if (matchResp.IsSuccessStatusCode)
                             {
@@ -1320,7 +1320,7 @@ public class LyricsService
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10.0));
             using var req = new HttpRequestMessage(HttpMethod.Get, $"https://lrclib.net/api/search?q={Uri.EscapeDataString(query.Trim())}");
-            req.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+            req.Headers.UserAgent.TryParseAdd("Resona/4.0 (https://github.com/Resona)");
             using var resp = await _http.SendAsync(req, cts.Token);
             if (!resp.IsSuccessStatusCode)
             {
@@ -4091,9 +4091,7 @@ public class PlayStatsService
 
     public PlayStatsService()
     {
-        var dir = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Resona");
+        var dir = AppPaths.AppDataDir;
         Directory.CreateDirectory(dir);
         _filePath = System.IO.Path.Combine(dir, "playstats.json");
         Load();
@@ -5250,9 +5248,7 @@ public static class AutoTagService
     }
 
     private static string? _fpcalcPath;
-    private static readonly string FpcalcDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Resona", "fpcalc");
+    private static readonly string FpcalcDir = AppPaths.FpcalcDir;
     private static readonly string FpcalcExe = Path.Combine(FpcalcDir, "chromaprint-fpcalc-1.5.1-windows-x86_64", "fpcalc.exe");
     private const string AcoustIdApiKey = "ZmBZcnuMkk";
 

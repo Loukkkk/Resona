@@ -23,8 +23,7 @@ public static class LyricsOverrideService
     private static readonly object _lock = new();
     private static Dictionary<string, Entry>? _entries;
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "lyrics_overrides.json");
+    private static string FilePath => Path.Combine(AppPaths.AppDataDir, "lyrics_overrides.json");
 
     private static Dictionary<string, Entry> Entries()
     {

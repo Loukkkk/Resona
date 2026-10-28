@@ -880,8 +880,7 @@ public sealed partial class PlaylistsPage : Page
 		var file = await picker.PickSingleFileAsync();
 		if (file != null)
 		{
-			string appFolder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona");
-			string destFolder = System.IO.Path.Combine(appFolder, "PlaylistCovers");
+			string destFolder = AppPaths.PlaylistCoversDir;
 			System.IO.Directory.CreateDirectory(destFolder);
 			string ext = System.IO.Path.GetExtension(file.Path);
 			string destPath = System.IO.Path.Combine(destFolder, $"{playlist.Id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}{ext}");
@@ -960,8 +959,7 @@ public sealed partial class PlaylistsPage : Page
 							string artworkUrl = ((Microsoft.UI.Xaml.Media.Imaging.BitmapImage)selectedImg.Source).UriSource.ToString();
 							var http = new System.Net.Http.HttpClient();
 							byte[] data = await http.GetByteArrayAsync(artworkUrl);
-							string appFolder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona");
-							string destFolder = System.IO.Path.Combine(appFolder, "PlaylistCovers");
+							string destFolder = AppPaths.PlaylistCoversDir;
 							System.IO.Directory.CreateDirectory(destFolder);
 							string destPath = System.IO.Path.Combine(destFolder, $"{playlist.Id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.jpg");
 							System.IO.File.WriteAllBytes(destPath, data);

@@ -30,8 +30,7 @@ internal static class DjAnalysis
     private static readonly object _lock = new();
     private static Dictionary<string, Entry>? _cache;
     // Nouveau format (BPM + nettete) : nouveau fichier. L'ancien djbpm.json (BPM seuls, sans fiabilite) est simplement ignore : ce n'est qu'un cache, il se reconstruit.
-    private static readonly string CachePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona", "djbpm2.json");
+    private static readonly string CachePath = Path.Combine(AppPaths.AppDataDir, "djbpm2.json");
 
     // ───────── Enveloppe d'onset ─────────
 

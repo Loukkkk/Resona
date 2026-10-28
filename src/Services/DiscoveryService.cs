@@ -51,10 +51,7 @@ public static class DiscoveryService
 
     private static readonly HttpClient Http = CreateHttp();
 
-    private static readonly string CachePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Resona",
-        "similar_artists_cache.json");
+    private static readonly string CachePath = Path.Combine(AppPaths.AppDataDir, "similar_artists_cache.json");
 
     private sealed class CacheEntry
     {

@@ -66,9 +66,7 @@ public partial class App : Application
         // 1) On ouvre la fenetre TOUT DE SUITE avec les donnees deja en cache SQLite
         // 2) Le scan disque / re-analyse tourne ensuite en tache de fond
 
-        string appData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Resona");
+        string appData = AppPaths.AppDataDir;
 
         var httpClient = new HttpClient();
 

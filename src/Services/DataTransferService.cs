@@ -136,7 +136,7 @@ public static class DataTransferService
     private const int CurrentFormatVersion = 1;
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
-    private static string AppDataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona");
+    private static string AppDataDir => AppPaths.AppDataDir;
     public static string BackupsDir => Path.Combine(AppDataDir, "backups");
 
     // Ancien nom du fichier des donnees d'affichage : les sauvegardes deja exportees restent importables.

@@ -14,9 +14,7 @@ public static class LogService
     private const long MaxFileBytes = 1024 * 1024; // 1 Mo, puis rotation vers resona.old.log
     private static readonly object _lock = new();
 
-    public static string LogDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Resona", "logs");
+    public static string LogDirectory { get; } = AppPaths.LogsDir;
 
     public static string LogFilePath => Path.Combine(LogDirectory, "resona.log");
     private static string OldLogFilePath => Path.Combine(LogDirectory, "resona.old.log");

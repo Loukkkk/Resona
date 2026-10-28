@@ -39,13 +39,13 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 <br>
 
 #### 🎧 Player & Playback
-- [ ] Use all the available space for the playback bar when the text (title, album, artist) is long, with the small cover to its left in the player
-- [ ] Sound wave / equalizer animation (optional and toggleable, for example in the large central cover view)
+- [x] Use all the available space for the playback bar when the text (title, album, artist) is long, with the small cover to its left in the player
+- [x] Sound wave / equalizer animation (optional and toggleable, for example in the large central cover view)
 - [x] Keyboard shortcut to skip 5 seconds
 - [x] Weighted shuffle: avoid replaying recent tracks
 - [x] Smart silence skipping at the start and end of tracks
 - [x] Volume ducking when another app plays a sound
-- [ ] Transition animation between two tracks
+- [x] Transition animation between two tracks
 - [x] Light DJ mode: two decks with manual crossfade and tempo adjustment
 
 #### 📚 Library & Playlists

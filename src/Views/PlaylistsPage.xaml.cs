@@ -49,6 +49,7 @@ public sealed partial class PlaylistsPage : Page
 			_playlistsPage = 0;
 			ApplySortAndFilter();
 		}); UpdateSortButton();
+		InitSmartUi();
 		StartRmstimer();
 		base.Loaded += delegate
 		{
@@ -143,6 +144,7 @@ public sealed partial class PlaylistsPage : Page
 	{
 		_librarySnapshot = await App.Cache.LoadAllTracksAsync();
 		_playlists = await App.Cache.LoadAllPlaylistsAsync();
+		_smartCtx = null;
 		DetailPanel.Visibility = Visibility.Collapsed;
 		_openPlaylist = null;
 		ApplySortAndFilter();
@@ -230,7 +232,7 @@ public sealed partial class PlaylistsPage : Page
 		stackPanel2.Children.Add(name);
 		stackPanel2.Children.Add(new TextBlock
 		{
-			Text = Resona.Models.Strings.Current.FormatTracksCount(tracks.Count),
+			Text = (playlist.IsSmart() ? "✦ " : "") + Resona.Models.Strings.Current.FormatTracksCount(tracks.Count),
 			Opacity = 0.5,
 			FontSize = 10.0,
 			LineHeight = 14.0,
@@ -458,6 +460,7 @@ public sealed partial class PlaylistsPage : Page
 	}
 	private List<Track> ResolvePlaylisttracks(Playlist playlist)
 	{
+		if (playlist.IsSmart()) return ResolveSmartTracks(playlist);
 		return playlist.TrackIds.Select(id => _librarySnapshot.FirstOrDefault(t => t.Id == id)).Where(t => t != null).ToList();
 	}
     private void TrackTitle_Click(object sender, RoutedEventArgs e)
@@ -555,9 +558,14 @@ public sealed partial class PlaylistsPage : Page
 			WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 			picker.FileTypeFilter.Add(".m3u");
 			picker.FileTypeFilter.Add(".m3u8");
+			picker.FileTypeFilter.Add(".csv");
+			picker.FileTypeFilter.Add(".tsv");
+			picker.FileTypeFilter.Add(".txt");
 			var files = await picker.PickMultipleFilesAsync();
 			if (files == null || files.Count == 0) return;
 			int totalImported = 0;
+			_importWarnings.Clear();
+			_importMissingNames.Clear();
 			int totalMissing = 0;
 			List<Track> allNewTracks = new List<Track>();
 			var allTracks = await App.Cache.LoadAllTracksAsync();
@@ -581,7 +589,7 @@ public sealed partial class PlaylistsPage : Page
 			List<Playlist> newPlaylists = new List<Playlist>();
 			foreach (var file in files)
 			{
-				var tuple = await App.PlaylistIO.ImportAsync(file.Path);
+				var tuple = await ResolveImportFileAsync(file.Path, allTracks, loadingDialog);
 				List<string> resolvedPaths = tuple.Item1;
 				List<string> missingPaths = tuple.Item2;
 				string? coverPath = tuple.Item3;
@@ -623,7 +631,7 @@ public sealed partial class PlaylistsPage : Page
 						totalImported++;
 					}
 	}
-				newPlaylists.Add(playlist);
+				if (playlist.TrackIds.Count > 0) newPlaylists.Add(playlist);   // pas de playlist vide (fichier illisible, rien de trouvé)
 			}
 			foreach(var pl in newPlaylists)
 			{
@@ -636,8 +644,8 @@ public sealed partial class PlaylistsPage : Page
 			}
 			await RefreshAsync();
 			string msg = string.Format(Models.Strings.Current.CS_ImportCompleteDesc, files.Count, totalImported);
-			if (totalMissing > 0) msg += Models.Strings.Current.IsFr ? $"\n{totalMissing} piste(s) introuvable(s) sur le disque." : $"\n{totalMissing} track(s) missing on disk.";
-			await new ContentDialog { Title = Models.Strings.Current.CS_ImportComplete, Content = msg, CloseButtonText = "OK", XamlRoot = this.XamlRoot }.ShowAsync();
+			if (totalMissing > 0) msg += Models.Strings.Current.IsFr ? $"\n{totalMissing} piste(s) introuvable(s) dans la bibliothèque locale." : $"\n{totalMissing} track(s) not found in local library.";
+			await new ContentDialog { Title = Models.Strings.Current.CS_ImportComplete, Content = msg + BuildImportDetails(), CloseButtonText = "OK", XamlRoot = this.XamlRoot }.ShowAsync();
 		}
 		catch (Exception ex)
 		{
@@ -800,6 +808,8 @@ public sealed partial class PlaylistsPage : Page
 				searchCoverItem.Click += async (s, args) => await SearchOnlineCoverAsync(playlist);
 				menuFlyout.Items.Add(playItem);
 				menuFlyout.Items.Add(renameItem);
+				var editRulesItem = BuildEditRulesItem(playlist);
+				if (editRulesItem != null) menuFlyout.Items.Add(editRulesItem);
 				menuFlyout.Items.Add(new MenuFlyoutSeparator());
 				menuFlyout.Items.Add(chooseCoverItem);
 				menuFlyout.Items.Add(searchCoverItem);

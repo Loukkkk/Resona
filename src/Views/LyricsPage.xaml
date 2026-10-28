@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     NavigationCacheMode="Required"
 Background="Transparent"     x:Class="Resona.Views.LyricsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -11,7 +11,7 @@ Background="Transparent"     x:Class="Resona.Views.LyricsPage"
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <TextBlock Text="{x:Bind models:Strings.Current.LyricsPage_Text_Paroles, Mode=OneWay}" FontSize="28" FontWeight="Bold" Grid.Row="0" Margin="0,0,160,16" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-        <ScrollViewer Grid.Row="1">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled">
             <TextBlock x:Name="LyricsText"
                        Text="{x:Bind models:Strings.Current.LyricsPage_Text_Lancelalecturedunmor, Mode=OneWay}"
                        TextWrapping="Wrap" FontSize="18" TextAlignment="Center" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />

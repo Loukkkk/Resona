@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Http;
 using Microsoft.UI.Xaml;
@@ -33,7 +33,11 @@ public partial class App : Application
     public static LibraryCacheService Cache { get; private set; } = null!;
     public static LibraryScannerService Scanner { get; private set; } = null!;
     public static SettingsService Settings { get; private set; } = null!;
+    public static FolderWatcherService FolderWatcher { get; private set; } = null!;
     public static PlayStatsService PlayStats { get; private set; } = new();
+    /// <summary>Historique date des ecoutes (alimente le Year in review).</summary>
+    public static PlayHistoryService PlayHistory { get; private set; } = new();
+    public static MoodAnalysisService MoodAnalysis { get; private set; } = new();
 
     /// <summary>Vrai quand le theme actif est la couleur unie blanche.</summary>
     public static bool IsPureWhiteTheme { get; private set; }
@@ -83,7 +87,7 @@ public partial class App : Application
         Cache = new LibraryCacheService(appData);
         Scanner = new LibraryScannerService();
         Settings = new SettingsService(appData);
-        DiscordRpc.Initialize();
+        FolderWatcher = new FolderWatcherService();
 
         // IMPORTANT : ne JAMAIS attendre une Task ici, avant la création/activation
         // de la fenêtre. À ce stade du démarrage, le thread UI qui exécute ce code
@@ -92,6 +96,9 @@ public partial class App : Application
         // certain (le thread s'attend lui-même indéfiniment, à 0% CPU).
         // On utilise donc une version 100% synchrone, sans aucune Task impliquée.
         Settings.LoadSync();
+        // Discord Rich Presence : a initialiser APRES le chargement des reglages (sinon l'option "activee" n'est pas encore lue
+        // et le service ne demarre pas : il fallait la desactiver puis la reactiver a chaque lancement).
+        DiscordRpc.Initialize();
         // Themes saisonniers (Halloween = octobre, Noel = decembre) : hors periode, retour a Couleur unie.
         if (Models.SeasonalThemes.EnforceSeason(Settings.Current)) _ = Settings.SaveAsync();
         ApplyFrameworkLanguage();
@@ -110,9 +117,16 @@ public partial class App : Application
                 TrayIcon?.Show();
                 _window.AppWindow.Hide();
             }
+            else
+            {
+                FolderWatcher?.Dispose();
+            }
         };
 
         _window.Activate();
+
+        // Affichage direct (pas de delai) : on n'attend que le chargement de la fenetre.
+        _window.DispatcherQueue.TryEnqueue(() => MainWindowInstance.TryShowYearInReviewPrompt());
 
         _ = Cache.InitializeAsync();
 
@@ -222,6 +236,7 @@ public partial class App : Application
                 {
                     TrayIcon?.Dispose();
                     TrayIcon = null;
+                    FolderWatcher?.Dispose();
                     AudioEngine.Dispose();
                     Application.Current.Exit();
                 }

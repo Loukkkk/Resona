@@ -38,6 +38,9 @@ public sealed partial class PlaylistDetailPage : Page
 
 	private Grid? _activeIndicatorGrid;
 
+	// Garde-fou : masque l'icone lecture/pause de toute cover qui n'est plus sous la souris (evenements "sortie" manques).
+	private Helpers.CoverOverlayGuard? _coverGuard;
+
 	private DispatcherTimer? _rmsTimer;
 
 	private float _smoothedRms;
@@ -46,6 +49,7 @@ public sealed partial class PlaylistDetailPage : Page
 	public PlaylistDetailPage()
 	{
 		InitializeComponent();
+		_coverGuard = new Helpers.CoverOverlayGuard(TrackListView, resetScale: false);
 		StartRmsTimer();
 		base.Loaded += delegate
 		{
@@ -139,6 +143,7 @@ public sealed partial class PlaylistDetailPage : Page
 			select lib.FirstOrDefault((Track t) => t.Id == id) into t
 			where t != null
 			select t).Cast<Track>().ToList();
+		if (playlist.IsSmart()) _ = LoadSmartTracksAsync();
 		BuildUI();
 	}
 
@@ -740,6 +745,8 @@ public sealed partial class PlaylistDetailPage : Page
 		_tracks.Clear();
 		_tracks.AddRange(DisplayedTracks);
 		
+		// Playlist intelligente : contenu calcule par les regles, l'ordre manuel n'est pas enregistre.
+		if (_playlist.IsSmart()) return;
 		_playlist.TrackIds = _tracks.Select(t => t.Id).ToList();
 		_ = App.Cache.UpsertPlaylistAsync(_playlist);
 		

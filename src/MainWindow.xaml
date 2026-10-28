@@ -56,6 +56,12 @@
             </StackPanel>
         </Border>
 
+        <!-- Transition de changement de son (MainWindow.NowPlayingTransition.cs) : ancien fond flou, garde dessous le temps du fondu enchaine -->
+        <Image x:Name="NowPlayingOutgoingBlurredBackground" Grid.RowSpan="2" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" Visibility="Collapsed" Canvas.ZIndex="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+            <Image.RenderTransform>
+                <CompositeTransform ScaleX="1.1" ScaleY="1.1" />
+            </Image.RenderTransform>
+        </Image>
         <Image x:Name="NowPlayingBlurredBackground" Grid.RowSpan="2" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" Canvas.ZIndex="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
             <Image.RenderTransform>
                 <CompositeTransform ScaleX="1.1" ScaleY="1.1" />
@@ -79,9 +85,16 @@
                     HorizontalAlignment="Stretch" />
         </Grid>
 
-        <Border x:Name="NowPlayingCenterCoverBorder" Grid.RowSpan="2" Width="400" Height="400" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False" Tapped="NowPlayingCenterCover_Tapped" PointerEntered="NowPlayingCenterCover_PointerEntered" PointerExited="NowPlayingCenterCover_PointerExited" Canvas.ZIndex="10" Translation="0,0,32">
+        <!-- Ancienne cover qui sort pendant que la nouvelle arrive (MainWindow.NowPlayingTransition.cs) -->
+        <Border x:Name="NowPlayingOutgoingCoverBorder" Grid.RowSpan="2" Width="400" Height="400" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" Visibility="Collapsed" IsHitTestVisible="False" Canvas.ZIndex="9" RenderTransformOrigin="0.5,0.5">
             <Border.RenderTransform>
-                <TranslateTransform x:Name="NowPlayingCenterCoverTransform" Y="-5" />
+                <CompositeTransform x:Name="NowPlayingOutgoingCoverTransform" TranslateY="-5" />
+            </Border.RenderTransform>
+            <Image x:Name="NowPlayingOutgoingCoverImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <Border x:Name="NowPlayingCenterCoverBorder" Grid.RowSpan="2" Width="400" Height="400" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False" Tapped="NowPlayingCenterCover_Tapped" PointerEntered="NowPlayingCenterCover_PointerEntered" PointerExited="NowPlayingCenterCover_PointerExited" Canvas.ZIndex="10" Translation="0,0,32" RenderTransformOrigin="0.5,0.5">
+            <Border.RenderTransform>
+                <CompositeTransform x:Name="NowPlayingCenterCoverTransform" TranslateY="-5" />
             </Border.RenderTransform>
             <Border.Shadow>
                 <ThemeShadow />
@@ -92,6 +105,16 @@
             <Grid>
                 <FontIcon x:Name="NowPlayingCenterPlaceholder" Glyph="&#xE8D6;" FontSize="80" Opacity="0.15" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <Image x:Name="NowPlayingCenterCoverImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <!-- Animation equalizer optionnelle (Parametres > Apparence), desactivee par defaut (MainWindow.NowPlayingEqualizer.cs) -->
+                <Grid x:Name="NowPlayingEqualizerHost" Height="110" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#00000000" Offset="0" />
+                            <GradientStop Color="#B0000000" Offset="1" />
+                        </LinearGradientBrush>
+                    </Grid.Background>
+                    <StackPanel x:Name="NowPlayingEqualizerBars" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,16" />
+                </Grid>
             </Grid>
         </Border>
 
@@ -222,12 +245,12 @@
                   <SolidColorBrush x:Key="ToolTipBackground" Color="#2b2b2b" />
               </Grid.Resources>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" MinWidth="250" MaxWidth="320" />
+                <ColumnDefinition Width="Auto" MaxWidth="320" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- LEFT: Info -->
-            <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left">
+            <StackPanel x:Name="PlayerInfoPanel" Orientation="Horizontal" Spacing="10" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left">
                 <Border x:Name="NowPlayingCoverBorder" CornerRadius="8" Width="48" Height="48"
                         Background="#10FFFFFF"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -314,7 +337,7 @@
             </StackPanel>
 
             <!-- RIGHT: Controls and Progress -->
-            <Grid Grid.Column="1" Margin="0,2,0,-2">
+            <Grid Grid.Column="1" Margin="10,2,0,-2">
                 
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -369,17 +392,20 @@
                     </StackPanel>
                 </Grid>
                 <!-- Progress Row -->
-                <Grid Grid.Row="1" ColumnSpacing="8" Margin="0,2,0,0" Height="36">
+                <Grid x:Name="PlayerProgressRow" Grid.Row="1" ColumnSpacing="8" Margin="0,2,0,0" Height="36" RenderTransformOrigin="1,0.5">
+                    <Grid.RenderTransform>
+                        <ScaleTransform x:Name="PlayerProgressRowScale" ScaleX="1" ScaleY="1" />
+                    </Grid.RenderTransform>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="CurrentTimeText" Text="{x:Bind models:Strings.Current.MainWindow_Text_000, Mode=OneWay}" Grid.Column="0" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Width="36"
+                    <TextBlock x:Name="CurrentTimeText" Text="{x:Bind models:Strings.Current.MainWindow_Text_000, Mode=OneWay}" Grid.Column="0" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Width="36" Padding="0,0,0,2"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0,0,0,0" />
                     <!-- Zone elargie de 5 px de chaque cote (marges negatives) : le curseur grossit au survol/appui (x1,25) et deborderait sinon
                          de la zone aux extremites (coupe). Tout le contenu est decale de +5 px, le Slider invisible garde Margin=5 : positions inchangees. -->
-                    <Grid Grid.Column="1" VerticalAlignment="Center" Height="36" Margin="-5,3,-5,0">
+                    <Grid Grid.Column="1" VerticalAlignment="Center" Height="36" Margin="-5,0,-5,0">
                         <Grid x:Name="CustomProgressTrack" Height="4" Background="#8CFFFFFF" CornerRadius="2" VerticalAlignment="Center" Margin="14,0,14,0" />
                         <Grid x:Name="CustomProgressFill" Height="4" Background="{StaticResource AppTimecodeBrush}" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0" Margin="14,0,0,0" />
                         <Grid x:Name="CustomProgressThumb" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="5,0,0,0" IsHitTestVisible="False">
@@ -389,7 +415,7 @@
                         <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" Opacity="0" Margin="5,0,5,0" SmallChange="1" LargeChange="1"
                                 ValueChanged="ProgressSlider_ValueChanged" SizeChanged="ProgressSlider_SizeChanged" StepFrequency="0.001" VerticalAlignment="Center" />
                     </Grid>
-                    <TextBlock x:Name="TotalTimeText" Text="{x:Bind models:Strings.Current.MainWindow_Text_000, Mode=OneWay}" Grid.Column="2" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Width="36" TextAlignment="Right"
+                    <TextBlock x:Name="TotalTimeText" Text="{x:Bind models:Strings.Current.MainWindow_Text_000, Mode=OneWay}" Grid.Column="2" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Width="36" TextAlignment="Right" Padding="0,0,0,2"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="0,0,0,0" />
                 </Grid>
             </Grid>

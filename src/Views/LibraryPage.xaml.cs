@@ -56,6 +56,7 @@ public sealed partial class LibraryPage : Page
 		_currentSort = App.Settings.Current.LibrarySort;
 		RefreshHeaderText(); UpdateSortButtonText();
 		LoadDisplayLimitSelection();
+		_coverGuard = new Helpers.CoverOverlayGuard(TrackListView, resetScale: true);
 		StartRmsTimer();
 		if (TrackListView != null)
 		{
@@ -427,6 +428,12 @@ public sealed partial class LibraryPage : Page
 	{
 	}
 
+	// Cover actuellement survolee (une seule a la fois). Sert a ne pas reafficher l'overlay play/pause apres un clic si la souris est partie.
+	private Grid? _hoveredCoverGrid;
+
+	// Garde-fou : masque l'icone lecture/pause de toute cover qui n'est plus sous la souris (evenements "sortie" manques).
+	private Helpers.CoverOverlayGuard? _coverGuard;
+
 	private void UpdateCoverIndicator(Grid coverGrid, bool isPlaying, bool isHovered)
 	{
 		Border border = FindChildByName<Border>(coverGrid, "PlayOverlay");
@@ -598,7 +605,7 @@ public sealed partial class LibraryPage : Page
 		{
 			Random random = new Random();
 			Track track = _currentFilteredList[random.Next(_currentFilteredList.Count)];
-			App.MainWindowInstance?.SetShuffleModeAndPlay(track, _currentFilteredList);
+			App.MainWindowInstance?.SetShuffleModeAndPlay(track, _currentFilteredList, string.IsNullOrEmpty(_collectionTitle) ? Resona.Models.Strings.Current.MainWindow_UpNext_FromLibrary : _collectionTitle);
 		}
 	}
 
@@ -689,6 +696,7 @@ public sealed partial class LibraryPage : Page
 	{
 		if (sender is Grid grid)
 		{
+			_hoveredCoverGrid = grid;
 			Helpers.AnimationHelper.ApplyBouncyScale(grid, 1.05f);
 			Track track = grid.DataContext as Track;
 			UpdateCoverIndicator(grid, track?.IsPlaying ?? false, isHovered: true);
@@ -703,7 +711,25 @@ public sealed partial class LibraryPage : Page
 	{
 		if (sender is Grid grid)
 		{
+			if (ReferenceEquals(_hoveredCoverGrid, grid)) _hoveredCoverGrid = null;
 			Helpers.AnimationHelper.ApplyBouncyScale(grid, 1.0f);
+			UpdateCoverIndicator(grid, (grid.DataContext as Track)?.IsPlaying ?? false, isHovered: false);
+		}
+	}
+
+	// Conteneur recycle / reaffecte a un autre titre : l'overlay du survol precedent ne doit pas rester affiche.
+	private void CoverGrid_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+	{
+		if (sender is Grid grid && !ReferenceEquals(_hoveredCoverGrid, grid))
+		{
+			UpdateCoverIndicator(grid, (args.NewValue as Track)?.IsPlaying ?? false, isHovered: false);
+		}
+	}
+
+	private void CoverGrid_PointerExited_Removed(object sender, PointerRoutedEventArgs e)
+	{
+		if (sender is Grid grid)
+		{
 			UpdateCoverIndicator(grid, (grid.DataContext as Track)?.IsPlaying ?? false, isHovered: false);
 		}
 	}
@@ -773,7 +799,7 @@ public sealed partial class LibraryPage : Page
 				await Task.Delay(50);
 				DispatcherQueue.TryEnqueue(() =>
 				{
-					UpdateCoverIndicator(grid, track.IsPlaying, isHovered: true);
+					UpdateCoverIndicator(grid, track.IsPlaying, isHovered: ReferenceEquals(_hoveredCoverGrid, grid));
 				});
 			});
 		}

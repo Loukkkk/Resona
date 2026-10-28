@@ -136,7 +136,7 @@ public sealed partial class ArtistsPage : Page
 
 		private void ShuffleAll_Click(object sender, RoutedEventArgs e)
 	{
-		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.Artist, StringComparer.OrdinalIgnoreCase)
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.DisplayArtist, StringComparer.OrdinalIgnoreCase)
 			where !string.IsNullOrWhiteSpace(g.Key) && (string.IsNullOrWhiteSpace(SearchBox.Text) || g.Key.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase))
 			select g;
         var groups = listQuery.ToList();
@@ -987,7 +987,7 @@ public sealed partial class ArtistsPage : Page
 
 
 
-		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.Artist, StringComparer.OrdinalIgnoreCase)
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => t.DisplayArtist, StringComparer.OrdinalIgnoreCase)
 			where !string.IsNullOrWhiteSpace(g.Key) && (string.IsNullOrWhiteSpace(filter) || g.Key.Contains(filter, StringComparison.OrdinalIgnoreCase))
 			select g;
 		

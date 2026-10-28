@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 
 using System.Runtime.CompilerServices;
 using Resona;
@@ -41,6 +41,31 @@ public class Strings : INotifyPropertyChanged
     public string MainWindow_Tooltip_Equalizer => IsFr ? "Presets d'\u00e9galiseur" : "Equalizer presets";
     public string CS_EqualizerPresetsTitle => IsFr ? "Presets d'\u00e9galiseur" : "Equalizer presets";
     public string CS_OpenFullEqualizer => IsFr ? "Ouvrir l'\u00e9galiseur complet" : "Open full equalizer";
+
+    // Parametres > Traitement audio : audio ducking
+    public string SettingsPage_Header_Ducking => IsFr ? "Baisser la musique quand une application fait du son (ducking)" : "Lower the music when an app plays sound (ducking)";
+    public string SettingsPage_Text_DuckingDesc => IsFr ? "Baisse automatiquement le volume de Resona d\u00e8s que l'application choisie \u00e9met du son (Discord, jeu, visio...), puis le remonte quand elle se tait." : "Automatically lowers Resona's volume as soon as the chosen app plays sound (Discord, game, video call...), then brings it back when it goes quiet.";
+    public string SettingsPage_Text_DuckingApp => IsFr ? "Application \u00e0 surveiller" : "App to monitor";
+    public string SettingsPage_Text_DuckingAppPlaceholder => IsFr ? "Choisir une application" : "Choose an app";
+    public string SettingsPage_Text_DuckingRefresh => IsFr ? "Actualiser" : "Refresh";
+    public string SettingsPage_Text_DuckingAppHint => IsFr ? "Seules les applications qui ont une session audio apparaissent : lance l'application, fais-lui jouer un son, puis actualise." : "Only apps with an audio session are listed: start the app, make it play a sound, then refresh.";
+    public string SettingsPage_Text_DuckingReduction => IsFr ? "R\u00e9duction du volume" : "Volume reduction";
+    public string SettingsPage_Text_DuckingSensitivity => IsFr ? "Sensibilit\u00e9 (seuil de d\u00e9tection)" : "Sensitivity (detection threshold)";
+    public string SettingsPage_Text_DuckingMute => IsFr ? "Coupure totale (muet)" : "Total mute";
+    public string SettingsPage_Text_DuckingMuteShort => IsFr ? "Muet" : "Mute";
+    public string SettingsPage_Text_DuckingAttack => IsFr ? "Dur\u00e9e de la baisse" : "Lowering time";
+    public string SettingsPage_Text_DuckingHold => IsFr ? "D\u00e9lai avant de remonter" : "Delay before restoring";
+    public string SettingsPage_Text_DuckingRelease => IsFr ? "Dur\u00e9e de la remont\u00e9e" : "Restore time";
+    public string SettingsPage_Text_DuckingCurve => IsFr ? "Pente (forme de la courbe)" : "Slope (curve shape)";
+    public string SettingsPage_Text_DuckingCurveLinear => IsFr ? "Lin\u00e9aire" : "Linear";
+    public string SettingsPage_Text_DuckingCurveSmooth => IsFr ? "Progressive (en S)" : "Smooth (S-curve)";
+    public string SettingsPage_Text_DuckingCurveFast => IsFr ? "Rapide puis douce" : "Fast then gentle";
+
+    // Parametres > Traitement audio : ignorer les silences au debut et a la fin des sons
+    public string SettingsPage_Header_PartyMode => IsFr ? "Mode soir\u00e9e (encha\u00eenement intelligent)" : "Party mode (smart transitions)";
+    public string SettingsPage_Text_PartyModeDesc => IsFr ? "Encha\u00eene les sons comme en soir\u00e9e : la transition vers le son suivant d\u00e9marre quelques secondes avant la fin du son en cours, m\u00eame s'il reste de l'audio, avec un fondu de dur\u00e9e fixe. Le son suivant d\u00e9marre \u00e0 son premier passage audible. Active d'office le fondu encha\u00een\u00e9 et le saut des silences, qui sont donc verrouill\u00e9s ci-dessous." : "Chains tracks like a party: the transition to the next track starts a few seconds before the current one ends, even if audio remains, using a fixed-length fade. The next track starts at its first audible moment. Automatically turns on crossfade and silence skipping, so they are locked below.";
+    public string SettingsPage_Header_SkipSilence => IsFr ? "Ignorer les silences au d\u00e9but et \u00e0 la fin des sons" : "Skip silence at the start and end of tracks";
+    public string SettingsPage_Text_SkipSilenceDesc => IsFr ? "Saute automatiquement les silences au d\u00e9but et \u00e0 la fin de chaque son. Les silences au milieu d'un son ne sont pas touch\u00e9s. Pris en compte \u00e0 partir du prochain son lanc\u00e9." : "Automatically skips the silence at the start and end of each track. Silence in the middle of a track is left untouched. Applies from the next track you play.";
 public static Strings Current => _current ??= new Strings();
 
 
@@ -239,6 +264,7 @@ public static Strings Current => _current ??= new Strings();
     public string CS_ClearCacheDialogTitle => IsFr ? "Vider le cache" : "Clear cache";
     public string CS_ClearCacheDialogCovers => IsFr ? "Pochettes" : "Covers";
     public string CS_ClearCacheDialogLyrics => IsFr ? "Paroles" : "Lyrics";
+    public string CS_ClearCacheCustomLyrics => IsFr ? "Paroles personnalis\u00e9es (choisies ou modifi\u00e9es \u00e0 la main)" : "Custom lyrics (picked or edited by hand)";
     
     
     public string CS_ClearCacheNormalization => IsFr ? "Normalisation" : "Normalization";
@@ -332,7 +358,7 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string PlaylistDetailPage_ToolTipService_ToolTip_Supprimer => IsFr ? "Supprimer" : "Delete";
     public string PlaylistsPage_Text_Ajoutrcent => IsFr ? "Ajout récent" : "Recently added";
     public string PlaylistsPage_Text_Gnreruneplaylistavec => IsFr ? "Générer avec l'IA" : "Generate with AI";
-    public string PlaylistsPage_Text_Importerm3um3u8 => IsFr ? "Importer (.m3u / .m3u8)" : "Import (.m3u / .m3u8)";
+    public string PlaylistsPage_Text_Importerm3um3u8 => IsFr ? "Importer (.m3u, .csv...)" : "Import (.m3u, .csv...)";
     public string PlaylistsPage_Text_NomAgtZ => IsFr ? "Nom (A-Z)" : "Name (A-Z)";
     public string PlaylistsPage_Text_NomZgtA => IsFr ? "Nom (Z-A)" : "Name (Z-A)";
     public string PlaylistsPage_Text_Nombredesons => IsFr ? "Nombre de sons" : "Number of tracks";
@@ -359,6 +385,13 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string SettingsPage_Content_Activ => IsFr ? "Activé" : "Enabled";
     public string SettingsPage_Content_Ajouterundossierdemu => IsFr ? "Ajouter un dossier de musique" : "Add a music folder";
     public string SettingsPage_Content_RescanFolders => IsFr ? "Scanner manuellement les dossiers" : "Manually scan folders";
+    public string QualityCheck_Title => IsFr ? "Contrôle qualité de la bibliothèque" : "Library quality check";
+    public string QualityCheck_Desc => IsFr
+        ? "Détecte les sons sans cover, les fichiers corrompus ou introuvables, les doublons et les tags incohérents, avec des corrections rapides suggérées."
+        : "Detects tracks without cover, corrupted or missing files, duplicates and inconsistent tags, with quick suggested fixes.";
+    public string QualityCheck_Button => IsFr ? "Analyser la bibliothèque" : "Analyze library";
+    public string SettingsPage_Header_WatchFolders => IsFr ? "Surveillance automatique des dossiers" : "Watch music folders automatically";
+    public string SettingsPage_Text_WatchFoldersDesc => IsFr ? "Détecte automatiquement les ajouts, modifications et suppressions de fichiers musicaux sans devoir rescanner toute la bibliothèque." : "Automatically detects added, modified, or deleted music files without rescanning the entire library.";
     public string SettingsPage_Content_RemoveFolder => IsFr ? "Retirer" : "Remove";
     public string SettingsPage_Content_Albums => IsFr ? "Albums" : "Albums";
     public string SettingsPage_Content_Artistes => IsFr ? "Artistes" : "Artists";
@@ -422,6 +455,8 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string SettingsPage_Header_Dmarrerdirectementen => IsFr ? "Démarrer réduit (zone de notification)" : "Start minimized (system tray)";
     public string SettingsPage_Header_Modeaudioexclusifqua => IsFr ? "Mode audio exclusif" : "Exclusive audio mode";
     public string SettingsPage_Header_Normalisationduvolum => IsFr ? "Normalisation du volume" : "Volume normalization";
+    public string SettingsPage_Header_WeightedShuffle => IsFr ? "Lecture aléatoire pondérée" : "Weighted shuffle";
+    public string SettingsPage_Text_WeightedShuffleDesc => IsFr ? "Évite de rejouer trop souvent les mêmes morceaux dans la bibliothèque en favorisant les titres moins écoutés ou oubliés." : "Avoids replaying the same tracks too often in the library by favoring less played or forgotten songs.";
     public string SettingsPage_Header_Rduiredanslabarredes => IsFr ? "Réduire dans la barre des tâches" : "Minimize to taskbar";
     public string SettingsPage_Header_Rechercheautomatique => IsFr ? "Recherche automatique de pochettes" : "Automatic cover search";
     public string SettingsPage_Text_RechercheautomatiqueDesc => IsFr ? "Télécharge automatiquement les pochettes manquantes depuis Internet." : "Automatically downloads missing cover art from the internet.";
@@ -449,6 +484,10 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string SettingsPage_Text_Legradientdbordeaude => IsFr ? "Le gradient déborde au-dessus du lecteur pour un effet visuel plus immersif." : "The gradient overflows above the player for a more immersive visual effect.";
     public string SettingsPage_Header_GradientDansLeLecteur => IsFr ? "Gradient du lecteur" : "Player gradient";
     public string SettingsPage_Text_GradientDansLeLecteurDesc => IsFr ? "Affiche un gradient de la couleur de la pochette dans le lecteur. Désactivé, le débordement du gradient est aussi désactivé." : "Shows a gradient based on the cover color inside the player. When disabled, the gradient overflow is disabled too.";
+    public string SettingsPage_Header_AudioReactiveTheme => IsFr ? "Thème réactif au son" : "Audio-reactive theme";
+    public string SettingsPage_Text_AudioReactiveThemeDesc => IsFr ? "Fait réagir dynamiquement les couleurs et nuances du thème sélectionné au rythme de la musique." : "Dynamically modulates the selected theme's colors and shades to the rhythm of the music.";
+    public string SettingsPage_Header_NowPlayingEqualizer => IsFr ? "Animation égaliseur sur la grosse cover" : "Equalizer animation on the large cover";
+    public string SettingsPage_Text_NowPlayingEqualizerDesc => IsFr ? "Affiche une animation d'égaliseur (barres animées au rythme de la musique) en bas de la grosse cover centrale du lecteur." : "Shows an equalizer animation (bars moving to the rhythm of the music) at the bottom of the large central cover in the player view.";
     public string SettingsPage_Text_Meilleurequalitsourc => IsFr ? "Meilleure qualité source (WAV)" : "Best source quality (WAV)";
     public string SettingsPage_Text_NcessiteRduireenbarr => IsFr ? "Nécessite d'activer les options 'Réduire dans la barre des tâches' et 'Démarrer avec Windows'." : "Requires enabling the 'Minimize to taskbar' and 'Start with Windows' options.";
     public string SettingsPage_Text_Playlists => IsFr ? "Playlists" : "Playlists";
@@ -513,12 +552,14 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string Backup_Cat_PlaylistsDesc => IsFr ? "Avec leurs pochettes personnalis\u00e9es" : "Including their custom covers";
     public string Backup_Cat_Statistics => IsFr ? "Statistiques d'\u00e9coute" : "Listening statistics";
     public string Backup_Cat_StatisticsDesc => IsFr ? "Nombre d'\u00e9coutes par titre et temps d'\u00e9coute total" : "Play counts per track and total listening time";
-    public string Backup_Cat_Ai => IsFr ? "Donn\u00e9es IA" : "AI data";
+    public string Backup_Cat_Ai => IsFr ? "Donn\u00e9es d'affichage (IA incluse)" : "Display data (AI included)";
     public string Backup_Cat_AiDesc => IsFr
-        ? "Correspondances artistes / albums / genres et sauvegarde des tags (ai_backup.json)"
-        : "Artist / album / genre mappings and tag backup (ai_backup.json)";
+        ? "Tout ce que tu as modifi\u00e9 uniquement dans l'app, sans toucher aux fichiers audio : titre, artiste, album, genre, ann\u00e9e, n\u00b0 de piste et pochette de chaque son (choisie ou r\u00e9cup\u00e9r\u00e9e automatiquement), renommages d'artistes / albums / genres (dont ceux du nettoyage IA). L'export lit les tags de tous les fichiers : il peut prendre un moment et alourdir le fichier."
+        : "Everything you changed only inside the app, without touching the audio files: each track's title, artist, album, genre, year, track number and cover (picked or fetched automatically), artist / album / genre renames (including those from the AI cleanup). Exporting reads the tags of every file, so it can take a moment and make the file larger.";
     public string Backup_Cat_Lyrics => IsFr ? "Paroles en cache" : "Cached lyrics";
     public string Backup_Cat_LyricsDesc => IsFr ? "Peut alourdir nettement le fichier" : "Can make the file significantly larger";
+    public string Backup_Cat_LyricsEdits => IsFr ? "Paroles personnalis\u00e9es" : "Custom lyrics";
+    public string Backup_Cat_LyricsEditsDesc => IsFr ? "Paroles que tu as choisies ou modifi\u00e9es \u00e0 la main (impossibles \u00e0 re-t\u00e9l\u00e9charger)" : "Lyrics you picked or edited by hand (cannot be downloaded again)";
 
     public string Backup_NothingSelected => IsFr ? "S\u00e9lectionne au moins une cat\u00e9gorie." : "Select at least one category.";
     public string Backup_ImportNote => IsFr
@@ -536,9 +577,9 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
     public string Backup_ReportFolders => IsFr ? "Dossiers : {0} ajout\u00e9(s), {1} introuvable(s) sur ce PC (ignor\u00e9s)" : "Folders: {0} added, {1} not found on this PC (skipped)";
     public string Backup_ReportPlaylists => IsFr ? "Playlists : {0} import\u00e9e(s), {1} titre(s) ajout\u00e9(s), {2} titre(s) introuvable(s) dans ta biblioth\u00e8que" : "Playlists: {0} imported, {1} track(s) added, {2} track(s) not found in your library";
     public string Backup_ReportStats => IsFr ? "Statistiques : {0} titre(s) mis \u00e0 jour" : "Statistics: {0} track(s) updated";
-    public string Backup_ReportAi => IsFr ? "Donn\u00e9es IA : {0} correspondance(s) fusionn\u00e9e(s)" : "AI data: {0} mapping(s) merged";
-    public string Backup_ReportAiBackupKept => IsFr ? "Sauvegarde des tags IA : conserv\u00e9e (une existe d\u00e9j\u00e0 sur ce PC)" : "AI tag backup: kept (one already exists on this PC)";
-    public string Backup_ReportAiBackupWritten => IsFr ? "Sauvegarde des tags IA : import\u00e9e" : "AI tag backup: imported";
+    public string Backup_ReportAi => IsFr ? "Donn\u00e9es d'affichage : {0} correspondance(s) fusionn\u00e9e(s)" : "Display data: {0} mapping(s) merged";
+    public string Backup_ReportDisplayEdits => IsFr ? "Modifs d'affichage des sons : {0} appliqu\u00e9e(s), {1} son(s) introuvable(s) dans ta biblioth\u00e8que" : "Track display edits: {0} applied, {1} track(s) not found in your library";
+    public string Backup_ReportLyricsEdits => IsFr ? "Paroles personnalis\u00e9es : {0} ajout\u00e9e(s), {1} d\u00e9j\u00e0 pr\u00e9sente(s) sur ce PC (conserv\u00e9es), {2} titre(s) introuvable(s)" : "Custom lyrics: {0} added, {1} already on this PC (kept), {2} track(s) not found";
     public string Backup_ReportLyrics => IsFr ? "Paroles : {0} titre(s) compl\u00e9t\u00e9(s)" : "Lyrics: {0} track(s) filled in";
     public string Backup_ReportSafety => IsFr ? "Ancien \u00e9tat sauvegard\u00e9 dans :" : "Previous state saved to:";
     public string Backup_RestartPrompt => IsFr ? "Resona doit red\u00e9marrer pour appliquer l'import." : "Resona needs to restart to apply the import.";
@@ -617,6 +658,8 @@ public string CS_DeleteTracksTitle => IsFr ? "Supprimer ces sons ?" : "Delete th
 
 
     public string SettingsPage_Text_MiniPlayerAlwaysOnTopDesc => IsFr ? "Nécessite d'activer le bouton Mini lecteur." : "Requires the Mini player button to be enabled.";
-    public string SettingsPage_Text_DiscordDesc => IsFr ? "Affiche la musique que vous écoutez sur votre profil Discord." : "Displays the music you are listening to on your Discord profile.";
+    public string SettingsPage_Text_DiscordDesc => IsFr
+        ? "Affiche la musique que vous écoutez sur votre profil Discord. La pochette est d'abord recherchée en ligne ; si elle n'est pas trouvée, elle est envoyée (redimensionnée, jamais le fichier audio) sur un hébergeur d'images temporaire pour que Discord puisse l'afficher. À défaut, le logo Resona est affiché."
+        : "Displays the music you are listening to on your Discord profile. The cover is first looked up online; if it can't be found, it is uploaded (resized, never the audio file) to a temporary image host so Discord can display it. Otherwise, the Resona logo is shown.";
 
 }

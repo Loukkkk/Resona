@@ -28,6 +28,7 @@ public sealed partial class DownloadPage : Page
 	public DownloadPage()
 	{
 		InitializeComponent();
+		InitPlaylistUi();
 		base.Loaded += async delegate
 		{
 			await CheckAndInstallBinariesAsync();
@@ -108,6 +109,11 @@ public sealed partial class DownloadPage : Page
 	private async void SearchButton_Click(object sender, RoutedEventArgs e)
 	{
 		string text = SearchBox.Text.Trim();
+		if (_playlistSearchMode && !string.IsNullOrWhiteSpace(text))
+		{
+			await SearchPlaylistsAsync(text);
+			return;
+		}
 		if (string.IsNullOrWhiteSpace(text))
 		{
 			return;
@@ -284,10 +290,10 @@ public sealed partial class DownloadPage : Page
 	private async void DownloadButton_Click(object sender, RoutedEventArgs e)
 	{
 		string url = UrlBox.Text.Trim();
-		await StartDownloadAsync(url);
+		await HandleUrlDownloadAsync(url);
 	}
 
-	private async Task StartDownloadAsync(string url)
+	private async Task StartDownloadAsync(string url, string? playlistItems = null, bool noPlaylist = false)
 	{
 		if (_isDownloading)
 		{
@@ -314,12 +320,16 @@ public sealed partial class DownloadPage : Page
 			ProgressRing.IsActive = true;
 			StatusText.Text = Models.Strings.Current.IsFr ? "Préparation..." : "Preparing...";
 			LogBox.Text = string.Empty;
+			// Heure de debut : une playlist peut durer bien plus de 30 s, on retrouve tous les fichiers crees depuis ce moment.
+			DateTime startedUtc = DateTime.UtcNow.AddSeconds(-5.0);
 			DownloadOptions opts = new DownloadOptions
 			{
 				OutputDirectory = outputDir,
 				Format = current.DownloadFormat,
 				Codec = current.DownloadCodec,
-				Bitrate = current.DownloadBitrate
+				Bitrate = current.DownloadBitrate,
+				PlaylistItems = playlistItems,
+				NoPlaylist = noPlaylist
 			};
 			try
 			{
@@ -333,7 +343,7 @@ public sealed partial class DownloadPage : Page
 				});
 				StatusText.Text = Models.Strings.Current.IsFr ? "\u2705 T\u00E9l\u00E9chargement termin\u00E9 !" : "\u2705 Download complete!";
 				await Task.Delay(1000);
-				DateTime cutoff = DateTime.UtcNow.AddSeconds(-30.0);
+				DateTime cutoff = startedUtc;
 				List<string> list = (from f in Directory.GetFiles(outputDir)
 					where File.GetLastWriteTimeUtc(f) >= cutoff
 					where f.EndsWith(".mp3") || f.EndsWith(".flac") || f.EndsWith(".opus") || f.EndsWith(".m4a") || f.EndsWith(".wav")

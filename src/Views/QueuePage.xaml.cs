@@ -31,6 +31,9 @@ public sealed partial class QueuePage : Page
 
 	private Grid? _activeIndicatorGrid;
 
+	// Garde-fou : masque l'icone lecture/pause de toute cover qui n'est plus sous la souris (evenements "sortie" manques).
+	private Helpers.CoverOverlayGuard? _coverGuard;
+
 	private DispatcherTimer? _rmsTimer;
 
 	private float _smoothedRms;
@@ -42,6 +45,7 @@ public sealed partial class QueuePage : Page
 	public QueuePage()
 	{
 		InitializeComponent();
+		_coverGuard = new Helpers.CoverOverlayGuard(TrackListView, resetScale: true);
 		StartRmsTimer();
 		base.Loaded += delegate
 		{

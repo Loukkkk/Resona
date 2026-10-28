@@ -260,7 +260,7 @@ public sealed partial class GenresPage : Page
 
 		private void ShuffleAll_Click(object sender, RoutedEventArgs e)
 	{
-		var listQuery = from g in _library.GroupBy<Track, string>(t => string.IsNullOrWhiteSpace(t.Genre) ? "Genre inconnu" : t.DisplayGenre, StringComparer.OrdinalIgnoreCase)
+		var listQuery = from g in _library.GroupBy<Track, string>(GenreKey, StringComparer.OrdinalIgnoreCase)
 						where string.IsNullOrWhiteSpace(SearchBox.Text) || g.Key.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase)
 						select g;
         var groups = listQuery.ToList();
@@ -380,7 +380,7 @@ public sealed partial class GenresPage : Page
 
 
 
-			string key = (string.IsNullOrWhiteSpace(track.DisplayGenre) ? "Genre inconnu" : track.DisplayGenre);
+			string key = GenreKey(track);
 
 
 
@@ -608,6 +608,10 @@ public sealed partial class GenresPage : Page
 
 
 
+	private static bool IsUnknownGenreName(string g) =>
+		g.Equals("Unknown", StringComparison.OrdinalIgnoreCase) || g.Equals("Inconnu", StringComparison.OrdinalIgnoreCase)
+		|| g.Equals("Unknown genre", StringComparison.OrdinalIgnoreCase) || g.Equals("Genre inconnu", StringComparison.OrdinalIgnoreCase);
+
 	private static string GenreKey(Track t)
 
 
@@ -616,7 +620,7 @@ public sealed partial class GenresPage : Page
 
 
 
-		if (!string.IsNullOrWhiteSpace(t.Genre))
+		if (!string.IsNullOrWhiteSpace(t.DisplayGenre) && !IsUnknownGenreName(t.DisplayGenre))
 
 
 

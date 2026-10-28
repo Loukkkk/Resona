@@ -142,8 +142,8 @@ public sealed partial class AlbumsPage : Page
 
 		private void ShuffleAll_Click(object sender, RoutedEventArgs e)
 	{
-		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => (t.Album ?? "") + "|||" + (string.IsNullOrWhiteSpace(t.AlbumArtist) ? (t.Artist ?? "") : t.AlbumArtist), StringComparer.OrdinalIgnoreCase)
-				where !string.IsNullOrWhiteSpace(g.First().Album) && (string.IsNullOrWhiteSpace(SearchBox.Text) || g.First().Album.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase))
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => (t.DisplayAlbum ?? "") + "|||" + (string.IsNullOrWhiteSpace(t.AlbumArtist) ? (t.Artist ?? "") : t.AlbumArtist), StringComparer.OrdinalIgnoreCase)
+				where !string.IsNullOrWhiteSpace(g.First().DisplayAlbum) && (string.IsNullOrWhiteSpace(SearchBox.Text) || g.First().DisplayAlbum.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(SearchBox.Text, StringComparison.OrdinalIgnoreCase))
 				select g;
         var groups = listQuery.ToList();
         if (groups.Count > 0)
@@ -151,7 +151,7 @@ public sealed partial class AlbumsPage : Page
             Random random = new Random();
             var randomGroup = groups[random.Next(groups.Count)];
             List<Track> tracks = randomGroup.OrderBy(t => t.TrackNumber).ToList();
-            string title = randomGroup.First().Album;
+            string title = randomGroup.First().DisplayAlbum;
             App.MainWindowInstance?.ShowTrackCollection(title, tracks, randomGroup.First().Artist);
             Track randomTrack = tracks[random.Next(tracks.Count)];
             App.MainWindowInstance?.SetShuffleModeAndPlay(randomTrack, tracks);
@@ -793,8 +793,8 @@ public sealed partial class AlbumsPage : Page
 
 
 
-		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => (t.Album ?? "") + "|||" + (string.IsNullOrWhiteSpace(t.AlbumArtist) ? (t.Artist ?? "") : t.AlbumArtist), StringComparer.OrdinalIgnoreCase)
-				where !string.IsNullOrWhiteSpace(g.First().Album) && (string.IsNullOrWhiteSpace(filter) || g.First().Album.Contains(filter, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(filter, StringComparison.OrdinalIgnoreCase))
+		var listQuery = from g in _library.GroupBy<Track, string>((Track t) => (t.DisplayAlbum ?? "") + "|||" + (string.IsNullOrWhiteSpace(t.AlbumArtist) ? (t.Artist ?? "") : t.AlbumArtist), StringComparer.OrdinalIgnoreCase)
+				where !string.IsNullOrWhiteSpace(g.First().DisplayAlbum) && (string.IsNullOrWhiteSpace(filter) || g.First().DisplayAlbum.Contains(filter, StringComparison.OrdinalIgnoreCase) || g.First().Artist.Contains(filter, StringComparison.OrdinalIgnoreCase))
 				select g;
 		
 		IEnumerable<IGrouping<string, Track>> listOrdered = _currentSort switch
@@ -810,7 +810,7 @@ public sealed partial class AlbumsPage : Page
 			_ => listQuery.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
 		};
 
-		List<(string, List<Track>)> list = listOrdered.Select(g => (g.First().Album, g.OrderBy(t => t.TrackNumber).ToList())).ToList();
+		List<(string, List<Track>)> list = listOrdered.Select(g => (g.First().DisplayAlbum, g.OrderBy(t => t.TrackNumber).ToList())).ToList();
 
 
 
@@ -1684,7 +1684,7 @@ public sealed partial class AlbumsPage : Page
 
 
 
-				App.MainWindowInstance?.PlayTrack(tracks[0], tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "L'album : " : "Album: ") + tracks[0].Album);
+				App.MainWindowInstance?.PlayTrack(tracks[0], tracks, false, false, (Resona.Models.Strings.Current.IsFr ? "L'album : " : "Album: ") + tracks[0].DisplayAlbum);
 
 
 

@@ -5,9 +5,12 @@
 //    settings.json    : reglages de l'app (sans les dossiers / chemins / positions propres a ce PC)
 //    folders.json     : dossiers de musique, dossier de telechargement, fichiers exclus
 //    playlists.json   : playlists + Favoris (titres references par chemin, pas par identifiant interne) + covers/
-//    statistics.json  : nombre d'ecoutes par titre + temps d'ecoute total
-//    ai.json          : correspondances artistes / albums / genres + contenu de ai_backup.json
+//    statistics.json  : nombre d'ecoutes par titre + temps d'ecoute total + historique date des ecoutes (Year in review)
+//    display.json     : donnees d'affichage : correspondances artistes / albums / genres, modifs titre par titre (titre, artiste, album,
+//                       genre, annee, n° de piste : uniquement dans l'app, fichiers audio intacts), pochettes (choisies ou automatiques,
+//                       hors celles deja integrees au fichier audio). Ancien nom : ai.json (toujours importable).
 //    lyrics.json      : paroles en cache
+//    lyrics_edits.json: paroles personnalisees (choisies ou modifiees a la main, non re-telechargeables)
 //  Les identifiants de titres (Guid) sont propres a chaque base : on exporte donc les titres par chemin de fichier
 //  (+ artiste / titre / duree) et on refait la correspondance a l'import.
 // ============================================================
@@ -23,7 +26,7 @@ using Resona.Models;
 
 namespace Resona.Services;
 
-public enum BackupCategory { Settings, Folders, Playlists, Statistics, AiData, Lyrics }
+public enum BackupCategory { Settings, Folders, Playlists, Statistics, AiData, Lyrics, LyricsEdits }
 
 public sealed class BackupManifest
 {
@@ -39,9 +42,11 @@ public sealed class BackupImportReport
     public int  FoldersAdded, FoldersSkipped;
     public int  PlaylistsImported, PlaylistTracksAdded, PlaylistTracksMissing;
     public int  StatsUpdated;
+    public int  HistoryEventsAdded;
     public int  AiMappingsMerged;
-    public bool AiBackupWritten, AiBackupKept;
+    public int  DisplayEditsApplied, DisplayEditsMissing;
     public int  LyricsApplied;
+    public int  LyricsEditsApplied, LyricsEditsKept, LyricsEditsMissing;
     public string? SafetyBackupPath;
 }
 
@@ -62,13 +67,22 @@ internal sealed class BackupPlaylist
     public DateTime DateCreated  { get; set; } = DateTime.UtcNow;
     public DateTime DateModified { get; set; } = DateTime.UtcNow;
     public string?  CoverFile    { get; set; }
+    // Playlist intelligente : regles (JSON). Absent des anciennes sauvegardes (null = playlist classique).
+    public string?  SmartRulesJson { get; set; }
     public List<BackupTrackRef> Tracks { get; set; } = new();
 }
 
 internal sealed class BackupPlaylistsFile { public List<BackupPlaylist> Playlists { get; set; } = new(); }
 
 internal sealed class BackupStatItem { public BackupTrackRef Track { get; set; } = new(); public int Count { get; set; } }
-internal sealed class BackupStatsFile { public long ListenSeconds { get; set; } public List<BackupStatItem> Items { get; set; } = new(); }
+internal sealed class BackupStatsFile
+{
+    public long ListenSeconds { get; set; }
+    public List<BackupStatItem> Items { get; set; } = new();
+    // Historique date des ecoutes (Year in review). Absent des anciennes sauvegardes : on n'y touche pas dans ce cas.
+    public List<PlayEvent>? History { get; set; }
+    public DateTime? HistoryStartUtc { get; set; }
+}
 
 internal sealed class BackupFoldersFile
 {
@@ -77,16 +91,45 @@ internal sealed class BackupFoldersFile
     public string       DownloadFolder     { get; set; } = "";
 }
 
+internal sealed class BackupDisplayEdit
+{
+    // Titre référencé par ses tags d'ORIGINE (ceux du fichier) pour être retrouvé sur un PC où la modif n'est pas encore appliquée.
+    public BackupTrackRef Track { get; set; } = new();
+    // null = champ inchangé par rapport au fichier.
+    public string? Title { get; set; }
+    public string? Artist { get; set; }
+    public string? Album { get; set; }
+    public string? Genre { get; set; }
+    // Artiste de l'album : absent des anciennes sauvegardes (null = inchange).
+    public string? AlbumArtist { get; set; }
+    public int? Year { get; set; }
+    public int? TrackNumber { get; set; }
+    public string? CoverFile { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? LocalCoverPath { get; set; }
+}
+
 internal sealed class BackupAiFile
 {
     public Dictionary<string, string> ArtistMappings { get; set; } = new();
     public Dictionary<string, string> AlbumMappings  { get; set; } = new();
     public Dictionary<string, string> GenreMappings  { get; set; } = new();
-    public string? TagBackupJson { get; set; }
+    // Genre par titre (clé « Artiste - Titre ») : absent des anciennes sauvegardes.
+    public Dictionary<string, string> TrackGenreMappings { get; set; } = new();
+    // Absent des anciennes sauvegardes : on n'y touche pas dans ce cas.
+    public List<BackupDisplayEdit>? TrackEdits { get; set; }
 }
 
-internal sealed class BackupLyricsItem { public string Path { get; set; } = ""; public string Lyrics { get; set; } = ""; public bool Synced { get; set; } }
-internal sealed class BackupLyricsFile { public List<BackupLyricsItem> Items { get; set; } = new(); }
+internal sealed class BackupLyricsItem { public string Path { get; set; } = ""; public string Lyrics { get; set; } = ""; public bool Synced { get; set; } public double? Offset { get; set; } }
+// Paroles choisies a la main (selecteur) : le titre est reference par chemin + artiste + titre + duree pour etre retrouve sur un autre PC.
+internal sealed class BackupLyricsOverrideItem { public BackupTrackRef Track { get; set; } = new(); public string Lyrics { get; set; } = ""; public bool Synced { get; set; } public string Label { get; set; } = ""; public double? Offset { get; set; } }
+internal sealed class BackupLyricsFile
+{
+    public List<BackupLyricsItem> Items { get; set; } = new();
+    public List<BackupLyricsOverrideItem> Overrides { get; set; } = new();
+}
+
+// Paroles personnalisees : a part des paroles en cache (lourdes, re-telechargeables) car petites et impossibles a retrouver.
+internal sealed class BackupLyricsEditsFile { public List<BackupLyricsOverrideItem> Items { get; set; } = new(); }
 
 public static class DataTransferService
 {
@@ -94,8 +137,10 @@ public static class DataTransferService
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
     private static string AppDataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resona");
-    private static string AiBackupPath => Path.Combine(AppDataDir, "ai_backup.json");
     public static string BackupsDir => Path.Combine(AppDataDir, "backups");
+
+    // Ancien nom du fichier des donnees d'affichage : les sauvegardes deja exportees restent importables.
+    private const string LegacyAiEntryName = "ai.json";
 
     public static string SuggestedFileName() => $"Resona-backup-{DateTime.Now:yyyyMMdd}.zip";
 
@@ -105,8 +150,9 @@ public static class DataTransferService
         BackupCategory.Folders    => "folders.json",
         BackupCategory.Playlists  => "playlists.json",
         BackupCategory.Statistics => "statistics.json",
-        BackupCategory.AiData     => "ai.json",
+        BackupCategory.AiData     => "display.json",
         BackupCategory.Lyrics     => "lyrics.json",
+        BackupCategory.LyricsEdits => "lyrics_edits.json",
         _ => "",
     };
 
@@ -146,7 +192,7 @@ public static class DataTransferService
         s.WindowX = -1; s.WindowY = -1; s.WindowWidth = 1200; s.WindowHeight = 800;
         s.LastKnownVersion = ""; s.LastSeenVersion = ""; s.LastYtDlpUpdateCheckUtc = "";
         s.SavedQueueIds = new();
-        s.ArtistMappings = new(); s.AlbumMappings = new(); s.GenreMappings = new();
+        s.ArtistMappings = new(); s.AlbumMappings = new(); s.GenreMappings = new(); s.TrackGenreMappings = new();
         return s;
     }
 
@@ -190,7 +236,8 @@ public static class DataTransferService
                         var dto = new BackupPlaylist
                         {
                             Id = p.Id, Name = p.Name, IsSystem = p.IsSystem,
-                            DateCreated = p.DateCreated, DateModified = p.DateModified
+                            DateCreated = p.DateCreated, DateModified = p.DateModified,
+                            SmartRulesJson = p.SmartRulesJson
                         };
                         foreach (string id in p.TrackIds)
                             if (byId.TryGetValue(id, out var t)) dto.Tracks.Add(ToRef(t));
@@ -219,6 +266,10 @@ public static class DataTransferService
                     var file = new BackupStatsFile { ListenSeconds = App.PlayStats.ListenSeconds };
                     foreach (var kv in App.PlayStats.SnapshotCounts())
                         if (byId.TryGetValue(kv.Key, out var t)) file.Items.Add(new BackupStatItem { Track = ToRef(t), Count = kv.Value });
+                    // Historique date : les evenements embarquent deja titre / artiste / album / genre (pas besoin de la bibliotheque).
+                    App.PlayHistory.Flush();
+                    file.History = App.PlayHistory.Snapshot();
+                    file.HistoryStartUtc = App.PlayHistory.TrackingStartUtc;
                     await WriteJsonAsync(zip, EntryName(BackupCategory.Statistics), file);
                 }
 
@@ -230,8 +281,30 @@ public static class DataTransferService
                         ArtistMappings = new(cur.ArtistMappings),
                         AlbumMappings = new(cur.AlbumMappings),
                         GenreMappings = new(cur.GenreMappings),
+                        TrackGenreMappings = new(cur.TrackGenreMappings),
                     };
-                    try { if (System.IO.File.Exists(AiBackupPath)) file.TagBackupJson = await System.IO.File.ReadAllTextAsync(AiBackupPath); } catch { }
+
+                    // Modifs d'affichage titre par titre (DB uniquement) : on ne garde que ce qui diffère des tags du fichier.
+                    var edits = await CollectDisplayEditsAsync(await Tracks());
+                    int coverIndex = 0;
+                    var writtenCovers = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);   // une pochette partagée (album) n'est écrite qu'une fois
+                    foreach (var ed in edits)
+                    {
+                        if (string.IsNullOrEmpty(ed.LocalCoverPath)) continue;
+                        if (writtenCovers.TryGetValue(ed.LocalCoverPath, out string? already)) { ed.CoverFile = already; continue; }
+                        try
+                        {
+                            string name = $"display-covers/{++coverIndex}{Path.GetExtension(ed.LocalCoverPath).ToLowerInvariant()}";
+                            var entry = zip.CreateEntry(name, CompressionLevel.NoCompression);
+                            using (var es = entry.Open())
+                            using (var src = System.IO.File.OpenRead(ed.LocalCoverPath))
+                                await src.CopyToAsync(es);
+                            ed.CoverFile = name;
+                        }
+                        catch { ed.CoverFile = null; }
+                        writtenCovers[ed.LocalCoverPath] = ed.CoverFile;
+                    }
+                    file.TrackEdits = edits;
                     await WriteJsonAsync(zip, EntryName(BackupCategory.AiData), file);
                 }
 
@@ -239,9 +312,37 @@ public static class DataTransferService
                 {
                     var file = new BackupLyricsFile();
                     foreach (var t in await Tracks())
+                    {
                         if (!string.IsNullOrWhiteSpace(t.Lyrics))
-                            file.Items.Add(new BackupLyricsItem { Path = t.FilePath, Lyrics = t.Lyrics!, Synced = t.LyricsSynced });
+                            file.Items.Add(new BackupLyricsItem
+                            {
+                                Path = t.FilePath,
+                                Lyrics = t.Lyrics!,
+                                Synced = t.LyricsSynced,
+                                // Le decalage de synchro suit les paroles : ici celles du cache (celles des titres personnalises partent avec eux).
+                                Offset = LyricsOverrideService.TryGet(t.FilePath, out _) ? null : App.MainWindowInstance?.GetLyricsOffsetSeconds(t.FilePath)
+                            });
+                    }
                     await WriteJsonAsync(zip, EntryName(BackupCategory.Lyrics), file);
+                }
+
+                // Paroles personnalisees (choisies ou modifiees a la main) : exportees avec la reference du titre (chemin, artiste, titre, duree).
+                if (categories.Contains(BackupCategory.LyricsEdits))
+                {
+                    var file = new BackupLyricsEditsFile();
+                    foreach (var t in await Tracks())
+                    {
+                        if (LyricsOverrideService.TryGet(t.FilePath, out var custom))
+                            file.Items.Add(new BackupLyricsOverrideItem
+                            {
+                                Track = new BackupTrackRef { Path = t.FilePath, Artist = t.Artist, Title = t.Title, Seconds = t.Duration.TotalSeconds },
+                                Lyrics = custom.Lyrics,
+                                Synced = custom.Synced,
+                                Label = custom.Label,
+                                Offset = App.MainWindowInstance?.GetLyricsOffsetSeconds(t.FilePath)
+                            });
+                    }
+                    await WriteJsonAsync(zip, EntryName(BackupCategory.LyricsEdits), file);
                 }
             }
 
@@ -252,6 +353,90 @@ public static class DataTransferService
             try { if (System.IO.File.Exists(tmp)) System.IO.File.Delete(tmp); } catch { }
             throw;
         }
+    }
+
+    /// <summary>
+    /// Compare chaque titre de la base aux tags de son fichier audio : tout ce qui diffère est une modif faite uniquement
+    /// dans l'app (affichage). Les fichiers introuvables sont ignorés (impossible de comparer).
+    /// </summary>
+    private static async Task<List<BackupDisplayEdit>> CollectDisplayEditsAsync(List<Track> tracks)
+    {
+        var found = new System.Collections.Concurrent.ConcurrentBag<BackupDisplayEdit>();
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
+
+        await Parallel.ForEachAsync(tracks, options, (t, ct) =>
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(t.FilePath) || !System.IO.File.Exists(t.FilePath)) return ValueTask.CompletedTask;
+                Track? f = App.Scanner.ExtractMetadata(t.FilePath, out byte[]? embedded);
+                if (f == null) return ValueTask.CompletedTask;
+
+                var ed = new BackupDisplayEdit
+                {
+                    Track = new BackupTrackRef { Path = t.FilePath, Artist = f.Artist, Title = f.Title, Seconds = Math.Round(t.Duration.TotalSeconds, 1) }
+                };
+                bool any = false;
+                if (!string.Equals(t.Title, f.Title, StringComparison.Ordinal)) { ed.Title = t.Title; any = true; }
+                if (!string.Equals(t.Artist, f.Artist, StringComparison.Ordinal)) { ed.Artist = t.Artist; any = true; }
+                if (!string.Equals(t.Album, f.Album, StringComparison.Ordinal)) { ed.Album = t.Album; any = true; }
+                if (!string.Equals(t.Genre ?? "", f.Genre ?? "", StringComparison.Ordinal)) { ed.Genre = t.Genre ?? ""; any = true; }
+                if (!string.Equals(t.AlbumArtist ?? "", f.AlbumArtist ?? "", StringComparison.Ordinal)) { ed.AlbumArtist = t.AlbumArtist ?? ""; any = true; }
+                if (t.Year != f.Year) { ed.Year = t.Year; any = true; }
+                if (t.TrackNumber != f.TrackNumber) { ed.TrackNumber = t.TrackNumber; any = true; }
+
+                // Pochette (choisie ou récupérée automatiquement) : exportée sauf si c'est exactement celle intégrée au fichier audio
+                // (elle est ré-extraite toute seule au scan).
+                string? cp = t.CoverArtPath;
+                if (!string.IsNullOrEmpty(cp) && System.IO.File.Exists(cp) && !IsSameAsEmbedded(cp, embedded))
+                {
+                    ed.LocalCoverPath = cp;
+                    any = true;
+                }
+
+                if (any) found.Add(ed);
+            }
+            catch (Exception ex)
+            {
+                LogService.Write("Backup", ex, "Comparaison tags / fichier");
+            }
+            return ValueTask.CompletedTask;
+        });
+
+        return found.OrderBy(e => e.Track.Path, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static bool IsSameAsEmbedded(string coverPath, byte[]? embedded)
+    {
+        if (embedded == null || embedded.Length == 0) return false;
+        try
+        {
+            if (new FileInfo(coverPath).Length != embedded.Length) return false;
+            return System.IO.File.ReadAllBytes(coverPath).AsSpan().SequenceEqual(embedded);
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Vrai si le fichier existe et a exactement le contenu de l'entrée du zip (pour ne pas dupliquer une pochette déjà présente).</summary>
+    private static bool EntryEqualsFile(ZipArchiveEntry entry, string? path)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return false;
+            if (new FileInfo(path).Length != entry.Length) return false;
+            using var a = entry.Open();
+            using var b = System.IO.File.OpenRead(path);
+            var bufA = new byte[81920];
+            var bufB = new byte[81920];
+            int read;
+            while ((read = a.Read(bufA, 0, bufA.Length)) > 0)
+            {
+                b.ReadExactly(bufB, 0, read);
+                if (!bufA.AsSpan(0, read).SequenceEqual(bufB.AsSpan(0, read))) return false;
+            }
+            return true;
+        }
+        catch { return false; }
     }
 
     /// <summary>Sauvegarde automatique de l'etat actuel avant un import (les 5 plus recentes sont conservees).</summary>
@@ -287,7 +472,7 @@ public static class DataTransferService
             var manifest = ReadJson<BackupManifest>(zip, "manifest.json");
             if (manifest == null || manifest.Product != "Resona" || manifest.FormatVersion > CurrentFormatVersion) return null;
             foreach (BackupCategory c in Enum.GetValues(typeof(BackupCategory)))
-                if (zip.GetEntry(EntryName(c)) != null) available.Add(c);
+                if (zip.GetEntry(EntryName(c)) != null || (c == BackupCategory.AiData && zip.GetEntry(LegacyAiEntryName) != null)) available.Add(c);
             return manifest;
         }
         catch { return null; }
@@ -369,6 +554,7 @@ public static class DataTransferService
                 imported.ArtistMappings = cur.ArtistMappings;
                 imported.AlbumMappings = cur.AlbumMappings;
                 imported.GenreMappings = cur.GenreMappings;
+                imported.TrackGenreMappings = cur.TrackGenreMappings;
                 imported.HasCompletedOnboarding = cur.HasCompletedOnboarding;
                 settingsService.Current = imported;
                 SeasonalThemes.EnforceSeason(settingsService.Current);
@@ -396,24 +582,65 @@ public static class DataTransferService
             }
         }
 
-        // ---- Donnees IA : correspondances fusionnees (l'import l'emporte), ai_backup.json garde s'il existe deja ----
+        // ---- Donnees d'affichage : correspondances, modifs de titres et pochettes fusionnees (l'import l'emporte) ----
         if (categories.Contains(BackupCategory.AiData))
         {
-            var ai = ReadJson<BackupAiFile>(zip, EntryName(BackupCategory.AiData));
+            var ai = ReadJson<BackupAiFile>(zip, EntryName(BackupCategory.AiData)) ?? ReadJson<BackupAiFile>(zip, LegacyAiEntryName);
             if (ai != null)
             {
                 var cur = settingsService.Current;
                 foreach (var kv in ai.ArtistMappings) { cur.ArtistMappings[kv.Key] = kv.Value; report.AiMappingsMerged++; }
                 foreach (var kv in ai.AlbumMappings)  { cur.AlbumMappings[kv.Key] = kv.Value;  report.AiMappingsMerged++; }
                 foreach (var kv in ai.GenreMappings)  { cur.GenreMappings[kv.Key] = kv.Value;  report.AiMappingsMerged++; }
+                if (ai.TrackGenreMappings != null)
+                    foreach (var kv in ai.TrackGenreMappings) { cur.TrackGenreMappings[kv.Key] = kv.Value; report.AiMappingsMerged++; }
 
-                if (!string.IsNullOrWhiteSpace(ai.TagBackupJson))
+                // Modifs d'affichage titre par titre : l'import l'emporte sur les champs concernés (comme les correspondances).
+                if (ai.TrackEdits is { Count: > 0 })
                 {
-                    if (System.IO.File.Exists(AiBackupPath)) report.AiBackupKept = true;
-                    else
+                    var res = await GetResolver();
+                    var changed = new List<Track>();
+                    string coversDir = Path.Combine(AppDataDir, "Covers");
+                    var extractedCovers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // pochette partagée : extraite une seule fois
+                    foreach (var ed in ai.TrackEdits)
                     {
-                        try { await System.IO.File.WriteAllTextAsync(AiBackupPath, ai.TagBackupJson); report.AiBackupWritten = true; } catch { }
+                        var t = res.Resolve(ed.Track);
+                        if (t == null) { report.DisplayEditsMissing++; continue; }
+
+                        bool any = false;
+                        if (ed.Title != null && t.Title != ed.Title) { t.Title = ed.Title; any = true; }
+                        if (ed.Artist != null && t.Artist != ed.Artist) { t.Artist = ed.Artist; any = true; }
+                        if (ed.Album != null && t.Album != ed.Album) { t.Album = ed.Album; any = true; }
+                        if (ed.Genre != null && (t.Genre ?? "") != ed.Genre) { t.Genre = ed.Genre; any = true; }
+                        if (ed.AlbumArtist != null && (t.AlbumArtist ?? "") != ed.AlbumArtist) { t.AlbumArtist = ed.AlbumArtist; any = true; }
+                        if (ed.Year.HasValue && t.Year != ed.Year.Value) { t.Year = ed.Year.Value; any = true; }
+                        if (ed.TrackNumber.HasValue && t.TrackNumber != ed.TrackNumber.Value) { t.TrackNumber = ed.TrackNumber.Value; any = true; }
+
+                        if (!string.IsNullOrEmpty(ed.CoverFile))
+                        {
+                            try
+                            {
+                                var entry = zip.GetEntry(ed.CoverFile);
+                                string ext = Path.GetExtension(ed.CoverFile).ToLowerInvariant();
+                                if (entry != null && ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".bmp" && !EntryEqualsFile(entry, t.CoverArtPath))
+                                {
+                                    if (!extractedCovers.TryGetValue(ed.CoverFile, out string? dest))
+                                    {
+                                        Directory.CreateDirectory(coversDir);
+                                        dest = Path.Combine(coversDir, $"display_{Guid.NewGuid():N}{ext}");
+                                        entry.ExtractToFile(dest, true);
+                                        extractedCovers[ed.CoverFile] = dest;
+                                    }
+                                    t.CoverArtPath = dest;
+                                    any = true;
+                                }
+                            }
+                            catch { }
+                        }
+
+                        if (any) { changed.Add(t); report.DisplayEditsApplied++; }
                     }
+                    if (changed.Count > 0) await App.Cache.UpsertTracksBatchedAsync(changed);
                 }
             }
         }
@@ -442,6 +669,11 @@ public static class DataTransferService
                         target = new Resona.Models.Playlist { Id = dto.Id, Name = dto.Name, DateCreated = dto.DateCreated };
                         existing.Add(target);
                     }
+
+                    // Playlist intelligente : les regles sont reprises pour une playlist creee par l'import ou deja intelligente
+                    // (une playlist classique du meme nom n'est pas transformee).
+                    if (!target.IsSystem && !string.IsNullOrWhiteSpace(dto.SmartRulesJson) && (target.TrackIds.Count == 0 || target.IsSmart()))
+                        target.SmartRulesJson = dto.SmartRulesJson;
 
                     var ids = new HashSet<string>(target.TrackIds);
                     foreach (var r in dto.Tracks)
@@ -493,6 +725,10 @@ public static class DataTransferService
                 }
                 report.StatsUpdated = App.PlayStats.MergeCounts(counts, file.ListenSeconds);
                 await App.PlayStats.SaveAsync();
+
+                // Historique date : fusion (les ecoutes deja presentes ne sont pas dupliquees).
+                if (file.History != null)
+                    report.HistoryEventsAdded = App.PlayHistory.MergeEvents(file.History, file.HistoryStartUtc);
             }
         }
 
@@ -507,6 +743,7 @@ public static class DataTransferService
                 foreach (var item in file.Items)
                 {
                     var t = res.Resolve(new BackupTrackRef { Path = item.Path });
+                    if (t != null && item.Offset.HasValue) App.MainWindowInstance?.SetLyricsOffsetIfMissing(t.FilePath, item.Offset.Value);
                     if (t == null || !string.IsNullOrWhiteSpace(t.Lyrics) || string.IsNullOrWhiteSpace(item.Lyrics)) continue;
                     t.Lyrics = item.Lyrics;
                     t.LyricsSynced = item.Synced;
@@ -514,6 +751,36 @@ public static class DataTransferService
                 }
                 if (changed.Count > 0) await App.Cache.UpsertTracksBatchedAsync(changed);
                 report.LyricsApplied = changed.Count;
+
+                // Paroles choisies a la main : un choix deja fait sur ce PC est conserve, on ne complete que les titres sans choix.
+                foreach (var ov in file.Overrides)
+                {
+                    var target = res.Resolve(ov.Track);
+                    if (target == null || string.IsNullOrWhiteSpace(ov.Lyrics)) continue;
+                    if (LyricsOverrideService.TryGet(target.FilePath, out _)) continue;
+                    LyricsOverrideService.Set(target.FilePath, ov.Lyrics, ov.Synced, ov.Label);
+                    report.LyricsApplied++;
+                }
+            }
+        }
+
+        // ---- Paroles personnalisees : un choix deja present sur ce PC est conserve, on ne complete que les titres sans choix ----
+        if (categories.Contains(BackupCategory.LyricsEdits))
+        {
+            var file = ReadJson<BackupLyricsEditsFile>(zip, EntryName(BackupCategory.LyricsEdits));
+            if (file != null)
+            {
+                var res = await GetResolver();
+                foreach (var item in file.Items)
+                {
+                    if (string.IsNullOrWhiteSpace(item.Lyrics)) continue;
+                    var target = res.Resolve(item.Track);
+                    if (target == null) { report.LyricsEditsMissing++; continue; }
+                    if (LyricsOverrideService.TryGet(target.FilePath, out _)) { report.LyricsEditsKept++; continue; }
+                    LyricsOverrideService.Set(target.FilePath, item.Lyrics, item.Synced, item.Label);
+                    if (item.Offset.HasValue) App.MainWindowInstance?.SetLyricsOffsetIfMissing(target.FilePath, item.Offset.Value);
+                    report.LyricsEditsApplied++;
+                }
             }
         }
 

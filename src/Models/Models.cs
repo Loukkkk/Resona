@@ -81,7 +81,20 @@ public class Track : INotifyPropertyChanged
     public string Genre { get => _genre; set { if (_genre != value) { _genre = value; Raise(); Raise(nameof(DisplayGenre)); } } }
     
     [System.Text.Json.Serialization.JsonIgnore]
-    public string DisplayGenre { get { var a = Genre; return Resona.App.Settings.Current.GenreMappings.TryGetValue(a, out var m) ? m : a; } }
+    public string DisplayGenre
+    {
+        get
+        {
+            var settings = Resona.App.Settings.Current;
+            // Correspondance propre à ce titre (nettoyage IA des genres) en priorité, puis correspondance par ancien genre.
+            if (settings.TrackGenreMappings.Count > 0 && settings.TrackGenreMappings.TryGetValue(GenreMappingKey, out var perTrack)) return perTrack;
+            var a = Genre;
+            return settings.GenreMappings.TryGetValue(a, out var m) ? m : a;
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string GenreMappingKey => $"{Artist} - {Title}".Trim();
 
     public string YearAndGenreDisplay 
     {
@@ -185,6 +198,9 @@ public class Playlist
     // Playlist systeme (ex. Favoris) : non renommable, non supprimable, pochette non modifiable,
     // toujours affichee en tete de liste.
     public bool          IsSystem     { get; set; } = false;
+    // Playlist intelligente : definition des regles en JSON (voir SmartPlaylist.cs). null / vide = playlist classique.
+    // Pour une playlist intelligente, TrackIds reste vide : le contenu est recalcule a chaque ouverture.
+    public string?       SmartRulesJson { get; set; } = null;
 
     public const string FavoritesId = "__favorites__";
 }
@@ -296,12 +312,14 @@ public class AppSettings
     public List<string> MusicFolders           { get; set; } = new();
     // Fichiers retirés de la bibliothèque ("Retirer de l'app") : ignorés lors des scans, sans être supprimés du disque
     public List<string> ExcludedFilePaths      { get; set; } = new();
+    public bool         WatchFoldersEnabled    { get; set; } = true;
     public bool         HasCompletedOnboarding { get; set; } = false;
 
     // Fonctionnalités et audio
     public double Volume               { get; set; } = 100.0;
     public int SavedPlaybackMode       { get; set; } = 0;
     public bool NormalizationEnabled   { get; set; } = false;
+    public bool WeightedShuffleEnabled { get; set; } = false;
 
     // Integration a Windows : entrees "Ouvrir avec Resona" dans le menu de l'Explorateur (dossiers et sons)
     public bool ExplorerContextMenuEnabled { get; set; } = true;
@@ -311,6 +329,19 @@ public class AppSettings
     public bool AutoFetchMissingCovers { get; set; } = false;
     public bool AutoTagWriteToFile     { get; set; } = false;
     public bool ExclusiveAudioMode     { get; set; } = false;
+    // Ignorer les silences au debut et a la fin des sons (desactive par defaut ; absent des anciens settings.json -> false)
+    public bool SkipSilenceEnabled     { get; set; } = false;
+    // Mode soiree (niveau 1 : fondu intelligent) : active d'office le fondu enchaine et le saut des silences (desactive par defaut ; absent des anciens settings.json -> false)
+    public bool PartyModeEnabled       { get; set; } = false;
+    // Audio ducking : baisse le volume de Resona quand l'application choisie emet du son (desactive par defaut)
+    public bool   DuckingEnabled          { get; set; } = false;
+    public string DuckingProcessName      { get; set; } = "";    // nom du processus surveille (sans .exe)
+    public double DuckingAmountDb         { get; set; } = 12.0;  // baisse maximale en dB
+    public double DuckingThresholdPercent { get; set; } = 2.0;   // niveau crete minimal de l'application pour declencher (en %)
+    public int    DuckingAttackMs         { get; set; } = 150;   // duree de la baisse
+    public int    DuckingHoldMs           { get; set; } = 600;   // maintien apres le dernier son detecte
+    public int    DuckingReleaseMs        { get; set; } = 1000;  // duree de la remontee
+    public int    DuckingCurve            { get; set; } = 1;     // pente : 0 lineaire, 1 progressive (S), 2 rapide puis douce
     public bool AutoOpenNowPlaying    { get; set; } = false;
 
     // IA
@@ -319,6 +350,8 @@ public class AppSettings
     public Dictionary<string, string> ArtistMappings { get; set; } = new();
     public Dictionary<string, string> AlbumMappings { get; set; } = new();
     public Dictionary<string, string> GenreMappings { get; set; } = new();
+    // Genre attribué par le nettoyage IA, par titre (clé « Artiste - Titre »)
+    public Dictionary<string, string> TrackGenreMappings { get; set; } = new();
     
     // Apparence
     public AppBackdropStyle Backdrop                   { get; set; } = AppBackdropStyle.Solid;
@@ -335,6 +368,10 @@ public class AppSettings
     public bool             PlayerGradientOverflowEnabled { get; set; } = true;
     // Gradient à l'intérieur du lecteur (si désactivé, le gradient qui dépasse est aussi désactivé)
     public bool             PlayerGradientEnabled         { get; set; } = true;
+    // Thème réactif au son (module la couleur du thème au rythme de la musique)
+    public bool             AudioReactiveThemeEnabled     { get; set; } = false;
+    // Animation equalizer en bas de la grosse cover centrale du lecteur (desactivee par defaut)
+    public bool             NowPlayingEqualizerEnabled    { get; set; } = false;
 
     // Catégories visibles dans la nav
     public bool ShowLibraryCategory    { get; set; } = true;
@@ -342,6 +379,7 @@ public class AppSettings
     public bool ShowPlaylistsCategory  { get; set; } = true;
     public bool ShowArtistsCategory    { get; set; } = true;
     public bool ShowStatisticsCategory { get; set; } = true;
+    public bool ShowQueueCategory      { get; set; } = true;
     public bool ShowDownloadCategory   { get; set; } = true;
     // Paramètres d'affichage des pages
     public string LibrarySort { get; set; } = "artist_asc";
@@ -380,6 +418,15 @@ public class AppSettings
     public int MiniPlayerWidth { get; set; } = 0;   // 0 = taille par defaut (340)
     public int MiniPlayerHeight { get; set; } = 0;  // 0 = taille par defaut (600)
     public bool EnableDiscordRichPresence { get; set; } = false;
+    // Derniere annee pour laquelle on a propose le Year in review au lancement (0 = jamais) : une seule proposition par annee.
+    public int YearInReviewPromptedYear { get; set; } = 0;
+    // [OBSOLETE — conserve pour ne pas casser la deserialisation des anciens fichiers settings.json]
+    public bool YearInReviewPromptDisabled { get; set; } = false;
+    // Annee pour laquelle l'utilisateur a choisi "Ne plus me le proposer" (0 = jamais). Se reinitialise automatiquement l'annee suivante.
+    public int YearInReviewPromptDismissedYear { get; set; } = 0;
+    // Ordre d'affichage des categories dans le volet de gauche (cles : library, albums, playlists, artists, genres, folders, statistics, download).
+    // Vide = ordre par defaut. La file d'attente suit toujours la categorie Playlists.
+    public List<string> NavCategoryOrder { get; set; } = new();
 
     // Boutons de la PlayerBar (favoris / egaliseur rapide)
     public bool EnableFavoriteButton { get; set; } = true;
@@ -528,16 +575,16 @@ public static class CustomTheme
         return FromHsl(((h + degrees) % 360 + 360) % 360, sat, l);
     }
 
-    private static (int R, int G, int B) ToRgb(string hex)
+    public static (int R, int G, int B) ToRgb(string hex)
     {
         hex = hex.TrimStart('#');
         return (Convert.ToInt32(hex.Substring(0, 2), 16), Convert.ToInt32(hex.Substring(2, 2), 16), Convert.ToInt32(hex.Substring(4, 2), 16));
     }
 
-    private static string FromRgb(int r, int g, int b)
+    public static string FromRgb(int r, int g, int b)
         => $"#{Math.Clamp(r, 0, 255):X2}{Math.Clamp(g, 0, 255):X2}{Math.Clamp(b, 0, 255):X2}";
 
-    private static (double H, double S, double V) ToHsv(string hex)
+    public static (double H, double S, double V) ToHsv(string hex)
     {
         var (ri, gi, bi) = ToRgb(hex);
         double r = ri / 255.0, g = gi / 255.0, b = bi / 255.0;
@@ -552,7 +599,7 @@ public static class CustomTheme
         return (h, max <= 1e-9 ? 0 : d / max, max);
     }
 
-    private static string FromHsv(double h, double s, double v)
+    public static string FromHsv(double h, double s, double v)
     {
         h = ((h % 360) + 360) % 360;
         s = Math.Clamp(s, 0, 1); v = Math.Clamp(v, 0, 1);
@@ -569,7 +616,7 @@ public static class CustomTheme
         return FromRgb((int)Math.Round((r + m) * 255), (int)Math.Round((g + m) * 255), (int)Math.Round((b + m) * 255));
     }
 
-    private static (double H, double S, double L) ToHsl(string hex)
+    public static (double H, double S, double L) ToHsl(string hex)
     {
         var (ri, gi, bi) = ToRgb(hex);
         double r = ri / 255.0, g = gi / 255.0, b = bi / 255.0;
@@ -585,7 +632,7 @@ public static class CustomTheme
         return (h, s, l);
     }
 
-    private static string FromHsl(double h, double s, double l)
+    public static string FromHsl(double h, double s, double l)
     {
         h = ((h % 360) + 360) % 360;
         s = Math.Clamp(s, 0, 1); l = Math.Clamp(l, 0, 1);

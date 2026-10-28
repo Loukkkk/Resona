@@ -316,6 +316,7 @@ public sealed partial class SettingsPage : Page
 		LanguageDropDown.Content = langToSelect == "fr" ? Models.Strings.Current.SettingsPage_Content_Franaisfr : Models.Strings.Current.SettingsPage_Content_Englishen;
 
 		NormalizationSwitch.IsOn = current.NormalizationEnabled;
+		WeightedShuffleSwitch.IsOn = current.WeightedShuffleEnabled;
 		LyricsSwitch.IsOn = current.LyricsEnabled;
 		TranslateLyricsSwitch.IsOn = current.TranslateLyricsEnabled;
 		CoverSwitch.IsOn = current.AutoFetchMissingCovers;
@@ -329,6 +330,9 @@ public sealed partial class SettingsPage : Page
 		ShowFoldersCheck.IsChecked = current.ShowFoldersCategory;
 		ShowStatisticsCheck.IsChecked = current.ShowStatisticsCategory;
 		ShowDownloadCheck.IsChecked = current.ShowDownloadCategory;
+		WatchFoldersSwitch.IsOn = current.WatchFoldersEnabled;
+		InitCategoryReorder();
+		SyncCategoryOrderFromSettings();
 
 		UpdateTranslateVisibility();
 
@@ -355,6 +359,8 @@ public sealed partial class SettingsPage : Page
 		UpdatePresetsPanelVisibility(current.Backdrop);
 		GradientOverflowSwitch.IsOn = current.PlayerGradientOverflowEnabled;
 		PlayerGradientSwitch.IsOn = current.PlayerGradientEnabled;
+		AudioReactiveThemeSwitch.IsOn = current.AudioReactiveThemeEnabled;
+		NowPlayingEqualizerSwitch.IsOn = current.NowPlayingEqualizerEnabled;
 		UpdateGradientOverflowAvailability();
 		MinimizeToTraySwitch.IsOn = current.MinimizeToTrayOnClose;
 		SaveWindowPositionSwitch.IsOn = current.SaveWindowPosition;
@@ -373,6 +379,10 @@ public sealed partial class SettingsPage : Page
         CrossfadeSwitch.IsOn = current.EnableCrossfade;
         CrossfadeDurationSlider.Value = current.CrossfadeDurationSeconds > 0 ? current.CrossfadeDurationSeconds : 500;
         CrossfadePanel.Visibility = current.EnableCrossfade ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+        SkipSilenceSwitch.IsOn = current.SkipSilenceEnabled;
+        PartyModeSwitch.IsOn = current.PartyModeEnabled;
+        UpdatePartyModeUi();
+        InitDuckingUi();
 
 		EqualizerSwitch.IsOn = current.EqualizerEnabled;
 		if (EqualizerBandsPanel != null)
@@ -895,6 +905,7 @@ public sealed partial class SettingsPage : Page
 				App.Settings.Current.MusicFolders.Remove(folder);
 				await App.Settings.SaveAsync();
 				RefreshFoldersList();
+				App.FolderWatcher?.RefreshWatchedFolders();
 			};
 			grid.Children.Add(textBlock);
 			grid.Children.Add(button);
@@ -943,7 +954,25 @@ public sealed partial class SettingsPage : Page
 			App.Settings.Current.MusicFolders.Add(storageFolder.Path);
 			await App.Settings.SaveAsync();
 			RefreshFoldersList();
+			App.FolderWatcher?.RefreshWatchedFolders();
 			App.MainWindowInstance?.TriggerLibraryRescan();
+		}
+	}
+
+	private async void WatchFolders_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.WatchFoldersEnabled = WatchFoldersSwitch.IsOn;
+			await App.Settings.SaveAsync();
+			if (WatchFoldersSwitch.IsOn)
+			{
+				App.FolderWatcher?.Start();
+			}
+			else
+			{
+				App.FolderWatcher?.Stop();
+			}
 		}
 	}
 
@@ -992,6 +1021,15 @@ public sealed partial class SettingsPage : Page
 			{
 				App.MainWindowInstance?.AnalyzeWholeLibraryInBackground();
 			}
+		}
+	}
+
+	private async void WeightedShuffleSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.WeightedShuffleEnabled = WeightedShuffleSwitch.IsOn;
+			await App.Settings.SaveAsync();
 		}
 	}
 
@@ -1082,6 +1120,7 @@ public sealed partial class SettingsPage : Page
 				RefreshFoldersList();
 				App.MainWindowInstance?.TriggerLibraryRescan();
 			}
+			App.FolderWatcher?.RefreshWatchedFolders();
 			
 			await App.Settings.SaveAsync();
 		}
@@ -1166,6 +1205,26 @@ public sealed partial class SettingsPage : Page
 		}
 	}
 
+	private void NowPlayingEqualizerSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.NowPlayingEqualizerEnabled = NowPlayingEqualizerSwitch.IsOn;
+			_ = App.Settings.SaveAsync();
+			App.MainWindowInstance?.ApplyNowPlayingEqualizerSetting();
+		}
+	}
+
+	private void AudioReactiveThemeSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.AudioReactiveThemeEnabled = AudioReactiveThemeSwitch.IsOn;
+			_ = App.Settings.SaveAsync();
+			App.MainWindowInstance?.UpdateAudioReactiveThemeState();
+		}
+	}
+
 	// Le gradient qui dépasse n'a de sens que si le gradient du lecteur est actif : sinon on le grise.
 	private void UpdateGradientOverflowAvailability()
 	{
@@ -1181,16 +1240,45 @@ public sealed partial class SettingsPage : Page
 		InitializeWithWindow.Initialize(fileOpenPicker, WindowNative.GetWindowHandle(App.MainWindowInstance));
 		fileOpenPicker.FileTypeFilter.Add(".m3u");
 		fileOpenPicker.FileTypeFilter.Add(".m3u8");
+		fileOpenPicker.FileTypeFilter.Add(".csv");
+		fileOpenPicker.FileTypeFilter.Add(".tsv");
+		fileOpenPicker.FileTypeFilter.Add(".txt");
 		StorageFile storageFile = await fileOpenPicker.PickSingleFileAsync();
-		if (!(storageFile == null))
+		if (storageFile != null)
 		{
-			List<string> list;
-			List<string> list2;
-			var tuple = await App.PlaylistIO.ImportAsync(storageFile.Path); list = tuple.Item1; list2 = tuple.Item2;
+			var allTracks = await App.Cache.LoadAllTracksAsync();
+			var tuple = await App.PlaylistIO.ImportAsync(storageFile.Path, allTracks);
+			var resolvedPaths = tuple.Item1;
+			var missing = tuple.Item2;
+			var byPath = allTracks.ToDictionary(t => t.FilePath, StringComparer.OrdinalIgnoreCase);
+
+			Playlist playlist = new Playlist { Name = System.IO.Path.GetFileNameWithoutExtension(storageFile.Name) };
+			if (!string.IsNullOrEmpty(tuple.Item3))
+			{
+				string appData = Windows.Storage.ApplicationData.Current.LocalFolder.Path;
+				string coversDir = System.IO.Path.Combine(appData, "Covers");
+				System.IO.Directory.CreateDirectory(coversDir);
+				string dest = System.IO.Path.Combine(coversDir, System.IO.Path.GetFileName(tuple.Item3));
+				try { System.IO.File.Copy(tuple.Item3, dest, true); playlist.CoverImagePath = dest; } catch { }
+			}
+
+			int importedCount = 0;
+			foreach (string path in resolvedPaths)
+			{
+				if (byPath.TryGetValue(path, out Track track))
+				{
+					playlist.TrackIds.Add(track.Id);
+					importedCount++;
+				}
+			}
+			await App.Cache.UpsertPlaylistAsync(playlist);
+
 			await new ContentDialog
 			{
-				Title = Models.Strings.Current.IsFr ? "Import termin\u00E9" : "Import complete",
-				Content = Models.Strings.Current.IsFr ? $"{list.Count} piste(s) importée(s)." + ((list2.Count > 0) ? $"\n{list2.Count} piste(s) introuvable(s)." : "") : $"{list.Count} track(s) imported." + ((list2.Count > 0) ? $"\n{list2.Count} track(s) not found." : ""),
+				Title = Models.Strings.Current.IsFr ? "Import terminé" : "Import complete",
+				Content = Models.Strings.Current.IsFr
+					? $"Playlist \"{playlist.Name}\" importée avec {importedCount} piste(s)." + ((missing.Count > 0) ? $"\n{missing.Count} piste(s) introuvable(s) dans la bibliothèque locale." : "")
+					: $"Playlist \"{playlist.Name}\" imported with {importedCount} track(s)." + ((missing.Count > 0) ? $"\n{missing.Count} track(s) not found in local library." : ""),
 				CloseButtonText = "OK",
 				XamlRoot = base.XamlRoot
 			}.ShowAsync();
@@ -1671,18 +1759,20 @@ public sealed partial class SettingsPage : Page
     {
         var cbCovers = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheDialogCovers, IsChecked = false };
         var cbLyrics = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheDialogLyrics, IsChecked = false };
+        var cbCustomLyrics = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheCustomLyrics, IsChecked = false };
         var cbNorm = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheNormalization, IsChecked = false };
         var cbVis = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheVisuallyModified, IsChecked = false };
         var cbScan = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheScannedSounds, IsChecked = false };
         var cbSettings = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheAppSettings, IsChecked = false };
         var cbAll = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheAll, IsChecked = false, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.IndianRed) };
 
-        cbAll.Checked += (s, ev) => { cbCovers.IsEnabled = cbLyrics.IsEnabled = cbNorm.IsEnabled = cbVis.IsEnabled = cbScan.IsEnabled = cbSettings.IsEnabled = false; };
-        cbAll.Unchecked += (s, ev) => { cbCovers.IsEnabled = cbLyrics.IsEnabled = cbNorm.IsEnabled = cbVis.IsEnabled = cbScan.IsEnabled = cbSettings.IsEnabled = true; };
+        cbAll.Checked += (s, ev) => { cbCovers.IsEnabled = cbLyrics.IsEnabled = cbCustomLyrics.IsEnabled = cbNorm.IsEnabled = cbVis.IsEnabled = cbScan.IsEnabled = cbSettings.IsEnabled = false; };
+        cbAll.Unchecked += (s, ev) => { cbCovers.IsEnabled = cbLyrics.IsEnabled = cbCustomLyrics.IsEnabled = cbNorm.IsEnabled = cbVis.IsEnabled = cbScan.IsEnabled = cbSettings.IsEnabled = true; };
 
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(cbCovers);
         panel.Children.Add(cbLyrics);
+        panel.Children.Add(cbCustomLyrics);
         panel.Children.Add(cbNorm);
         panel.Children.Add(cbVis);
         panel.Children.Add(cbScan);
@@ -1709,6 +1799,8 @@ public sealed partial class SettingsPage : Page
             if (cbAll.IsChecked == true)
             {
                 await App.Cache.ClearAllDataAsync();
+                LyricsOverrideService.ClearAll();
+                App.MainWindowInstance?.ClearAllLyricsOffsets();
                 App.Settings.Current = new Resona.Models.AppSettings();
                 App.Settings.SaveSync();
                 try {
@@ -1719,7 +1811,12 @@ public sealed partial class SettingsPage : Page
             }
             else
             {
-                if (cbLyrics.IsChecked == true) await App.Cache.ClearLyricsCacheAsync();
+                if (cbLyrics.IsChecked == true)
+                {
+                    await App.Cache.ClearLyricsCacheAsync();
+                    App.MainWindowInstance?.ClearCachedLyricsOffsets();
+                }
+                if (cbCustomLyrics.IsChecked == true) App.MainWindowInstance?.ClearCustomLyrics();
                 if (cbNorm.IsChecked == true) await App.Cache.ClearAnalysisAsync();
                 if (cbVis.IsChecked == true) await App.Cache.ClearVisuallyModifiedTagsAsync();
                 if (cbScan.IsChecked == true)
@@ -1769,12 +1866,26 @@ public sealed partial class SettingsPage : Page
 
     private async void ApplyMetadata_Click(object sender, RoutedEventArgs e)
     {
-        var cbTags = new CheckBox { Content = Resona.Models.Strings.Current.CS_ApplyMetadataDialogTags, IsChecked = true };
-        var cbCovers = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheDialogCovers, IsChecked = true };
+        var cbTags = new CheckBox { Content = Resona.Models.Strings.Current.CS_ApplyMetadataDialogTags, IsChecked = false };
+        var cbCovers = new CheckBox { Content = Resona.Models.Strings.Current.CS_ClearCacheDialogCovers, IsChecked = false };
+        bool fr = Resona.Models.Strings.Current.IsFr;
+        // Paroles : decochees par defaut (ecriture d'un gros texte dans chaque fichier, a demander explicitement).
+        var cbLyricsFound = new CheckBox
+        {
+            Content = fr ? "Paroles trouvées (ouverture de la page des paroles)" : "Found lyrics (from opening the lyrics page)",
+            IsChecked = false
+        };
+        var cbLyricsCustom = new CheckBox
+        {
+            Content = fr ? "Paroles personnalisées (choisies ou modifiées à la main)" : "Custom lyrics (picked or edited by hand)",
+            IsChecked = false
+        };
         
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(cbTags);
         panel.Children.Add(cbCovers);
+        panel.Children.Add(cbLyricsFound);
+        panel.Children.Add(cbLyricsCustom);
 
         var dialog = new ContentDialog
         {
@@ -1790,7 +1901,9 @@ public sealed partial class SettingsPage : Page
         {
             bool applyTags = cbTags.IsChecked == true;
             bool applyCovers = cbCovers.IsChecked == true;
-            if (!applyTags && !applyCovers) return;
+            bool applyLyricsFound = cbLyricsFound.IsChecked == true;
+            bool applyLyricsCustom = cbLyricsCustom.IsChecked == true;
+            if (!applyTags && !applyCovers && !applyLyricsFound && !applyLyricsCustom) return;
 
             var progressDialog = new ContentDialog
             {
@@ -1807,10 +1920,14 @@ public sealed partial class SettingsPage : Page
                     var data = new Resona.Services.AutoTagResult();
                     if (applyTags)
                     {
-                        data.Title = track.Title;
-                        data.Artist = track.Artist;
-                        data.Album = track.Album;
-                        data.Genre = track.Genre;
+                        // Valeur inconnue (placeholder de l'app) : on ecrit un champ vide dans le fichier.
+                        static string Blank(string? v, params string[] placeholders)
+                            => string.IsNullOrWhiteSpace(v) || placeholders.Contains(v, StringComparer.OrdinalIgnoreCase) ? string.Empty : v;
+                        var st = Resona.Models.Strings.Current;
+                        data.Title = Blank(track.Title, "Titre inconnu", "Unknown title");
+                        data.Artist = Blank(track.Artist, st.CS_ArtisteInconnu, "Artiste inconnu", "Unknown artist");
+                        data.Album = Blank(track.Album, st.CS_AlbumInconnu, "Album inconnu", "Unknown album");
+                        data.Genre = Blank(track.Genre, "Genre inconnu", "Unknown genre", "Inconnu", "Unknown");
                         data.Year = track.Year > 0 ? track.Year : null;
                         data.TrackNumber = track.TrackNumber > 0 ? track.TrackNumber : null;
                     }
@@ -1819,7 +1936,14 @@ public sealed partial class SettingsPage : Page
                         data.CoverPath = track.CoverArtPath;
                     }
 
-                    if (applyTags || (applyCovers && data.CoverPath != null))
+                    // Paroles : les personnalisees l'emportent sur les trouvees quand les deux options sont cochees
+                    // (c'est ce que l'app affiche pour ce son).
+                    if (applyLyricsCustom && Resona.Services.LyricsOverrideService.TryGet(track.FilePath, out var customLyrics))
+                        data.Lyrics = customLyrics.Lyrics;
+                    else if (applyLyricsFound && !string.IsNullOrWhiteSpace(track.Lyrics))
+                        data.Lyrics = track.Lyrics;
+
+                    if (applyTags || (applyCovers && data.CoverPath != null) || data.Lyrics != null)
                     {
                         Resona.Services.AutoTagService.WriteMetadata(track.FilePath, data);
                     }
@@ -1835,8 +1959,14 @@ public sealed partial class SettingsPage : Page
 		App.Settings.Current.ArtistMappings.Clear();
 		App.Settings.Current.AlbumMappings.Clear();
 		App.Settings.Current.GenreMappings.Clear();
-		
-		App.MainWindowInstance?.TriggerLibraryRescan();
+		App.Settings.Current.TrackGenreMappings.Clear();
+		await App.Settings.SaveAsync();
+
+		// Les pages Albums / Artistes / Genres ne reconstruisent leur grille que si la bibliothèque a changé : on invalide leur cache puis on les recharge.
+		AlbumsPage.ResetSessionCaches();
+		ArtistsPage.ResetSessionCaches();
+		GenresPage.ResetSessionCaches();
+		App.MainWindowInstance?.RefreshAllLibraryViews();
 
 		var successDialog = new ContentDialog
 		{
@@ -1929,6 +2059,174 @@ public sealed partial class SettingsPage : Page
 			CrossfadePanel.Visibility = CrossfadeSwitch.IsOn ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 		}
 	}
+	// ------------------------------------------------------------------
+	//  Audio ducking (Traitement audio)
+	// ------------------------------------------------------------------
+	private bool _duckingUiUpdating;
+	private bool _duckingStringsHooked;
+
+	private void InitDuckingUi()
+	{
+		var cur = App.Settings.Current;
+		_duckingUiUpdating = true;
+		try
+		{
+			DuckingSwitch.IsOn = cur.DuckingEnabled;
+			DuckingPanel.Visibility = cur.DuckingEnabled ? Visibility.Visible : Visibility.Collapsed;
+			DuckingReductionSlider.Value = Math.Clamp(cur.DuckingAmountDb, 3, 40);
+			DuckingThresholdSlider.Value = Math.Clamp(cur.DuckingThresholdPercent, 0.5, 20);
+			DuckingAttackSlider.Value = Math.Clamp(cur.DuckingAttackMs, 20, 1000);
+			DuckingHoldSlider.Value = Math.Clamp(cur.DuckingHoldMs, 0, 3000);
+			DuckingReleaseSlider.Value = Math.Clamp(cur.DuckingReleaseMs, 100, 5000);
+			DuckingCurveCombo.SelectedIndex = Math.Clamp(cur.DuckingCurve, 0, 2);
+		}
+		finally { _duckingUiUpdating = false; }
+
+		UpdateDuckingLabels();
+		DuckingReductionSlider.ThumbToolTipValueConverter = new DuckingReductionTooltipConverter();
+		FillDuckingApps(new List<string>());
+		if (!_duckingStringsHooked)
+		{
+			_duckingStringsHooked = true;
+			Resona.Models.Strings.Current.PropertyChanged += (s, e) => DispatcherQueue?.TryEnqueue(UpdateDuckingLabels);
+		}
+		if (cur.DuckingEnabled) _ = RefreshDuckingAppsAsync();
+	}
+
+	private void UpdateDuckingLabels()
+	{
+		var s = Resona.Models.Strings.Current;
+		var inv = System.Globalization.CultureInfo.InvariantCulture;
+		DuckingReductionLabel.Text = DuckingReductionSlider.Value >= DuckingService.MuteThresholdDb
+			? $"{s.SettingsPage_Text_DuckingReduction} : {s.SettingsPage_Text_DuckingMute}"
+			: $"{s.SettingsPage_Text_DuckingReduction} : -{DuckingReductionSlider.Value:0} dB";
+		DuckingSensitivityLabel.Text = $"{s.SettingsPage_Text_DuckingSensitivity} : {DuckingThresholdSlider.Value.ToString("0.0", inv)} %";
+		DuckingAttackLabel.Text = $"{s.SettingsPage_Text_DuckingAttack} : {DuckingAttackSlider.Value:0} ms";
+		DuckingHoldLabel.Text = $"{s.SettingsPage_Text_DuckingHold} : {DuckingHoldSlider.Value:0} ms";
+		DuckingReleaseLabel.Text = $"{s.SettingsPage_Text_DuckingRelease} : {DuckingReleaseSlider.Value:0} ms";
+	}
+
+	private void FillDuckingApps(IEnumerable<string> running)
+	{
+		string saved = App.Settings.Current.DuckingProcessName ?? "";
+		var names = running
+			.Concat(string.IsNullOrWhiteSpace(saved) ? Array.Empty<string>() : new[] { saved })
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		_duckingUiUpdating = true;
+		try
+		{
+			DuckingAppCombo.Items.Clear();
+			foreach (string n in names) DuckingAppCombo.Items.Add(n);
+			DuckingAppCombo.SelectedItem = names.FirstOrDefault(n => string.Equals(n, saved, StringComparison.OrdinalIgnoreCase));
+		}
+		finally { _duckingUiUpdating = false; }
+	}
+
+	private async Task RefreshDuckingAppsAsync()
+	{
+		var apps = await Task.Run(() => DuckingService.GetAudioApps());
+		FillDuckingApps(apps);
+	}
+
+	private async void DuckingRefresh_Click(object sender, RoutedEventArgs e)
+	{
+		await RefreshDuckingAppsAsync();
+	}
+
+	private void DuckingSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (_isLoading || _duckingUiUpdating) return;
+		App.Settings.Current.DuckingEnabled = DuckingSwitch.IsOn;
+		DuckingPanel.Visibility = DuckingSwitch.IsOn ? Visibility.Visible : Visibility.Collapsed;
+		_ = App.Settings.SaveAsync();
+		DuckingService.EnsureStarted();
+		if (DuckingSwitch.IsOn) _ = RefreshDuckingAppsAsync();
+	}
+
+	private void DuckingAppCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (_isLoading || _duckingUiUpdating) return;
+		if (DuckingAppCombo.SelectedItem is not string name) return;
+		App.Settings.Current.DuckingProcessName = name;
+		_ = App.Settings.SaveAsync();
+	}
+
+	private void DuckingSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+	{
+		// IsLoaded : les sliders notifient aussi pendant InitializeComponent, il ne faut pas ecraser les reglages.
+		if (_isLoading || _duckingUiUpdating || !IsLoaded) return;
+		var cur = App.Settings.Current;
+		cur.DuckingAmountDb = DuckingReductionSlider.Value;
+		cur.DuckingThresholdPercent = DuckingThresholdSlider.Value;
+		cur.DuckingAttackMs = (int)DuckingAttackSlider.Value;
+		cur.DuckingHoldMs = (int)DuckingHoldSlider.Value;
+		cur.DuckingReleaseMs = (int)DuckingReleaseSlider.Value;
+		UpdateDuckingLabels();
+		_ = App.Settings.SaveAsync();
+	}
+
+	private void DuckingCurveCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (_isLoading || _duckingUiUpdating || DuckingCurveCombo.SelectedIndex < 0) return;
+		App.Settings.Current.DuckingCurve = DuckingCurveCombo.SelectedIndex;
+		_ = App.Settings.SaveAsync();
+	}
+
+	private async void SkipSilenceSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (!_isLoading)
+		{
+			App.Settings.Current.SkipSilenceEnabled = SkipSilenceSwitch.IsOn;
+			await App.Settings.SaveAsync();
+			// Applique tout de suite au son en cours : relance le flux a la meme position et dans le meme etat (lecture / pause).
+			try
+			{
+				var engine = App.AudioEngine;
+				var playing = engine?.CurrentTrack;
+				if (engine != null && playing != null && engine.State != NAudio.Wave.PlaybackState.Stopped)
+					await engine.RunWithFileReleasedAsync(playing.FilePath, () => { });
+			}
+			catch { }
+		}
+	}
+	/// <summary>Mode soiree : fondu enchaine et saut des silences sont actifs d'office -> affiches actives et grises. Les valeurs enregistrees de l'utilisateur ne sont pas modifiees.</summary>
+	private void UpdatePartyModeUi()
+	{
+		var cur = App.Settings.Current;
+		bool party = cur.PartyModeEnabled;
+		bool prevLoading = _isLoading;
+		_isLoading = true;   // evite que les Toggled ecrivent dans les reglages
+		try
+		{
+			CrossfadeSwitch.IsOn = party || cur.EnableCrossfade;
+			SkipSilenceSwitch.IsOn = party || cur.SkipSilenceEnabled;
+		}
+		finally { _isLoading = prevLoading; }
+		CrossfadeSwitch.IsEnabled = !party;
+		SkipSilenceSwitch.IsEnabled = !party;
+		CrossfadePanel.Visibility = (!party && cur.EnableCrossfade) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;   // mode soiree : duree fixe, curseur masque
+	}
+
+	private async void PartyModeSwitch_Toggled(object sender, RoutedEventArgs e)
+	{
+		if (_isLoading) return;
+		var cur = App.Settings.Current;
+		cur.PartyModeEnabled = PartyModeSwitch.IsOn;
+		await App.Settings.SaveAsync();
+		UpdatePartyModeUi();
+		// Applique tout de suite au son en cours (saut des silences) : relance le flux a la meme position et dans le meme etat.
+		try
+		{
+			var engine = App.AudioEngine;
+			var playing = engine?.CurrentTrack;
+			if (engine != null && playing != null && engine.State != NAudio.Wave.PlaybackState.Stopped)
+				await engine.RunWithFileReleasedAsync(playing.FilePath, () => { });
+		}
+		catch { }
+	}
+
 	private async void CrossfadeDurationSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
 	{
 		if (!_isLoading)

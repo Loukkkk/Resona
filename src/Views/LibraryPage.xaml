@@ -164,7 +164,7 @@
                                 <ColumnDefinition Width="50" />
                             </Grid.ColumnDefinitions>
 
-                            <Grid x:Name="CoverGridContainer" Grid.Column="0" Width="40" Height="40" CornerRadius="5" Loaded="CoverGrid_Loaded"
+                            <Grid x:Name="CoverGridContainer" Grid.Column="0" Width="40" Height="40" CornerRadius="5" Loaded="CoverGrid_Loaded" DataContextChanged="CoverGrid_DataContextChanged"
                                   PointerEntered="CoverGrid_PointerEntered" PointerExited="CoverGrid_PointerExited">
 
                                 <FontIcon Glyph="&#xE8D6;" FontSize="18" Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />

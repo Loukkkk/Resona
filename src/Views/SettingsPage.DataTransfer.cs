@@ -36,6 +36,7 @@ public sealed partial class SettingsPage
             BackupCategory.Statistics => (tr.Backup_Cat_Statistics, tr.Backup_Cat_StatisticsDesc),
             BackupCategory.AiData     => (tr.Backup_Cat_Ai,         tr.Backup_Cat_AiDesc),
             BackupCategory.Lyrics     => (tr.Backup_Cat_Lyrics,     tr.Backup_Cat_LyricsDesc),
+            BackupCategory.LyricsEdits => (tr.Backup_Cat_LyricsEdits, tr.Backup_Cat_LyricsEditsDesc),
             _ => (c.ToString(), ""),
         };
     }
@@ -72,8 +73,8 @@ public sealed partial class SettingsPage
             var content = new StackPanel { Spacing = 2 };
             content.Children.Add(new TextBlock { Text = name, TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = desc, TextWrapping = TextWrapping.Wrap, Opacity = 0.6, FontSize = 12 });
-            // Les paroles alourdissent le fichier : decochees par defaut.
-            var box = new CheckBox { Content = content, IsChecked = c != BackupCategory.Lyrics };
+            // Tout est coche par defaut.
+            var box = new CheckBox { Content = content, IsChecked = true };
             boxes.Add((c, box));
             panel.Children.Add(box);
         }
@@ -200,10 +201,10 @@ public sealed partial class SettingsPage
         if (cats.Contains(BackupCategory.AiData))
         {
             lines.Add(string.Format(tr.Backup_ReportAi, r.AiMappingsMerged));
-            if (r.AiBackupWritten) lines.Add(tr.Backup_ReportAiBackupWritten);
-            else if (r.AiBackupKept) lines.Add(tr.Backup_ReportAiBackupKept);
+            if (r.DisplayEditsApplied > 0 || r.DisplayEditsMissing > 0) lines.Add(string.Format(tr.Backup_ReportDisplayEdits, r.DisplayEditsApplied, r.DisplayEditsMissing));
         }
         if (cats.Contains(BackupCategory.Lyrics)) lines.Add(string.Format(tr.Backup_ReportLyrics, r.LyricsApplied));
+        if (cats.Contains(BackupCategory.LyricsEdits)) lines.Add(string.Format(tr.Backup_ReportLyricsEdits, r.LyricsEditsApplied, r.LyricsEditsKept, r.LyricsEditsMissing));
 
         var panel = new StackPanel { Spacing = 8, MinWidth = 380 };
         panel.Children.Add(new TextBlock { Text = string.Join("\n", lines), TextWrapping = TextWrapping.Wrap });

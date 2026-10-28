@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  Services.cs  —  Resona
 //  Fusion de : CoverArtService, LyricsService, PlaylistM3uService,
 //              SettingsService, LibraryScannerService, LibraryCacheService,
@@ -502,7 +502,20 @@ public async Task<System.Collections.Generic.List<string>> SearchGoogleImagesAsy
 
     } 
 
-public class LyricsResult { public string? PlainLyrics { get; set; } public string? SyncedLyrics { get; set; } public bool Found => !string.IsNullOrWhiteSpace(PlainLyrics) || !string.IsNullOrWhiteSpace(SyncedLyrics); } 
+public class LyricsResult { public string? Source { get; set; } public bool TitleOnly { get; set; } public string? PlainLyrics { get; set; } public string? SyncedLyrics { get; set; } public bool Found => !string.IsNullOrWhiteSpace(PlainLyrics) || !string.IsNullOrWhiteSpace(SyncedLyrics); } 
+
+/// <summary>Une fiche de paroles proposee dans le selecteur manuel.</summary>
+public class LyricsCandidate
+{
+    public string Artist { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public double DurationSec { get; set; }
+    public string? Synced { get; set; }
+    public string? Plain { get; set; }
+    public string Preview { get; set; } = string.Empty;
+    public bool IsSynced => !string.IsNullOrWhiteSpace(Synced);
+    public string Text => (IsSynced ? Synced : Plain) ?? string.Empty;
+}
 
 public class LyricsService
 {
@@ -529,131 +542,924 @@ public class LyricsService
         
         [System.Text.Json.Serialization.JsonPropertyName("duration")] 
         public double? Duration { get; set; } 
+
+        [System.Text.Json.Serialization.JsonPropertyName("instrumental")]
+        public bool? Instrumental { get; set; }
     } 
+
+    public static bool HasActualLyrics(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        if (IsCorruptedLyrics(text)) return false;
+        var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        var timeRegex = new System.Text.RegularExpressions.Regex(@"^\[\d{1,2}:\d{2}([.:]\d{1,3})?([+-]\d+)?\]");
+        var metadataRegex = new System.Text.RegularExpressions.Regex(@"^\[[a-zA-Z]+:.*\]$");
+        int actualLines = 0;
+
+        foreach (var raw in lines)
+        {
+            var l = raw.Trim();
+            if (string.IsNullOrEmpty(l)) continue;
+            if (metadataRegex.IsMatch(l)) continue;
+
+            string clean = timeRegex.Replace(l, "").Trim();
+            if (string.IsNullOrEmpty(clean)) continue;
+
+            var lower = clean.ToLowerInvariant();
+            if (lower is "instrumental" or "[instrumental]" or "(instrumental)" or "pure music" or "no lyrics" or "paroles introuvables")
+                continue;
+            if (clean.Contains("作词") || clean.Contains("作曲") || clean.Contains("编曲") || clean.Contains("纯音乐") || clean.Contains("填词"))
+                continue;
+            if (lower.StartsWith("lyrics by") || lower.StartsWith("composed by") || lower.StartsWith("written by") || lower.StartsWith("arranged by") || lower.StartsWith("produced by"))
+                continue;
+
+            actualLines++;
+        }
+
+        return actualLines >= 2;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex MisattributedCoverRegex = new System.Text.RegularExpressions.Regex(
+        @"(?i)[\(（\[【][^\)）\]】]*(?:原曲|원곡|original\s*song|original\s*track|original\s*by|original\s*:|cover\s*of)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool HasCyrillic(string? text) => !string.IsNullOrWhiteSpace(text) && System.Text.RegularExpressions.Regex.IsMatch(text, @"[\p{IsCyrillic}]");
+    private static bool HasCjk(string? text) => !string.IsNullOrWhiteSpace(text) && System.Text.RegularExpressions.Regex.IsMatch(text, @"[\p{IsCJKUnifiedIdeographs}\p{IsHiragana}\p{IsKatakana}\p{IsHangulSyllables}]");
+
+    private static double GetFirstTimestampSec(string? lrc)
+    {
+        if (string.IsNullOrWhiteSpace(lrc)) return 999.0;
+        var lines = lrc.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var timeRegex = new System.Text.RegularExpressions.Regex(@"^\[(\d{1,2}):(\d{2}(?:[.:]\d{1,3})?)\]");
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            var m = timeRegex.Match(line);
+            if (m.Success)
+            {
+                string minStr = m.Groups[1].Value;
+                string secStr = m.Groups[2].Value.Replace(':', '.');
+                if (double.TryParse(minStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double min) &&
+                    double.TryParse(secStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double sec))
+                {
+                    string text = line.Substring(m.Length).Trim();
+                    if (!string.IsNullOrWhiteSpace(text) && !System.Text.RegularExpressions.Regex.IsMatch(text, @"^(by|lyrics|synced|paroles|titre|album)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        return min * 60.0 + sec;
+                    }
+                }
+            }
+        }
+        return 999.0;
+    }
+
+    private static int GetLineCount(string? lrc) => string.IsNullOrWhiteSpace(lrc) ? 0 : lrc.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries).Length;
+
+    private static bool IsCorruptedLyrics(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        // Détecte les textes corrompus par un mauvais encodage de caractères (séries de ???)
+        if (System.Text.RegularExpressions.Regex.IsMatch(text, @"\?{3,}")) return true;
+
+        int questionMarks = text.Count(c => c == '?');
+        int lettersOrDigits = text.Count(c => char.IsLetterOrDigit(c));
+        if (lettersOrDigits > 10 && questionMarks > 6 && (double)questionMarks / (lettersOrDigits + questionMarks) > 0.15)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    private static string? ExtractBracketedTitle(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(input, @"[『「【《〈\[\(](.*?)[』」】》〉\]\)]");
+        if (m.Success)
+        {
+            string candidate = m.Groups[1].Value.Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(candidate, @"(?i)^(official|video|audio|lyric|theme song|ost|hd|mv|hq|visualizer|album version|remastered)"))
+            {
+                if (candidate.Length >= 2) return candidate;
+            }
+        }
+        return null;
+    }
 
     private string CleanMetadata(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return string.Empty;
         string output = input;
-        var pattern = @"(?i)[\(\[][^\)\]]*(official|video|audio|lyric|visualizer|live|remaster|edit|ft\.|feat\.|featuring|version|mv|vocal)[^\)\]]*[\)\]]";
+
+        // 1. Balises de métadonnées entre parenthèses et crochets occidentaux ou asiatiques
+        var pattern = @"(?i)[\(\[（【『「《〔〈][^\)\]）】』」》〕〉]*(official|video|audio|lyric|visualizer|live|remaster|edit|ft\.|feat\.|featuring|version|mv|vocal|theme song|opening|ending|ost|soundtrack|utattemita|歌ってみた)[^\)\]）】』」》〕〉]*[\)\]）】』」》〕〉]";
         output = System.Text.RegularExpressions.Regex.Replace(output, pattern, "");
-        var pattern2 = @"(?i)(official video|official music video|official audio|lyrics|lyric video|audio|visualizer|official)";
+
+        // 2. Mentions de types vidéo/audio/thème
+        var pattern2 = @"(?i)\b(official video|official music video|official audio|lyrics|lyric video|audio|visualizer|official|theme song|opening theme|ending theme|opening song|ending song|insert song|character song|full version|full song|original soundtrack|soundtrack|ost|utattemita|歌ってみた)\b";
         output = System.Text.RegularExpressions.Regex.Replace(output, pattern2, "");
+
+        // 3. Suffixes après tiret
+        var pattern3 = @"(?i)\s*-\s*(remaster(ed)?(\s*\d{4})?|live(\s+at.*)?|radio edit|single version|album version|bonus track|acoustic|deluxe).*";
+        output = System.Text.RegularExpressions.Regex.Replace(output, pattern3, "");
+
+        // 4. Numérotation de piste
+        var pattern4 = @"^\d{1,3}\s*[-.]\s*";
+        output = System.Text.RegularExpressions.Regex.Replace(output, pattern4, "");
+
+        // 5. Retirer les crochets isolés sans supprimer leur contenu
+        output = output.Replace("『", " ").Replace("』", " ")
+                       .Replace("「", " ").Replace("」", " ")
+                       .Replace("【", " ").Replace("】", " ")
+                       .Replace("《", " ").Replace("》", " ")
+                       .Replace("〈", " ").Replace("〉", " ");
+
         output = System.Text.RegularExpressions.Regex.Replace(output, @"\s+", " ");
         return output.Trim(' ', '-', '_');
     }
 
-    private bool IsMatch(string? qArtist, string? qTitle, string? rArtist, string? rTitle)
+    // ------------------------------------------------------------------
+    //  Nettoyage et validation globale des paroles (toutes sources confondues)
+    // ------------------------------------------------------------------
+
+    private static readonly System.Text.RegularExpressions.Regex LrcTimePrefixRegex = new System.Text.RegularExpressions.Regex(
+        @"^(\[\d{1,3}:\d{2}([.:]\d{1,3})?([+-]\d+)?\])+", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex LrcMetaLineRegex = new System.Text.RegularExpressions.Regex(
+        @"^\[[a-zA-Z]+:.*\]$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // "Artiste - Titre (Romanized) Lyrics", "... Paroles", "... 歌詞" : titre de page recopie par certaines sources.
+    private static readonly System.Text.RegularExpressions.Regex HeaderSuffixRegex = new System.Text.RegularExpressions.Regex(
+        @"(?i)(?:\s(?:lyrics|paroles|letra|testo|songtext)(?:\s*[\(\[][^\)\]]*[\)\]])?|\s?(?:歌词|歌詞))\s*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex BoilerplateStartRegex = new System.Text.RegularExpressions.Regex(
+        @"(?i)^(?:paroles\s+de\s+la\s+chanson\b|lyrics\s+(?:for|of)\b|\d+\s*contributors?\b|translations?$|you might also like$|(?:lyrics|paroles)$)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex BoilerplateEndRegex = new System.Text.RegularExpressions.Regex(
+        @"(?i)^(?:\d*embed|you might also like|lyrics\s+(?:provided|powered)\s+by\b.*|paroles\s+fournies\s+par\b.*)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex InstrumentalTitleRegex = new System.Text.RegularExpressions.Regex(
+        @"(?i)\b(?:instrumental|instrumentale)\b|\bno vocals?\b|\bsans paroles\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Le titre annonce explicitement un morceau sans chant ("(Instrumental)"...) : inutile de chercher des paroles.</summary>
+    public static bool LooksInstrumental(string? title) => !string.IsNullOrWhiteSpace(title) && InstrumentalTitleRegex.IsMatch(title);
+
+    private static bool ContainsNorm(string haystackNorm, string needleNorm) => needleNorm.Length >= 2 && haystackNorm.Contains(needleNorm);
+
+    private static bool IsHeaderLine(string payload, string artistNorm, string titleNorm)
     {
-        var qa = (qArtist ?? "").ToLowerInvariant().Trim();
-        var qt = (qTitle ?? "").ToLowerInvariant().Trim();
-        var ra = (rArtist ?? "").ToLowerInvariant().Trim();
-        var rt = (rTitle ?? "").ToLowerInvariant().Trim();
+        string p = payload.Trim();
+        if (p.Length == 0 || p.Length > 140) return false;
+        if (BoilerplateStartRegex.IsMatch(p)) return true;
 
-        if (string.IsNullOrEmpty(qt)) return false;
+        string pn = NormalizeForMatching(p);
+        bool hasTitle = ContainsNorm(pn, titleNorm);
+        bool hasArtist = ContainsNorm(pn, artistNorm);
+        bool hasDash = p.Contains(" - ") || p.Contains(" – ") || p.Contains(" — ");
 
-        var rgx = new System.Text.RegularExpressions.Regex("[^a-z0-9 ]");
-        qa = rgx.Replace(qa, "");
-        qt = rgx.Replace(qt, "");
-        ra = rgx.Replace(ra, "");
-        rt = rgx.Replace(rt, "");
+        // "Ado - Show (Romanized) Lyrics"
+        if (HeaderSuffixRegex.IsMatch(p) && (hasDash || hasTitle)) return true;
+        // Ligne qui ne contient que "Artiste - Titre"
+        if (hasTitle && hasArtist && hasDash && pn.Length <= artistNorm.Length + titleNorm.Length + 12) return true;
+        return false;
+    }
 
-        bool titleMatch = rt.Contains(qt) || qt.Contains(rt);
-        bool artistMatch = string.IsNullOrEmpty(qa) || string.IsNullOrEmpty(ra) || ra.Contains(qa) || qa.Contains(ra);
+    /// <summary>
+    /// Retire le "bruit" que certaines sources ajoutent autour des paroles : titre de page en tete
+    /// ("Artiste - Titre Lyrics"), "Paroles de la chanson ...", "N Contributors", et "123Embed" en fin de texte.
+    /// Fonctionne sur du texte simple comme sur du LRC synchronise.
+    /// </summary>
+    public string SanitizeLyricsText(string? lyrics, string? artist, string? title)
+    {
+        if (string.IsNullOrWhiteSpace(lyrics)) return lyrics ?? string.Empty;
+        string artistNorm = NormalizeForMatching(CleanMetadata(artist ?? string.Empty));
+        string titleNorm = NormalizeForMatching(CleanMetadata(title ?? string.Empty));
+        var lines = lyrics.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').ToList();
 
-        return titleMatch && artistMatch;
+        // En-tete : on n'inspecte que les premieres lignes reelles.
+        int inspected = 0;
+        int i = 0;
+        while (i < lines.Count && inspected < 6)
+        {
+            string raw = lines[i].Trim();
+            if (raw.Length == 0 || LrcMetaLineRegex.IsMatch(raw)) { i++; continue; }
+            string payload = LrcTimePrefixRegex.Replace(raw, "").Trim();
+            inspected++;
+            if (payload.Length > 0 && IsHeaderLine(payload, artistNorm, titleNorm))
+            {
+                lines.RemoveAt(i);
+                continue;
+            }
+            i++;
+        }
+
+        // Pied de page.
+        int guard = 0;
+        while (lines.Count > 0 && guard++ < 4)
+        {
+            string rawLast = lines[lines.Count - 1].Trim();
+            string last = LrcTimePrefixRegex.Replace(rawLast, "").Trim();
+            if (rawLast.Length == 0 || BoilerplateEndRegex.IsMatch(last))
+            {
+                lines.RemoveAt(lines.Count - 1);
+                continue;
+            }
+            break;
+        }
+
+        return string.Join("\n", lines).Trim();
+    }
+
+    private static double GetLastTimestampSec(string? lrc)
+    {
+        if (string.IsNullOrWhiteSpace(lrc)) return 0;
+        double max = 0;
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(lrc, @"\[(\d{1,3}):(\d{2}(?:[.:]\d{1,3})?)\]"))
+        {
+            if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double min) &&
+                double.TryParse(m.Groups[2].Value.Replace(':', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double sec))
+            {
+                max = Math.Max(max, min * 60.0 + sec);
+            }
+        }
+        return max;
+    }
+
+    /// <summary>
+    /// Controles qui ne dependent d'aucun reseau : assez de contenu pour etre de vraies paroles, et des horodatages
+    /// qui ne depassent pas la duree du morceau (sinon ce sont les paroles d'une autre version / d'un autre morceau).
+    /// </summary>
+    public static bool IsPlausibleForTrack(string? text, bool isSynced, TimeSpan? duration)
+    {
+        if (!HasActualLyrics(text)) return false;
+
+        int lineCount = 0, charCount = 0;
+        foreach (var raw in text!.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string l = raw.Trim();
+            if (LrcMetaLineRegex.IsMatch(l)) continue;
+            string clean = LrcTimePrefixRegex.Replace(l, "").Trim();
+            if (clean.Length == 0) continue;
+            lineCount++;
+            charCount += clean.Length;
+        }
+        if (lineCount < 3 || charCount < 40) return false;
+
+        if (isSynced && duration.HasValue && duration.Value.TotalSeconds > 30.0)
+        {
+            if (GetLastTimestampSec(text) > duration.Value.TotalSeconds + 15.0) return false;
+        }
+        return true;
+    }
+
+    // Un titre trop court / trop generique ("Awaken", "Rain", "Tide") correspond a des dizaines de chansons differentes.
+    private static bool IsDistinctiveTitle(string title)
+    {
+        string n = NormalizeForMatching(title);
+        if (n.Length < 7) return false;
+        return n.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length >= 2 || n.Length >= 9;
+    }
+
+    private static readonly HashSet<string> NoiseWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "remaster", "remastered", "live", "edit", "radio", "version", "mix",
+        "deluxe", "mono", "stereo", "acoustic", "instrumental", "explicit",
+        "clean", "cut", "take", "session", "bonus", "track", "remix", "extended", "original"
+    };
+
+    private static string NormalizeForMatching(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+        string formD = input.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (char ch in formD)
+        {
+            var uc = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (uc != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                if (char.IsLetterOrDigit(ch) || char.IsWhiteSpace(ch))
+                {
+                    sb.Append(char.ToLowerInvariant(ch));
+                }
+            }
+        }
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
+    }
+
+    private static string StripThe(string s)
+    {
+        if (s.StartsWith("the ", StringComparison.OrdinalIgnoreCase))
+            return s.Substring(4).Trim();
+        return s;
+    }
+
+    private static List<string> SplitArtists(string s)
+    {
+        var parts = System.Text.RegularExpressions.Regex.Split(s, @"\s*(?:feat\.?|featuring|ft\.?|&|and|\/|,|;|x|vs\.?)\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var list = new List<string>();
+        foreach (var p in parts)
+        {
+            string n = StripThe(NormalizeForMatching(p));
+            if (!string.IsNullOrWhiteSpace(n)) list.Add(n);
+        }
+        return list;
+    }
+
+    private static bool IsAllNoiseOrYear(IEnumerable<string> words)
+    {
+        foreach (var w in words)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(w, @"^\d{4}$")) continue;
+            if (NoiseWords.Contains(w)) continue;
+            return false;
+        }
+        return true;
+    }
+
+    private bool IsArtistMatch(string? qArtist, string? qTitle, string? rArtist)
+    {
+        var qa = NormalizeForMatching(CleanMetadata(qArtist));
+        var ra = NormalizeForMatching(CleanMetadata(rArtist));
+        if (string.IsNullOrEmpty(qa) && string.IsNullOrEmpty(ra)) return true;
+        if (!string.IsNullOrEmpty(qa) && string.IsNullOrEmpty(ra))
+        {
+            var qt = NormalizeForMatching(CleanMetadata(qTitle));
+            return qt.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length >= 2;
+        }
+        if (string.IsNullOrEmpty(qa) && !string.IsNullOrEmpty(ra)) return true;
+        if (qa == ra) return true;
+        if (StripThe(qa) == StripThe(ra)) return true;
+
+        var qList = SplitArtists(qa);
+        var rList = SplitArtists(ra);
+        if (qList.Count > 0 && rList.Count > 0)
+        {
+            if (qList[0] == rList[0]) return true;
+            if (qList.Any(q => rList.Contains(q))) return true;
+        }
+        return false;
+    }
+
+    private bool IsTitleMatch(string? qArtist, string? qTitle, string? rTitle)
+    {
+        var qt = NormalizeForMatching(CleanMetadata(qTitle));
+        var rt = NormalizeForMatching(CleanMetadata(rTitle));
+        if (string.IsNullOrEmpty(qt) || string.IsNullOrEmpty(rt)) return false;
+        if (qt == rt) return true;
+
+        var qa = NormalizeForMatching(CleanMetadata(qArtist));
+        if (!string.IsNullOrEmpty(qa))
+        {
+            qa = StripThe(qa);
+            if (rt.StartsWith(qa + " ", StringComparison.OrdinalIgnoreCase))
+            {
+                var stripped = rt.Substring(qa.Length + 1).Trim();
+                if (stripped == qt) return true;
+                rt = stripped;
+            }
+        }
+
+        var qWords = qt.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        var rWords = rt.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (qWords.Length == 1)
+        {
+            if (rWords.Length > 1 && string.Equals(rWords[0], qWords[0], StringComparison.OrdinalIgnoreCase))
+            {
+                return IsAllNoiseOrYear(rWords.Skip(1));
+            }
+            return qt == rt;
+        }
+
+        if (rt.StartsWith(qt + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsAllNoiseOrYear(rWords.Skip(qWords.Length));
+        }
+
+        if (qt.StartsWith(rt + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsAllNoiseOrYear(qWords.Skip(rWords.Length));
+        }
+
+        return false;
+    }
+
+    private bool IsMatch(string? qArtist, string? qTitle, string? rArtist, string? rTitle, double? qDur = null, double? rDur = null, bool strict = false)
+    {
+        // Mode strict (recherche par titre seul) : la duree doit etre connue des deux cotes et quasi identique.
+        if (strict)
+        {
+            if (!qDur.HasValue || qDur.Value <= 10.0 || !rDur.HasValue || rDur.Value <= 10.0) return false;
+            if (Math.Abs(qDur.Value - rDur.Value) > 5.0) return false;
+        }
+        if (qDur.HasValue && qDur.Value > 10.0 && rDur.HasValue && rDur.Value > 10.0)
+        {
+            // Tolérance adaptative allant jusqu'à 45s pour supporter les vidéos YouTube avec cartes de fin / génériques
+            double maxDelta = Math.Max(10.0, Math.Min(45.0, qDur.Value * 0.15));
+            if (Math.Abs(qDur.Value - rDur.Value) > maxDelta) return false;
+        }
+        return IsTitleMatch(qArtist, qTitle, rTitle) && IsArtistMatch(qArtist, qTitle, rArtist);
+    }
+
+    private static string ExtractPlainLyricsFromLrc(string lrc)
+    {
+        if (string.IsNullOrWhiteSpace(lrc)) return string.Empty;
+        var lines = lrc.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        var sb = new System.Text.StringBuilder();
+        var timeRegex = new System.Text.RegularExpressions.Regex(@"^(\[\d{1,2}:\d{2}([.:]\d{1,3})?([+-]\d+)?\])+");
+        var metadataRegex = new System.Text.RegularExpressions.Regex(@"^\[[a-zA-Z]+:.*\]$");
+        var creditRegex = new System.Text.RegularExpressions.Regex(
+            @"^(作词|作曲|编曲|制作|监制|混音|母带|吉他|贝斯|鼓|键盘|和声|录音|发行|企划|统筹|文案|OP|SP|T_T|BY)\s*[:：]|^(作词|作曲|编曲|制作人|written by|composed by|lyrics by|produced by)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        TimeSpan maxTime = TimeSpan.Zero;
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            if (string.IsNullOrEmpty(line)) continue;
+            if (metadataRegex.IsMatch(line)) continue;
+
+            var timeMatch = System.Text.RegularExpressions.Regex.Match(line, @"^\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]");
+            if (timeMatch.Success)
+            {
+                if (int.TryParse(timeMatch.Groups[1].Value, out int min) && int.TryParse(timeMatch.Groups[2].Value, out int sec))
+                {
+                    var ts = TimeSpan.FromSeconds(min * 60 + sec);
+                    if (maxTime > TimeSpan.FromSeconds(20.0) && ts < maxTime - TimeSpan.FromSeconds(15.0))
+                    {
+                        // Saut temporel en arrière : flux secondaire de traduction bilingue en fin de fichier
+                        break;
+                    }
+                    if (ts > maxTime) maxTime = ts;
+                    if (ts.TotalSeconds < 8.0 && creditRegex.IsMatch(timeRegex.Replace(line, "").Trim()))
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            string cleaned = timeRegex.Replace(line, "").Trim();
+            if (!string.IsNullOrWhiteSpace(cleaned))
+            {
+                sb.AppendLine(cleaned);
+            }
+        }
+        return sb.ToString().Trim();
+    }
+
+    private async Task<(LyricsResult? result, bool isInstrumental)> TryLrclibGetAsync(string artist, string title, string? album, TimeSpan? duration)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4.5));
+            string url = $"https://lrclib.net/api/get?artist_name={Uri.EscapeDataString(artist)}&track_name={Uri.EscapeDataString(title)}";
+            if (!string.IsNullOrWhiteSpace(album))
+                url += $"&album_name={Uri.EscapeDataString(album)}";
+            if (duration.HasValue && duration.Value.TotalSeconds > 0)
+                url += $"&duration={Math.Round(duration.Value.TotalSeconds)}";
+
+            HttpResponseMessage? resp = null;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                resp = await _http.SendAsync(req, cts.Token);
+                if (resp.IsSuccessStatusCode) break;
+                if ((int)resp.StatusCode == 503 || (int)resp.StatusCode == 429)
+                {
+                    await Task.Delay(350, cts.Token);
+                    continue;
+                }
+                break;
+            }
+
+            if (resp != null && resp.IsSuccessStatusCode)
+            {
+                var r = await resp.Content.ReadFromJsonAsync<LrcLibResponse>(cancellationToken: cts.Token);
+                if (r != null)
+                {
+                    if (r.Instrumental == true)
+                    {
+                        return (null, true);
+                    }
+
+                    double? targetSec = (duration.HasValue && duration.Value.TotalSeconds > 10.0) ? duration.Value.TotalSeconds : null;
+                    if (!IsMatch(artist, title, r.ArtistName, r.TrackName, targetSec, r.Duration))
+                    {
+                        return (null, false);
+                    }
+
+                    string? candidateText = r.SyncedLyrics ?? r.PlainLyrics;
+                    if (!string.IsNullOrWhiteSpace(candidateText) && !IsCorruptedLyrics(candidateText) && HasActualLyrics(candidateText))
+                    {
+                        return (new LyricsResult { Source = $"lrclib/get [{r.ArtistName} - {r.TrackName}, {r.Duration:0}s]", PlainLyrics = r.PlainLyrics, SyncedLyrics = r.SyncedLyrics }, false);
+                    }
+                }
+            }
+        }
+        catch { }
+        return (null, false);
+    }
+
+    private async Task<(LyricsResult? result, bool isInstrumental)> TryLrclibSearchAsync(string artist, string title, TimeSpan? duration, bool strict = false)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5.0));
+            string query = string.IsNullOrWhiteSpace(artist)
+                ? $"https://lrclib.net/api/search?q={Uri.EscapeDataString(title)}"
+                : $"https://lrclib.net/api/search?q={Uri.EscapeDataString(artist + " " + title)}";
+
+            HttpResponseMessage? resp = null;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, query);
+                req.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                resp = await _http.SendAsync(req, cts.Token);
+                if (resp.IsSuccessStatusCode) break;
+                if ((int)resp.StatusCode == 503 || (int)resp.StatusCode == 429)
+                {
+                    await Task.Delay(350, cts.Token);
+                    continue;
+                }
+                break;
+            }
+
+            if (resp != null && resp.IsSuccessStatusCode)
+            {
+                var results = await resp.Content.ReadFromJsonAsync<List<LrcLibResponse>>(cancellationToken: cts.Token);
+                if (results != null && results.Count > 0)
+                {
+                    double? targetSec = (duration.HasValue && duration.Value.TotalSeconds > 10.0) ? duration.Value.TotalSeconds : null;
+                    bool queryHasCyrillic = HasCyrillic(artist) || HasCyrillic(title);
+                    bool queryHasCjk = HasCjk(artist) || HasCjk(title);
+
+                    var matched = results
+                        .Where(r => IsMatch(artist, title, r.ArtistName, r.TrackName, targetSec, r.Duration, strict))
+                        .Where(r => !IsCorruptedLyrics(r.SyncedLyrics ?? r.PlainLyrics))
+                        .Where(r => {
+                            if (r.TrackName != null && MisattributedCoverRegex.IsMatch(r.TrackName))
+                            {
+                                return false;
+                            }
+                            string? cand = r.SyncedLyrics ?? r.PlainLyrics;
+                            if (!queryHasCyrillic && HasCyrillic(cand))
+                            {
+                                return false;
+                            }
+                            return true;
+                        })
+                        .ToList();
+
+                    if (matched.Count > 0)
+                    {
+                        string normTitle = NormalizeForMatching(CleanMetadata(title));
+                        matched = matched
+                            .OrderByDescending(r => !string.IsNullOrWhiteSpace(r.SyncedLyrics))
+                            .ThenByDescending(r => NormalizeForMatching(CleanMetadata(r.TrackName)) == normTitle)
+                            .ThenByDescending(r => queryHasCjk ? HasCjk(r.SyncedLyrics ?? r.PlainLyrics) : false)
+                            .ThenBy(r => targetSec.HasValue && r.Duration.HasValue ? (Math.Abs(r.Duration.Value - targetSec.Value) <= 5.0 ? 0 : 1) : 0)
+                            .ThenByDescending(r => !string.IsNullOrWhiteSpace(r.SyncedLyrics) && GetFirstTimestampSec(r.SyncedLyrics) <= 12.0)
+                            .ThenByDescending(r => GetLineCount(r.SyncedLyrics ?? r.PlainLyrics))
+                            .ThenBy(r => targetSec.HasValue && r.Duration.HasValue ? Math.Abs(r.Duration.Value - targetSec.Value) : 999.0)
+                            .ToList();
+
+                        var best = matched[0];
+                        if (best.Instrumental == true)
+                        {
+                            return (null, true);
+                        }
+
+                        string? candidateText = best.SyncedLyrics ?? best.PlainLyrics;
+                        if (!string.IsNullOrWhiteSpace(candidateText) && HasActualLyrics(candidateText))
+                        {
+                            return (new LyricsResult { Source = $"lrclib/search [{best.ArtistName} - {best.TrackName}, {best.Duration:0}s]", PlainLyrics = best.PlainLyrics, SyncedLyrics = best.SyncedLyrics }, false);
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+        return (null, false);
+    }
+
+    private async Task<LyricsResult?> TryLyricsOvhAsync(string artist, string title, TimeSpan? duration = null, bool strict = false)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4.0));
+
+            // 1. Appel direct par artist/title si les deux sont fournis
+            if (!string.IsNullOrWhiteSpace(artist) && !string.IsNullOrWhiteSpace(title))
+            {
+                string directUrl = $"https://api.lyrics.ovh/v1/{Uri.EscapeDataString(artist)}/{Uri.EscapeDataString(title)}";
+                using var directReq = new HttpRequestMessage(HttpMethod.Get, directUrl);
+                directReq.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                using var directResp = await _http.SendAsync(directReq, cts.Token);
+
+                if (directResp.IsSuccessStatusCode)
+                {
+                    using var stream = await directResp.Content.ReadAsStreamAsync(cts.Token);
+                    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token);
+                    if (doc.RootElement.TryGetProperty("lyrics", out var lyrElem))
+                    {
+                        string? lyrics = lyrElem.GetString();
+                        if (!string.IsNullOrWhiteSpace(lyrics) && !IsCorruptedLyrics(lyrics) && HasActualLyrics(lyrics))
+                        {
+                            bool isSynced = LocalLyricsService.LooksLikeLrc(lyrics);
+                            return new LyricsResult
+                            {
+                                Source = "lyrics.ovh/direct",
+                                PlainLyrics = isSynced ? ExtractPlainLyricsFromLrc(lyrics) : lyrics.Trim(),
+                                SyncedLyrics = isSynced ? lyrics : null
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 2. Si non trouvé directement, recherche de suggestion Deezer (/suggest/)
+            string suggestQuery = string.IsNullOrWhiteSpace(artist) ? title : $"{artist} {title}";
+            string suggestUrl = $"https://api.lyrics.ovh/suggest/{Uri.EscapeDataString(suggestQuery)}";
+            using var sugReq = new HttpRequestMessage(HttpMethod.Get, suggestUrl);
+            sugReq.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+            using var sugResp = await _http.SendAsync(sugReq, cts.Token);
+
+            if (sugResp.IsSuccessStatusCode)
+            {
+                using var sugStream = await sugResp.Content.ReadAsStreamAsync(cts.Token);
+                using var sugDoc = await JsonDocument.ParseAsync(sugStream, cancellationToken: cts.Token);
+
+                if (sugDoc.RootElement.TryGetProperty("data", out var dataArr) &&
+                    dataArr.ValueKind == JsonValueKind.Array)
+                {
+                    double? targetSec = (duration.HasValue && duration.Value.TotalSeconds > 10.0) ? duration.Value.TotalSeconds : null;
+
+                    foreach (var item in dataArr.EnumerateArray())
+                    {
+                        string sTitle = item.TryGetProperty("title", out var tElem) ? tElem.GetString() ?? "" : "";
+                        string sArtist = "";
+                        if (item.TryGetProperty("artist", out var aObj) && aObj.TryGetProperty("name", out var aName))
+                        {
+                            sArtist = aName.GetString() ?? "";
+                        }
+
+                        double? sDuration = null;
+                        if (item.TryGetProperty("duration", out var durElem) && durElem.TryGetDouble(out double dVal))
+                        {
+                            sDuration = dVal;
+                        }
+
+                        if (IsMatch(artist, title, sArtist, sTitle, targetSec, sDuration, strict))
+                        {
+                            string matchUrl = $"https://api.lyrics.ovh/v1/{Uri.EscapeDataString(sArtist)}/{Uri.EscapeDataString(sTitle)}";
+                            using var matchReq = new HttpRequestMessage(HttpMethod.Get, matchUrl);
+                            matchReq.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+                            using var matchResp = await _http.SendAsync(matchReq, cts.Token);
+                            if (matchResp.IsSuccessStatusCode)
+                            {
+                                using var matchStream = await matchResp.Content.ReadAsStreamAsync(cts.Token);
+                                using var matchDoc = await JsonDocument.ParseAsync(matchStream, cancellationToken: cts.Token);
+                                if (matchDoc.RootElement.TryGetProperty("lyrics", out var mElem))
+                                {
+                                    string? mLyrics = mElem.GetString();
+                                    if (!string.IsNullOrWhiteSpace(mLyrics) && !IsCorruptedLyrics(mLyrics) && HasActualLyrics(mLyrics))
+                                    {
+                                        bool isSynced = LocalLyricsService.LooksLikeLrc(mLyrics);
+                                        return new LyricsResult
+                                        {
+                                            Source = $"lyrics.ovh/suggest [{sArtist} - {sTitle}]",
+                                            PlainLyrics = isSynced ? ExtractPlainLyricsFromLrc(mLyrics) : mLyrics.Trim(),
+                                            SyncedLyrics = isSynced ? mLyrics : null
+                                        };
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private async Task<LyricsResult> ExecuteSearchCascadeAsync(string artist, string title, string? album, TimeSpan? duration, bool titleOnly = false, bool strict = false)
+    {
+        LyricsResult? bestPlainFallback = null;
+
+        // 1. LRCLIB Exact
+        try
+        {
+            // En mode "titre seul" (artiste inconnu), l'appel exact par artiste n'a pas de sens.
+            var (exactRes, exactInst) = titleOnly ? ((LyricsResult?)null, false) : await TryLrclibGetAsync(artist, title, album, duration);
+            if (exactInst) return new LyricsResult();
+            if (exactRes != null && exactRes.Found)
+            {
+                if (!string.IsNullOrWhiteSpace(exactRes.SyncedLyrics))
+                {
+                    // Si exactRes commence après 15s sur un morceau de plus de 60s, l'intro peut manquer (ex: Show d'Ado).
+                    // On le conserve comme fallback et on laisse la recherche explorer les versions complètes dès 00:00.
+                    if (duration.HasValue && duration.Value.TotalSeconds > 60.0 && GetFirstTimestampSec(exactRes.SyncedLyrics) > 15.0)
+                    {
+                        bestPlainFallback ??= exactRes;
+                    }
+                    else
+                    {
+                        return exactRes;
+                    }
+                }
+                else
+                {
+                    bestPlainFallback ??= exactRes;
+                }
+            }
+        }
+        catch { }
+
+        // 2. LRCLIB Search
+        try
+        {
+            var (searchRes, searchInst) = await TryLrclibSearchAsync(artist, title, duration, strict);
+            if (searchInst) return new LyricsResult();
+            if (searchRes != null && searchRes.Found)
+            {
+                if (!string.IsNullOrWhiteSpace(searchRes.SyncedLyrics)) return searchRes;
+                bestPlainFallback ??= searchRes;
+            }
+        }
+        catch { }
+
+        // 3. Lyrics.ovh (Deezer)
+        try
+        {
+            var ovhResult = await TryLyricsOvhAsync(artist, title, duration, strict);
+            if (ovhResult != null && ovhResult.Found)
+            {
+                if (!string.IsNullOrWhiteSpace(ovhResult.SyncedLyrics)) return ovhResult;
+                bestPlainFallback ??= ovhResult;
+            }
+        }
+        catch { }
+
+        if (bestPlainFallback != null && bestPlainFallback.Found) return bestPlainFallback;
+        return new LyricsResult();
+    }
+
+    /// <summary>
+    /// Recherche libre sur LRCLIB pour le selecteur manuel : aucun filtre d'artiste ni de titre (c'est l'utilisateur qui
+    /// choisit, par exemple les paroles de l'original d'une reprise). Les fiches dont la duree est la plus proche de celle
+    /// du morceau passent en premier, puis les paroles synchronisees avant le texte simple.
+    /// </summary>
+    public async Task<List<LyricsCandidate>> SearchCandidatesAsync(string query, TimeSpan? duration)
+    {
+        var list = new List<LyricsCandidate>();
+        if (string.IsNullOrWhiteSpace(query)) return list;
+        double? target = (duration.HasValue && duration.Value.TotalSeconds > 10.0) ? duration.Value.TotalSeconds : null;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10.0));
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://lrclib.net/api/search?q={Uri.EscapeDataString(query.Trim())}");
+            req.Headers.UserAgent.TryParseAdd("Resona/3.3 (https://github.com/Resona)");
+            using var resp = await _http.SendAsync(req, cts.Token);
+            if (!resp.IsSuccessStatusCode)
+            {
+                LogService.Write("Lyrics", $"Selecteur : LRCLIB a repondu {(int)resp.StatusCode} pour \"{query}\"");
+                return list;
+            }
+            var results = await resp.Content.ReadFromJsonAsync<List<LrcLibResponse>>(cancellationToken: cts.Token);
+            if (results == null) return list;
+
+            var seen = new HashSet<string>();
+            foreach (var r in results)
+            {
+                if (r.Instrumental == true) continue;
+                string? raw = !string.IsNullOrWhiteSpace(r.SyncedLyrics) ? r.SyncedLyrics : r.PlainLyrics;
+                if (string.IsNullOrWhiteSpace(raw) || IsCorruptedLyrics(raw)) continue;
+
+                string artist = r.ArtistName ?? string.Empty;
+                string title = r.TrackName ?? string.Empty;
+                string? synced = string.IsNullOrWhiteSpace(r.SyncedLyrics) ? null : SanitizeLyricsText(r.SyncedLyrics, artist, title);
+                string? plain = string.IsNullOrWhiteSpace(r.PlainLyrics) ? null : SanitizeLyricsText(r.PlainLyrics, artist, title);
+                string shown = synced ?? plain ?? string.Empty;
+                if (!HasActualLyrics(shown)) continue;
+                if (!seen.Add($"{artist}|{title}|{Math.Round(r.Duration ?? 0.0)}|{shown.Length}")) continue;
+
+                string preview = string.Join(" / ", shown.Split('\n')
+                    .Select(l => LrcTimePrefixRegex.Replace(l.Trim(), "").Trim())
+                    .Where(l => l.Length > 0 && !LrcMetaLineRegex.IsMatch(l))
+                    .Take(2));
+                if (preview.Length > 120) preview = preview.Substring(0, 120) + "...";
+
+                list.Add(new LyricsCandidate
+                {
+                    Artist = artist,
+                    Title = title,
+                    DurationSec = r.Duration ?? 0.0,
+                    Synced = synced,
+                    Plain = plain,
+                    Preview = preview
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Write("Lyrics", $"Selecteur : recherche impossible ({ex.Message})");
+        }
+
+        return list
+            .OrderBy(c => (target.HasValue && c.DurationSec > 0.0) ? Math.Abs(c.DurationSec - target.Value) : 1e6)
+            .ThenByDescending(c => c.IsSynced)
+            .Take(30)
+            .ToList();
     }
 
     public async Task<LyricsResult> SearchAsync(string artist, string title, string? album = null, TimeSpan? duration = null)
     {
+        if (LooksInstrumental(title))
+        {
+            return new LyricsResult();
+        }
+
+        LyricsResult res = await SearchCoreAsync(artist, title, album, duration);
+        if (!res.Found)
+        {
+            return res;
+        }
+
+        // Nettoyage commun a toutes les sources (titre de page recopie, "Embed"...) puis controle de coherence avec le morceau.
+        string? synced = string.IsNullOrWhiteSpace(res.SyncedLyrics) ? null : SanitizeLyricsText(res.SyncedLyrics, artist, title);
+        string? plain = string.IsNullOrWhiteSpace(res.PlainLyrics) ? null : SanitizeLyricsText(res.PlainLyrics, artist, title);
+        if (synced != null && !IsPlausibleForTrack(synced, true, duration)) synced = null;
+        if (plain != null && !IsPlausibleForTrack(plain, false, duration)) plain = null;
+
+        if (synced == null && plain == null)
+        {
+            return new LyricsResult();
+        }
+
+        return new LyricsResult { Source = res.Source, TitleOnly = res.TitleOnly, SyncedLyrics = synced, PlainLyrics = plain };
+    }
+
+    private async Task<LyricsResult> SearchCoreAsync(string artist, string title, string? album = null, TimeSpan? duration = null)
+    {
         string cArtist = CleanMetadata(artist);
         string cTitle = CleanMetadata(title);
-        
-        // 1. LRCLIB Search
-        try
+
+        if (string.IsNullOrWhiteSpace(cTitle))
+            return new LyricsResult();
+
+        // 1. Recherche principale avec métadonnées nettoyées
+        var res = await ExecuteSearchCascadeAsync(cArtist, cTitle, album, duration);
+        if (res.Found) return res;
+
+        // 2. Fallback 1: Si cArtist contient plusieurs artistes (ex: "2WEI, Kataem & Marvin Brooks"), chercher avec l'artiste principal
+        var artistParts = SplitArtists(cArtist);
+        if (artistParts.Count > 1 && !string.IsNullOrWhiteSpace(artistParts[0]) && !string.Equals(artistParts[0], cArtist, StringComparison.OrdinalIgnoreCase))
         {
-            string query = $"https://lrclib.net/api/search?q={Uri.EscapeDataString(cArtist + " " + cTitle)}";
-            var request = new HttpRequestMessage(HttpMethod.Get, query);
-            request.Headers.UserAgent.TryParseAdd("Resona/2.4");
-            
-            var response = await _http.SendAsync(request);
-            if (response.IsSuccessStatusCode)
+            var fallbackRes = await ExecuteSearchCascadeAsync(artistParts[0], cTitle, album, duration);
+            if (fallbackRes.Found) return fallbackRes;
+        }
+
+        // 3. Fallback 2: Si le titre contenait un nom entre crochets japonais (ex: "Suzume" dans "Suzume no Tojimari『Suzume』")
+        string? innerTitle = ExtractBracketedTitle(title);
+        if (!string.IsNullOrWhiteSpace(innerTitle) && !innerTitle.Equals(cTitle, StringComparison.OrdinalIgnoreCase))
+        {
+            var bracketRes = await ExecuteSearchCascadeAsync(cArtist, innerTitle, album, duration);
+            if (bracketRes.Found) return bracketRes;
+
+            if (artistParts.Count > 0 && !string.IsNullOrWhiteSpace(artistParts[0]))
             {
-                var results = await response.Content.ReadFromJsonAsync<List<LrcLibResponse>>();
-                if (results != null && results.Count > 0)
-                {
-                    var validResults = results
-                        .Where(r => (!string.IsNullOrWhiteSpace(r.PlainLyrics) || !string.IsNullOrWhiteSpace(r.SyncedLyrics)) 
-                                    && IsMatch(cArtist, cTitle, r.ArtistName, r.TrackName))
-                        .ToList();
-                        
-                    if (validResults.Count > 0)
-                    {
-                        LrcLibResponse bestMatch = validResults[0];
-                        if (duration.HasValue)
-                        {
-                            double targetSec = duration.Value.TotalSeconds;
-                            bestMatch = validResults.OrderBy(r => r.Duration.HasValue ? Math.Abs(r.Duration.Value - targetSec) : double.MaxValue).First();
-                        }
-                        return new LyricsResult { PlainLyrics = bestMatch.PlainLyrics, SyncedLyrics = bestMatch.SyncedLyrics };
-                    }
-                }
+                var bracketArtistRes = await ExecuteSearchCascadeAsync(artistParts[0], innerTitle, album, duration);
+                if (bracketArtistRes.Found) return bracketArtistRes;
             }
         }
-        catch { }
 
-        // 2. Netease Fallback
-        try
+        // 4. Fallback 3: Si l'artiste ressemble à un nom de chaîne YouTube (ex: "AniMelody - Anime Music", "Topic", "Vevo")
+        // ou si la recherche avec artiste n'a rien donné : tenter avec le titre seul (avec contrôle de durée et langue)
+        string targetTitle = !string.IsNullOrWhiteSpace(innerTitle) ? innerTitle : cTitle;
+        bool isChannelArtist = System.Text.RegularExpressions.Regex.IsMatch(cArtist, @"(?i)(anime music|music channel|records|channel|vevo|topic|entertainment)");
+        // Recherche par titre seul : uniquement quand l'artiste est inconnu (ou n'est qu'un nom de chaine), avec un titre
+        // assez distinctif et une duree quasi identique. Sinon un titre generique ("Awaken", "Villain"...) retombe sur un
+        // tout autre morceau, d'ou les paroles fausses ou les paroles trouvees pour des morceaux instrumentaux.
+        string targetNorm = NormalizeForMatching(targetTitle);
+        int targetWords = targetNorm.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        // Titre fiable : extrait d'un crochet (『Suzume』) ou compose de plusieurs mots -> tolerance de duree habituelle.
+        // Mot unique : il doit etre assez long ET la duree quasi identique (mode strict), sinon on ne cherche pas.
+        bool bracketTitle = !string.IsNullOrWhiteSpace(innerTitle) && targetNorm.Length >= 5 && !NoiseWords.Contains(targetNorm);
+        bool reliableTitle = bracketTitle || targetWords >= 2;
+        bool titleOnlyAllowed = reliableTitle ? targetNorm.Length >= 4 : targetNorm.Length >= 7;
+        if ((isChannelArtist || string.IsNullOrWhiteSpace(cArtist))
+            && duration.HasValue && duration.Value.TotalSeconds > 10.0
+            && titleOnlyAllowed)
         {
-            string searchQuery = Uri.EscapeDataString($"{cArtist} {cTitle}");
-            using var netease = new HttpClient();
-            netease.DefaultRequestHeaders.UserAgent.TryParseAdd("Mozilla/5.0");
-            var searchResp = System.Text.Encoding.UTF8.GetString(await netease.GetByteArrayAsync($"https://music.163.com/api/search/pc?s={searchQuery}&offset=0&limit=5&type=1"));
-            var doc = System.Text.Json.JsonDocument.Parse(searchResp);
-            
-            if (doc.RootElement.TryGetProperty("result", out var resultElem) &&
-                resultElem.TryGetProperty("songs", out var songs) &&
-                songs.GetArrayLength() > 0)
+            var titleOnlyFallback = await ExecuteSearchCascadeAsync("", targetTitle, null, duration, titleOnly: true, strict: !reliableTitle);
+            if (titleOnlyFallback.Found)
             {
-                bool foundMatch = false;
-                long songId = 0;
-                
-                // Find best matching song in top 5 results
-                foreach (var song in songs.EnumerateArray())
-                {
-                    string rTitle = song.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-                    string rArtist = "";
-                    if (song.TryGetProperty("artists", out var artists) && artists.GetArrayLength() > 0)
-                    {
-                        rArtist = artists[0].TryGetProperty("name", out var an) ? an.GetString() ?? "" : "";
-                    }
-                    
-                    if (IsMatch(cArtist, cTitle, rArtist, rTitle))
-                    {
-                        songId = song.GetProperty("id").GetInt64();
-                        foundMatch = true;
-                        break;
-                    }
-                }
-
-                if (foundMatch)
-                {
-                    var lyricResp = System.Text.Encoding.UTF8.GetString(await netease.GetByteArrayAsync($"https://music.163.com/api/song/lyric?id={songId}&lv=-1&kv=-1&tv=-1"));
-                    var lyricDoc = System.Text.Json.JsonDocument.Parse(lyricResp);
-                    string? lrc = null, plain = null;
-                    if (lyricDoc.RootElement.TryGetProperty("lrc", out var lrcElem) &&
-                        lrcElem.TryGetProperty("lyric", out var lrcText))
-                        lrc = lrcText.GetString();
-                    if (lyricDoc.RootElement.TryGetProperty("klyric", out var kElem) &&
-                        kElem.TryGetProperty("lyric", out var kText))
-                        plain = kText.GetString();
-                    
-                    if (!string.IsNullOrWhiteSpace(lrc) || !string.IsNullOrWhiteSpace(plain))
-                        return new LyricsResult { PlainLyrics = plain ?? lrc, SyncedLyrics = lrc };
-                }
+                titleOnlyFallback.TitleOnly = true; // resultat approximatif : l'appelant peut le recouper avec un tag fiable
+                return titleOnlyFallback;
             }
         }
-        catch { }
 
         return new LyricsResult();
     }
@@ -729,7 +1535,7 @@ public static class LocalLyricsService
         return null;
     }
 
-    private static bool LooksLikeLrc(string text)
+    public static bool LooksLikeLrc(string text)
     {
         return System.Text.RegularExpressions.Regex.IsMatch(text, @"\[\d{1,2}:\d{2}([.:]\d{1,3})?\]");
     }
@@ -737,27 +1543,108 @@ public static class LocalLyricsService
 
 public class PlaylistM3uService
 {
-    public async Task<(List<string> resolvedPaths, List<string> missing, string? coverPath)> ImportAsync(string playlistFilePath)
+    public async Task<(List<string> resolvedPaths, List<string> missing, string? coverPath)> ImportAsync(string playlistFilePath, IEnumerable<Track>? library = null)
 	{
+        string ext = Path.GetExtension(playlistFilePath).ToLowerInvariant();
+        if (ext is ".csv" or ".tsv" or ".txt")
+        {
+            var lib = library ?? (App.Cache != null ? await App.Cache.LoadAllTracksAsync() : new List<Track>());
+            return await PlaylistImportService.ImportExportFileAsync(playlistFilePath, lib);
+        }
+
         var resolved = new List<string>();
         var missing = new List<string>();
 		string? coverPath = null;
         string baseDir = Path.GetDirectoryName(playlistFilePath) ?? string.Empty;
         var lines = await System.IO.File.ReadAllLinesAsync(playlistFilePath, DetectEncoding(playlistFilePath));
+
+        FuzzyTrackMatcher? fallbackMatcher = null;
+        string? lastExtInfTitle = null;
+        string? lastExtInfArtist = null;
+
         foreach (var rawLine in lines)
         {
             var line = rawLine.Trim();
             if (line.Length == 0) continue;
-			if (line.StartsWith("#EXTIMG:")) { string cPath = line.Substring(8).Trim(); string fullCPath = Path.IsPathRooted(cPath) ? cPath : Path.GetFullPath(Path.Combine(baseDir, cPath)); if (System.IO.File.Exists(fullCPath)) coverPath = fullCPath; continue; }
+			if (line.StartsWith("#EXTIMG:"))
+            {
+                string cPath = line.Substring(8).Trim();
+                string fullCPath = Path.IsPathRooted(cPath) ? cPath : Path.GetFullPath(Path.Combine(baseDir, cPath));
+                if (System.IO.File.Exists(fullCPath)) coverPath = fullCPath;
+                continue;
+            }
+            if (line.StartsWith("#EXTINF:"))
+            {
+                int commaIdx = line.IndexOf(',');
+                if (commaIdx >= 0 && commaIdx + 1 < line.Length)
+                {
+                    string info = line.Substring(commaIdx + 1).Trim();
+                    int dashIdx = info.IndexOf(" - ");
+                    if (dashIdx >= 0)
+                    {
+                        lastExtInfArtist = info.Substring(0, dashIdx).Trim();
+                        lastExtInfTitle = info.Substring(dashIdx + 3).Trim();
+                    }
+                    else
+                    {
+                        lastExtInfTitle = info;
+                        lastExtInfArtist = null;
+                    }
+                }
+                continue;
+            }
 			if (line.StartsWith("#")) continue;
+
             string fullPath = Path.IsPathRooted(line)
                 ? line
                 : Path.GetFullPath(Path.Combine(baseDir, line));
-            if (System.IO.File.Exists(fullPath)) resolved.Add(fullPath);
-            else                       missing.Add(line);
+
+            if (System.IO.File.Exists(fullPath))
+            {
+                resolved.Add(fullPath);
+            }
+            else
+            {
+                bool matched = false;
+                if (library != null)
+                {
+                    fallbackMatcher ??= new FuzzyTrackMatcher(library);
+                    string guessTitle = lastExtInfTitle ?? Path.GetFileNameWithoutExtension(line);
+                    string guessArtist = lastExtInfArtist ?? string.Empty;
+                    var match = fallbackMatcher.Match(new PlaylistImportEntry
+                    {
+                        Title = guessTitle,
+                        Artist = guessArtist,
+                        RawLine = line
+                    });
+                    if (match.matchedTrack != null && !string.IsNullOrWhiteSpace(match.matchedTrack.FilePath))
+                    {
+                        resolved.Add(match.matchedTrack.FilePath);
+                        matched = true;
+                    }
+                }
+
+                if (!matched)
+                {
+                    missing.Add(!string.IsNullOrWhiteSpace(lastExtInfTitle) ? $"\"{lastExtInfTitle}\"{(string.IsNullOrWhiteSpace(lastExtInfArtist) ? "" : $" - {lastExtInfArtist}")}" : line);
+                }
+            }
+
+            lastExtInfTitle = null;
+            lastExtInfArtist = null;
         }
-        if (string.IsNullOrEmpty(coverPath)) { string name = Path.GetFileNameWithoutExtension(playlistFilePath); foreach (var ext in new[] { ".jpg", ".jpeg", ".png", ".webp" }) { string p = Path.Combine(baseDir, name + ext); if (System.IO.File.Exists(p)) { coverPath = p; break; } } }
-			return (resolved, missing, coverPath);
+
+        if (string.IsNullOrEmpty(coverPath))
+        {
+            string name = Path.GetFileNameWithoutExtension(playlistFilePath);
+            foreach (var imgExt in new[] { ".jpg", ".jpeg", ".png", ".webp" })
+            {
+                string p = Path.Combine(baseDir, name + imgExt);
+                if (System.IO.File.Exists(p)) { coverPath = p; break; }
+            }
+        }
+
+		return (resolved, missing, coverPath);
     }
 
     public async Task ExportAsync(string outputPath, IEnumerable<Track> tracks, bool useRelativePaths = true, string? coverImagePath = null)
@@ -1135,6 +2022,15 @@ public async Task InitializeAsync()
         }
         catch { /* Column probably already exists */ }
 
+        // Migrate existing databases for SmartRulesJson (playlists intelligentes ; NULL = playlist classique)
+        try
+        {
+            var alterCmd3 = conn.CreateCommand();
+            alterCmd3.CommandText = "ALTER TABLE Playlists ADD COLUMN SmartRulesJson TEXT;";
+            await alterCmd3.ExecuteNonQueryAsync();
+        }
+        catch { /* Column probably already exists */ }
+
         // Cree la playlist systeme Favoris si elle n'existe pas encore, toujours en base des
         // le premier lancement qui touche cette methode, pour qu'elle soit disponible partout.
         try
@@ -1164,7 +2060,7 @@ public async Task InitializeAsync()
         using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Tracks SET Title = NULL, Artist = NULL, Album = NULL, Genre = NULL, Year = NULL, TrackNumber = NULL";
+        cmd.CommandText = "UPDATE Tracks SET Title = NULL, Artist = NULL, Album = NULL, AlbumArtist = NULL, Genre = NULL, Year = NULL, TrackNumber = NULL";
         await cmd.ExecuteNonQueryAsync();
     }
     
@@ -1378,13 +2274,42 @@ public async Task ClearAnalysisAsync()
         await cmd.ExecuteNonQueryAsync();
     }
 
+    public async Task DeleteTrackByPathAsync(string filePath)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM Tracks WHERE FilePath = $path";
+        cmd.Parameters.AddWithValue("$path", filePath);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task DeleteTracksByPathsAsync(IEnumerable<string> filePaths)
+    {
+        var list = filePaths.ToList();
+        if (list.Count == 0) return;
+        using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        using var tx = await conn.BeginTransactionAsync();
+        var cmd = conn.CreateCommand();
+        cmd.Transaction = (SqliteTransaction)tx;
+        cmd.CommandText = "DELETE FROM Tracks WHERE FilePath = $path";
+        var p = cmd.Parameters.Add("$path", SqliteType.Text);
+        foreach (var path in list)
+        {
+            p.Value = path;
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await tx.CommitAsync();
+    }
+
     public async Task<List<Models.Playlist>> LoadAllPlaylistsAsync()
     {
         var list = new List<Models.Playlist>();
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified, IsSystem FROM Playlists ORDER BY DateCreated DESC";
+        cmd.CommandText = "SELECT Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified, IsSystem, SmartRulesJson FROM Playlists ORDER BY DateCreated DESC";
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -1398,7 +2323,8 @@ public async Task ClearAnalysisAsync()
                 CoverImagePath = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
                 DateCreated  = DateTime.Parse(reader.GetString(4)),
                 DateModified = DateTime.Parse(reader.GetString(5)),
-                IsSystem     = !reader.IsDBNull(6) && reader.GetInt32(6) == 1
+                IsSystem     = !reader.IsDBNull(6) && reader.GetInt32(6) == 1,
+                SmartRulesJson = reader.IsDBNull(7) ? null : reader.GetString(7)
             });
         }
         // La playlist systeme (Favoris) est toujours affichee en premier, quelle que soit sa
@@ -1417,10 +2343,11 @@ public async Task ClearAnalysisAsync()
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO Playlists (Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified, IsSystem)
-            VALUES ($id, $name, $json, $cover, $created, $modified, $isSystem)
+            INSERT INTO Playlists (Id, Name, TrackIdsJson, CoverImagePath, DateCreated, DateModified, IsSystem, SmartRulesJson)
+            VALUES ($id, $name, $json, $cover, $created, $modified, $isSystem, $smart)
             ON CONFLICT(Id) DO UPDATE SET
                 Name=CASE WHEN Playlists.IsSystem = 1 THEN Playlists.Name ELSE excluded.Name END,
+                SmartRulesJson=excluded.SmartRulesJson,
                 TrackIdsJson=excluded.TrackIdsJson,
                 CoverImagePath=CASE WHEN Playlists.IsSystem = 1 THEN Playlists.CoverImagePath ELSE excluded.CoverImagePath END,
                 DateModified=excluded.DateModified;
@@ -1432,6 +2359,7 @@ public async Task ClearAnalysisAsync()
         cmd.Parameters.AddWithValue("$created",  playlist.DateCreated.ToString("o"));
         cmd.Parameters.AddWithValue("$modified", playlist.DateModified.ToString("o"));
         cmd.Parameters.AddWithValue("$isSystem", playlist.IsSystem ? 1 : 0);
+        cmd.Parameters.AddWithValue("$smart",    string.IsNullOrWhiteSpace(playlist.SmartRulesJson) ? (object)DBNull.Value : playlist.SmartRulesJson);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -1715,14 +2643,46 @@ public class AudioEngineService : IDisposable
     private EqualizerSampleProvider?  _equalizer;
     private ISampleProvider?          _finalProvider;
 
+    private SilenceTrimSampleProvider? _silenceTrimmer;
+
     public event EventHandler? PlaybackStopped;
 
-    public float CurrentRmsLevel => _rmsCapture?.CurrentRms ?? 0f;
+    // Moteur DJ du "Mode soiree" : cree a la demande, totalement separe du moteur normal (voir DjMixerEngine.cs).
+    private DjMixerEngine? _djEngine;
+    private bool DjActive => _djEngine?.IsActive == true;
+    private DjMixerEngine Dj
+    {
+        get
+        {
+            if (_djEngine == null)
+            {
+                var e = new DjMixerEngine();
+                e.PlaybackEnded += (s, a) => PlaybackStopped?.Invoke(this, EventArgs.Empty);
+                _djEngine = e;
+            }
+            return _djEngine;
+        }
+    }
+
+    /// <summary>Fin "utile" du son en cours : la fin du fichier, ou l'instant du dernier son audible quand l'option "Ignorer les silences" est active.</summary>
+    public TimeSpan EffectiveEnd
+    {
+        get
+        {
+            if (DjActive) return _djEngine!.TotalDuration;
+            TimeSpan total = TotalDuration;
+            TimeSpan? limit = _silenceTrimmer?.EndLimit;
+            return (limit.HasValue && limit.Value > TimeSpan.Zero && (total <= TimeSpan.Zero || limit.Value < total)) ? limit.Value : total;
+        }
+    }
+
+    public float CurrentRmsLevel => DjActive ? _djEngine!.RmsLevel : (_rmsCapture?.CurrentRms ?? 0f);
+    public float CurrentBassLevel => DjActive ? _djEngine!.BassLevel : (_rmsCapture?.CurrentBass ?? 0f);
 
     public bool          IsExclusiveMode  { get; private set; }
-    public PlaybackState State            => _output?.PlaybackState ?? PlaybackState.Stopped;
-    public TimeSpan      CurrentPosition  => _fileReader?.CurrentTime ?? _opusReader?.CurrentTime ?? TimeSpan.Zero;
-    public TimeSpan      TotalDuration    => _fileReader?.TotalTime   ?? _opusReader?.TotalTime   ?? TimeSpan.Zero;
+    public PlaybackState State            => DjActive ? _djEngine!.State : (_output?.PlaybackState ?? PlaybackState.Stopped);
+    public TimeSpan      CurrentPosition  => DjActive ? _djEngine!.CurrentPosition : (_fileReader?.CurrentTime ?? _opusReader?.CurrentTime ?? TimeSpan.Zero);
+    public TimeSpan      TotalDuration    => DjActive ? _djEngine!.TotalDuration : (_fileReader?.TotalTime   ?? _opusReader?.TotalTime   ?? TimeSpan.Zero);
     public Track?        CurrentTrack     { get; private set; }
 
     private float  _userVolume         = 1.0f;
@@ -1739,7 +2699,7 @@ public class AudioEngineService : IDisposable
     private DateTime                  _lastPrewarmUtc = DateTime.MinValue;
     private const double PrewarmDebounceMs = 300;
 
-    public async Task PlayAsync(Track track, bool preferExclusive = false, double initialGainDb = 0, Action<string>? onDownloadProgress = null, int crossfadeMs = 0)
+    public async Task PlayAsync(Track track, bool preferExclusive = false, double initialGainDb = 0, Action<string>? onDownloadProgress = null, int crossfadeMs = 0, TimeSpan? startAt = null, bool startPaused = false, bool beatMix = true)
     {
         int myPlayRequest = System.Threading.Interlocked.Increment(ref _playRequestCounter);
         await _playLock.WaitAsync();
@@ -1750,6 +2710,19 @@ public class AudioEngineService : IDisposable
         }
         try
         {
+            // Mode soiree : la lecture est confiee au moteur DJ (une seule sortie + melangeur), sauf en mode exclusif.
+            if (App.Settings.Current.PartyModeEnabled && !preferExclusive)
+            {
+                if (_output != null || _fileReader != null || _opusReader != null) StopBase();
+                CurrentTrack = track;
+                _normalizationGainDb = initialGainDb;
+                IsExclusiveMode = false;
+                Dj.SetUserVolume(_userVolume);
+                await Dj.PlayAsync(track, initialGainDb, crossfadeMs, startAt, startPaused, onDownloadProgress, beatMix);
+                return;
+            }
+            if (_djEngine != null && _djEngine.IsActive) _djEngine.Stop();   // mode soiree coupe : retour au moteur normal
+
             if (crossfadeMs > 0 && !IsExclusiveMode)
                 DetachAndFadeOut(crossfadeMs);
             else
@@ -1831,9 +2804,44 @@ public class AudioEngineService : IDisposable
 
             if (sampleProvider == null) { var msg2 = Resona.Models.Strings.Current.IsFr ? $"Impossible de créer un lecteur.\nFichier : {track.FilePath}" : $"Cannot create audio reader.\nFile : {track.FilePath}"; throw new InvalidOperationException(msg2); }
 
+            // Option "Ignorer les silences au debut et a la fin" : on mesure l'instant du dernier son audible AVANT de se replacer
+            // au debut (ou a startAt), puis on enveloppe le flux dans SilenceTrimSampleProvider.
+            _silenceTrimmer = null;
+            DuckingService.EnsureStarted();
+            if (App.Settings.Current.SkipSilenceEnabled || App.Settings.Current.PartyModeEnabled)
+            {
+                var trimFile = _fileReader;
+                var trimOpus = _opusReader;
+                string trimPath = track.FilePath;
+                TimeSpan trimKnownDuration = track.Duration;
+                Func<TimeSpan> trimGetPos = () => trimFile?.CurrentTime ?? trimOpus?.CurrentTime ?? TimeSpan.Zero;
+                Action<TimeSpan> trimSetPos = t =>
+                {
+                    if (trimFile != null) trimFile.CurrentTime = t;
+                    if (trimOpus != null) trimOpus.CurrentTime = t;
+                };
+                // Mesure sur un lecteur SEPARE : deplacer le lecteur en cours faisait sauter la barre de lecture vers la fin.
+                TimeSpan? trimEnd = await Task.Run(() => ScanAudibleEnd(trimPath, trimKnownDuration));
+                LogService.Write("SilenceTrim", $"Fin utile : {(trimEnd.HasValue ? trimEnd.Value.TotalSeconds.ToString("0.00") + " s" : "non mesuree / audio jusqu'a la fin")} pour {Path.GetFileName(trimPath)}");
+                bool trimLeading = !(startAt.HasValue && startAt.Value > TimeSpan.Zero);
+                _silenceTrimmer = new SilenceTrimSampleProvider(sampleProvider, trimGetPos, trimLeading, trimEnd);
+                sampleProvider = _silenceTrimmer;
+            }
+
+            // Reprise apres liberation temporaire du fichier (RunWithFileReleasedAsync) : on se replace avant le demarrage, sans artefact audio.
+            if (startAt.HasValue && startAt.Value > TimeSpan.Zero)
+            {
+                try
+                {
+                    if (_fileReader != null) _fileReader.CurrentTime = startAt.Value;
+                    if (_opusReader != null) _opusReader.CurrentTime = startAt.Value;
+                }
+                catch { }
+            }
+
             _rmsCapture     = new RmsCaptureSampleProvider(sampleProvider);
             _volumeProvider = new VolumeSampleProvider(_rmsCapture) { Volume = ComputeLinearGain() };
-            _equalizer      = new EqualizerSampleProvider(_volumeProvider);
+            _equalizer      = new EqualizerSampleProvider(new DuckingSampleProvider(_volumeProvider));
             _equalizer.SetEnabled(App.Settings.Current.EqualizerEnabled);
             if (App.Settings.Current.EqualizerEnabled)
             {
@@ -1871,8 +2879,24 @@ public class AudioEngineService : IDisposable
             try
             {
                 output.Init(_finalProvider);
-                output.PlaybackStopped += (s, e) => PlaybackStopped?.Invoke(this, EventArgs.Empty);
-                output.Play();
+                HookPlaybackStopped(output);
+                if (startPaused)
+                {
+                    // Reprise "en pause" : flux demarre a volume nul puis mis aussitot en pause (rien d'audible), volume restaure ensuite.
+                    var pausedVolume = _volumeProvider;
+                    if (pausedVolume != null) pausedVolume.Volume = 0f;
+                    output.Play();
+                    output.Pause();
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(250);
+                        try { if (pausedVolume != null) pausedVolume.Volume = ComputeLinearGain(); } catch { }
+                    });
+                }
+                else
+                {
+                    output.Play();
+                }
             }
             catch (Exception ex)
             {
@@ -1889,6 +2913,89 @@ public class AudioEngineService : IDisposable
         {
             _playLock.Release();
         }
+    }
+
+    private static TimeSpan? ScanAudibleEnd(string path, TimeSpan knownDuration)
+    {
+        try
+        {
+            string ext = Path.GetExtension(LibraryScannerService.ResolveRealExtension(path)).ToLowerInvariant();
+            if (ext is ".opus" or ".ogg")
+            {
+                using var opus = new OpusSampleProvider(path, knownDuration);
+                return SilenceTrimSampleProvider.FindAudibleEnd(opus, () => opus.CurrentTime, t => opus.CurrentTime = t, opus.TotalTime);
+            }
+            try
+            {
+                using var reader = new AudioFileReader(path);
+                return SilenceTrimSampleProvider.FindAudibleEnd(reader, () => reader.CurrentTime, t => reader.CurrentTime = t, reader.TotalTime);
+            }
+            catch
+            {
+                using var mf = SafeAudioReader.Create(path);
+                return SilenceTrimSampleProvider.FindAudibleEnd(mf.ToSampleProvider(), () => mf.CurrentTime, t => mf.CurrentTime = t, mf.TotalTime);
+            }
+        }
+        catch { return null; }
+    }
+
+    private static bool SamePath(string? a, string? b)
+        => !string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(b) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Windows interdit d'ecrire dans un fichier deja ouvert par le lecteur. Execute `action` (ex. ecrire un tag) pendant que le
+    /// fichier est libere, puis reprend la lecture au meme endroit et dans le meme etat (lecture ou pause).
+    /// Pour un autre fichier que celui en cours, l'action est simplement executee (apres abandon du prechargement s'il le tenait ouvert).
+    /// </summary>
+    public async Task RunWithFileReleasedAsync(string filePath, Action action)
+    {
+        var track = CurrentTrack;
+        bool isCurrent = track != null && (_fileReader != null || _opusReader != null || DjActive) && SamePath(track.FilePath, filePath);
+
+        if (!isCurrent)
+        {
+            if (SamePath(_prewarmPath, filePath))
+            {
+                var task = _prewarmTask;
+                _prewarmTask = null;
+                _prewarmPath = null;
+                if (task != null)
+                {
+                    try
+                    {
+                        var prewarmed = await task.WaitAsync(TimeSpan.FromSeconds(5));
+                        prewarmed?.FileReader?.Dispose();
+                        prewarmed?.OpusReader?.Dispose();
+                    }
+                    catch { }
+                }
+            }
+            await Task.Run(action);
+            return;
+        }
+
+        bool wasPlaying = State == PlaybackState.Playing;
+        TimeSpan position = CurrentPosition;
+        double gainDb = _normalizationGainDb;
+        bool exclusive = IsExclusiveMode;
+        int request = System.Threading.Volatile.Read(ref _playRequestCounter);
+
+        Stop();
+        Exception? error = null;
+        try { await Task.Run(action); }
+        catch (Exception ex) { error = ex; }
+
+        // Un autre son a ete lance entre-temps (clic sur suivant...) : on ne reprend pas l'ancien.
+        if (request == System.Threading.Volatile.Read(ref _playRequestCounter))
+        {
+            try { await PlayAsync(track!, exclusive, gainDb, null, 0, position, startPaused: !wasPlaying); }
+            catch (Exception ex)
+            {
+                LogService.Write("Playback", ex, "Reprise de la lecture apres ecriture du fichier");
+                error ??= ex;
+            }
+        }
+        if (error != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
     }
 
     public void PrewarmOpus(string path, TimeSpan duration = default)
@@ -2004,12 +3111,167 @@ public class AudioEngineService : IDisposable
         }, TaskScheduler.Default);
     }
 
+    // ------------------------------------------------------------------
+    //  Suivi du peripherique de sortie Windows
+    //  Un flux WASAPI reste lie au peripherique sur lequel il a ete ouvert : quand l'utilisateur change de
+    //  peripherique par defaut dans Windows, on recree la sortie sur le nouveau, a la meme position et dans
+    //  le meme etat (lecture / pause).
+    // ------------------------------------------------------------------
+
+    private string?                  _currentDeviceId;
+    private MMDeviceEnumerator?      _deviceWatcher;
+    private DeviceChangeClient?      _deviceClient;
+    private int                      _deviceChangeToken;
+    // Sorties volontairement arretees par l'app (changement de peripherique) : leur PlaybackStopped ne doit pas passer au son suivant.
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<WasapiOut, object> _silencedOutputs = new();
+
+    private sealed class DeviceChangeClient : NAudio.CoreAudioApi.Interfaces.IMMNotificationClient
+    {
+        private readonly AudioEngineService _owner;
+        public DeviceChangeClient(AudioEngineService owner) => _owner = owner;
+
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState)
+        {
+            // Peripherique desactive / debranche : si c'etait le notre, on bascule.
+            if (newState != DeviceState.Active) _owner.ScheduleDeviceRebuild(force: false);
+        }
+        public void OnDeviceAdded(string pwstrDeviceId) { }
+        public void OnDeviceRemoved(string deviceId) => _owner.ScheduleDeviceRebuild(force: false);
+        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+        {
+            if (flow == DataFlow.Render && (role == Role.Multimedia || role == Role.Console))
+                _owner.ScheduleDeviceRebuild(force: false);
+        }
+        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
+    }
+
+    private void EnsureDeviceWatcher()
+    {
+        if (_deviceWatcher != null) return;
+        try
+        {
+            _deviceWatcher = new MMDeviceEnumerator();
+            _deviceClient  = new DeviceChangeClient(this);
+            _deviceWatcher.RegisterEndpointNotificationCallback(_deviceClient);
+        }
+        catch
+        {
+            _deviceWatcher = null;
+            _deviceClient  = null;
+        }
+    }
+
+    private void StopDeviceWatcher()
+    {
+        try { if (_deviceWatcher != null && _deviceClient != null) _deviceWatcher.UnregisterEndpointNotificationCallback(_deviceClient); } catch { }
+        try { _deviceWatcher?.Dispose(); } catch { }
+        _deviceWatcher = null;
+        _deviceClient  = null;
+    }
+
+    private void ScheduleDeviceRebuild(bool force)
+    {
+        // Windows envoie plusieurs notifications d'affilee (Console, Multimedia, Communications...) : on regroupe.
+        int token = Interlocked.Increment(ref _deviceChangeToken);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500);
+            if (token != Volatile.Read(ref _deviceChangeToken)) return;
+            await RebuildOutputOnDeviceChangeAsync(force);
+        });
+    }
+
+    private void HookPlaybackStopped(WasapiOut output)
+    {
+        output.PlaybackStopped += (s, e) =>
+        {
+            if (_silencedOutputs.TryGetValue(output, out _)) return;
+
+            // AUDCLNT_E_DEVICE_INVALIDATED : le peripherique a ete debranche / desactive en pleine lecture.
+            // On bascule sur le nouveau peripherique au lieu de passer au son suivant.
+            if (e.Exception is System.Runtime.InteropServices.COMException ce
+                && unchecked((uint)ce.HResult) == 0x88890004u
+                && ReferenceEquals(output, _output))
+            {
+                ScheduleDeviceRebuild(force: true);
+                return;
+            }
+
+            PlaybackStopped?.Invoke(this, EventArgs.Empty);
+        };
+    }
+
+    private async Task RebuildOutputOnDeviceChangeAsync(bool force)
+    {
+        await _playLock.WaitAsync();
+        try
+        {
+            var oldOut   = _output;
+            var provider = _finalProvider;
+            // Rien ne joue : la prochaine lecture ouvrira directement le bon peripherique.
+            if (oldOut == null || provider == null) return;
+
+            string? newId = null;
+            try
+            {
+                using var en = new MMDeviceEnumerator();
+                using var d  = en.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                newId = d.ID;
+            }
+            catch { }
+            if (!force && newId != null && newId == _currentDeviceId) return;
+
+            var  state        = oldOut.PlaybackState;
+            bool wasExclusive = IsExclusiveMode;
+
+            _silencedOutputs.AddOrUpdate(oldOut, new object());
+            _output = null;
+            try { oldOut.Stop(); } catch { }
+            try { oldOut.Dispose(); } catch { }
+
+            await InitOutputAsync(wasExclusive);
+            var output = _output;
+            if (output == null) return;
+
+            output.Init(provider);
+            HookPlaybackStopped(output);
+
+            if (state == PlaybackState.Playing)
+            {
+                output.Play();
+            }
+            else if (state == PlaybackState.Paused)
+            {
+                // Meme astuce que la reprise en pause : demarrage a volume nul puis pause immediate.
+                var vol = _volumeProvider;
+                if (vol != null) vol.Volume = 0f;
+                output.Play();
+                output.Pause();
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(250);
+                    try { if (vol != null) vol.Volume = ComputeLinearGain(); } catch { }
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Write("AudioEngine", ex, "Changement de peripherique de sortie");
+        }
+        finally
+        {
+            _playLock.Release();
+        }
+    }
+
     private async Task InitOutputAsync(bool preferExclusive)
     {
+        EnsureDeviceWatcher();
         await Task.Run(() =>
         {
             using var enumerator = new MMDeviceEnumerator();
             var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            _currentDeviceId = device.ID;
 
             if (preferExclusive)
             {
@@ -2023,7 +3285,8 @@ public class AudioEngineService : IDisposable
             }
 
             _output?.Dispose();
-            _output         = new WasapiOut(AudioClientShareMode.Shared, true, 100);
+            // Peripherique explicite (et non le constructeur sans peripherique) : on est sur d'ouvrir le defaut ACTUEL.
+            _output         = new WasapiOut(device, AudioClientShareMode.Shared, true, 100);
             IsExclusiveMode = false;
         });
     }
@@ -2038,12 +3301,14 @@ public class AudioEngineService : IDisposable
     public void SetUserVolume(float volume01)
     {
         _userVolume = Math.Clamp(volume01, 0f, 1f);
+        _djEngine?.SetUserVolume(_userVolume);
         if (_volumeProvider != null) _volumeProvider.Volume = ComputeLinearGain();
     }
 
     public void SetNormalizationGain(double gainDb)
     {
         _normalizationGainDb = gainDb;
+        _djEngine?.SetNormalizationGain(gainDb);
         if (_volumeProvider == null) return;
 
         float targetVolume = ComputeLinearGain();
@@ -2066,15 +3331,18 @@ public class AudioEngineService : IDisposable
     public void SetEqualizerEnabled(bool enabled)
     {
         _equalizer?.SetEnabled(enabled);
+        _djEngine?.SetEqualizerEnabled(enabled);
     }
 
     public void SetEqualizerBand(int index, float gainDb)
     {
         _equalizer?.SetBand(index, gainDb);
+        _djEngine?.SetEqualizerBand(index, gainDb);
     }
 
     public void Pause()
     {
+        if (DjActive) { _djEngine!.Pause(); return; }
         if (_output == null || _volumeProvider == null || _output.PlaybackState != PlaybackState.Playing) return;
         
         if (!App.Settings.Current.EnableCrossfade)
@@ -2096,6 +3364,7 @@ public class AudioEngineService : IDisposable
 
     public void Resume()
     {
+        if (DjActive) { _djEngine!.Resume(); return; }
         if (_output == null || _volumeProvider == null) return;
         
         if (!App.Settings.Current.EnableCrossfade)
@@ -2119,6 +3388,7 @@ public class AudioEngineService : IDisposable
 
     public void Seek(TimeSpan position)
     {
+        if (DjActive) { _djEngine!.Seek(position); return; }
         TimeSpan total = TotalDuration;
         if (total > TimeSpan.Zero)
         {
@@ -2127,6 +3397,7 @@ public class AudioEngineService : IDisposable
             if (position > maxSeekable) position = maxSeekable;
         }
         if (position < TimeSpan.Zero) position = TimeSpan.Zero;
+        _silenceTrimmer?.NotifySeek();
         try
         {
             if (_fileReader != null) _fileReader.CurrentTime = position;
@@ -2150,6 +3421,12 @@ public class AudioEngineService : IDisposable
 
     public void Stop()
     {
+        StopBase();
+        _djEngine?.Stop();
+    }
+
+    private void StopBase()
+    {
         _output?.Stop();
         _output?.Dispose();
         _output = null;
@@ -2161,6 +3438,7 @@ public class AudioEngineService : IDisposable
         _volumeProvider = null;
         _rmsCapture = null;
         _finalProvider = null;
+        _silenceTrimmer = null;
 
         DiscardPrewarmLocked();
     }
@@ -2243,7 +3521,11 @@ public class AudioEngineService : IDisposable
         if (_volumeProvider != null) _volumeProvider.Volume = ComputeLinearGain();
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        StopDeviceWatcher();
+        Stop();
+    }
 }
 
 public class OpusSampleProvider : ISampleProvider, IDisposable
@@ -2408,8 +3690,26 @@ public class RmsCaptureSampleProvider : ISampleProvider
     private readonly ISampleProvider _source;
     public WaveFormat WaveFormat  => _source.WaveFormat;
     public float      CurrentRms  { get; private set; }
+    public float      CurrentBass { get; private set; }
 
-    public RmsCaptureSampleProvider(ISampleProvider source) => _source = source;
+    private float _lowPassState;
+    private float _alpha;
+    private int   _lastSampleRate;
+
+    public RmsCaptureSampleProvider(ISampleProvider source)
+    {
+        _source = source;
+        UpdateFilter(source.WaveFormat?.SampleRate ?? 44100);
+    }
+
+    private void UpdateFilter(int sampleRate)
+    {
+        if (sampleRate <= 0) sampleRate = 44100;
+        _lastSampleRate = sampleRate;
+        float dt = 1.0f / sampleRate;
+        float rc = 1.0f / (2.0f * (float)Math.PI * 160f); // Cutoff basses ~160 Hz
+        _alpha = dt / (rc + dt);
+    }
 
     public int Read(float[] buffer, int offset, int count)
     {
@@ -2425,13 +3725,29 @@ public class RmsCaptureSampleProvider : ISampleProvider
             // que de laisser l'exception remonter et faire planter la lecture.
             Array.Clear(buffer, offset, count);
             CurrentRms = 0f;
+            CurrentBass = 0f;
             return count;
         }
         if (read > 0)
         {
+            int sr = WaveFormat?.SampleRate ?? 44100;
+            if (sr != _lastSampleRate) UpdateFilter(sr);
+
             double sum = 0;
-            for (int i = offset; i < offset + read; i++) sum += buffer[i] * buffer[i];
+            double bassSum = 0;
+            float lp = _lowPassState;
+            float a = _alpha;
+
+            for (int i = offset; i < offset + read; i++)
+            {
+                float s = buffer[i];
+                sum += s * s;
+                lp += a * (s - lp);
+                bassSum += lp * lp;
+            }
+            _lowPassState = float.IsNaN(lp) || float.IsInfinity(lp) ? 0f : lp;
             CurrentRms = (float)Math.Sqrt(sum / read);
+            CurrentBass = (float)Math.Sqrt(bassSum / read);
         }
         return read;
     }
@@ -2825,8 +4141,18 @@ public class PlayStatsService
     }
 }
 
+// Playlist (YouTube / SoundCloud) listee par yt-dlp, sans rien telecharger.
+public sealed record YtPlaylistEntry(int Index, string Title, string Duration, string Url, bool Available);
+public sealed record YtPlaylistInfo(string Title, List<YtPlaylistEntry> Entries);
+// Resultat d'une recherche de playlists.
+public sealed record YtPlaylistHit(string Title, string Info, string Url);
+
 public class DownloadOptions
 {
+    /// <summary>Indices des sons de la playlist a telecharger, au format yt-dlp (ex. "1-3,7"). Vide = pas de selection.</summary>
+    public string?         PlaylistItems   { get; set; }
+    /// <summary>Vrai = ne telecharger que la video meme si l'URL contient aussi une playlist / un mix.</summary>
+    public bool            NoPlaylist      { get; set; }
     public string          OutputDirectory { get; set; } = string.Empty;
     public DownloadFormat  Format          { get; set; } = DownloadFormat.Opus;
     public string          Codec           { get; set; } = string.Empty;
@@ -3070,6 +4396,101 @@ public class DownloadService
         }
     }
 
+    // ------------------------------------------------------------------
+    //  Playlists : listage et recherche (aucun telechargement)
+    // ------------------------------------------------------------------
+
+    private static async Task<List<string>> RunYtDlpLinesAsync(string arguments, CancellationToken ct)
+    {
+        await EnsureBinariesAsync();
+        string ytDlp = FindYtDlp();
+        var lines = new List<string>();
+        var errors = new List<string>();
+
+        using var proc = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = ytDlp,
+                Arguments = "--encoding utf-8 --no-warnings " + arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            }
+        };
+        proc.OutputDataReceived += (s, e) => { if (e.Data != null) lock (lines) lines.Add(e.Data); };
+        proc.ErrorDataReceived  += (s, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) lock (errors) errors.Add(e.Data); };
+
+        proc.Start();
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
+        try { await proc.WaitForExitAsync(ct); }
+        catch (OperationCanceledException) { try { proc.Kill(true); } catch { } throw; }
+
+        if (lines.Count == 0 && proc.ExitCode != 0)
+            throw new Exception(errors.Count > 0 ? errors[^1] : $"yt-dlp (code {proc.ExitCode}).");
+        return lines;
+    }
+
+    private static string Clean(string? s) => string.IsNullOrWhiteSpace(s) || s.Trim() == "NA" ? string.Empty : s.Trim();
+
+    /// <summary>Liste les sons d'une playlist (titres, durees, liens) sans les telecharger.</summary>
+    public static async Task<YtPlaylistInfo> ListPlaylistAsync(string url, CancellationToken ct = default)
+    {
+        string safe = url.Trim().Replace("\"", "");
+        var lines = await RunYtDlpLinesAsync(
+            "--flat-playlist --yes-playlist --print \"%(playlist_title)s|||%(playlist_index)s|||%(title)s|||%(duration_string)s|||%(webpage_url)s|||%(url)s\" \"" + safe + "\"", ct);
+
+        string title = string.Empty;
+        var entries = new List<YtPlaylistEntry>();
+        int n = 0;
+        foreach (string line in lines)
+        {
+            string[] p = line.Split("|||");
+            if (p.Length < 6) continue;
+            n++;
+            if (title.Length == 0) title = Clean(p[0]);
+            int index = int.TryParse(p[1].Trim(), out int i) ? i : n;
+            string t = Clean(p[2]);
+            string link = Clean(p[4]).StartsWith("http") ? Clean(p[4]) : Clean(p[5]);
+            bool available = link.StartsWith("http")
+                && !t.StartsWith("[Private video]", StringComparison.OrdinalIgnoreCase)
+                && !t.StartsWith("[Deleted video]", StringComparison.OrdinalIgnoreCase);
+            if (t.Length == 0) t = Resona.Models.Strings.Current.IsFr ? "(sans titre)" : "(untitled)";
+            entries.Add(new YtPlaylistEntry(index, t, Clean(p[3]), link, available));
+        }
+        return new YtPlaylistInfo(title, entries);
+    }
+
+    /// <summary>Recherche de playlists YouTube (filtre « Playlist » de la recherche YouTube).</summary>
+    public static async Task<List<YtPlaylistHit>> SearchPlaylistsAsync(string query, CancellationToken ct = default)
+    {
+        string q = Uri.EscapeDataString(query.Replace("\"", ""));
+        string url = "https://www.youtube.com/results?search_query=" + q + "&sp=EgIQAw%3D%3D";
+        var lines = await RunYtDlpLinesAsync(
+            "--flat-playlist --playlist-end 10 --print \"%(title)s|||%(playlist_count)s|||%(uploader)s|||%(url)s\" \"" + url + "\"", ct);
+
+        var hits = new List<YtPlaylistHit>();
+        foreach (string line in lines)
+        {
+            string[] p = line.Split("|||");
+            if (p.Length < 4) continue;
+            string link = p[3].Trim();
+            if (!link.StartsWith("http") || !(link.Contains("list=") || link.Contains("/playlist"))) continue;
+
+            var info = new List<string>();
+            string count = Clean(p[1]);
+            if (count.Length > 0) info.Add(count + (Resona.Models.Strings.Current.IsFr ? " sons" : " tracks"));
+            string uploader = Clean(p[2]);
+            if (uploader.Length > 0) info.Add(uploader);
+            hits.Add(new YtPlaylistHit(Clean(p[0]), string.Join(" • ", info), link));
+        }
+        return hits;
+    }
+
     public async Task DownloadAsync(string url, DownloadOptions opts, Action<string>? onProgress = null)
     {
         Interlocked.Increment(ref _activeDownloads);
@@ -3147,11 +4568,17 @@ public class DownloadService
 
         string output = Path.Combine(opts.OutputDirectory, "%(title)s.%(ext)s").Replace("\\", "/");
 
+        // Selection de sons d'une playlist (indices numeriques uniquement : rien d'autre n'est passe a la ligne de commande).
+        string playlistArg = !string.IsNullOrWhiteSpace(opts.PlaylistItems) && System.Text.RegularExpressions.Regex.IsMatch(opts.PlaylistItems, @"^[0-9,\-]+$")
+            ? $"--yes-playlist --playlist-items {opts.PlaylistItems} "
+            : (opts.NoPlaylist ? "--no-playlist " : string.Empty);
+
         return $"--extractor-args \"youtube:player_client=android\" " +
                $"-x --audio-format {formatExt} {bitrateArg} " +
                $"--embed-thumbnail --embed-metadata " +
                $"--parse-metadata \"%(upload_date>%Y)s:%(meta_date)s\" " +
                $"--no-mtime --output \"{output}\" " +
+               $"{playlistArg}" +
                $"--no-playlist-reverse " +
                $"--progress " +
                $"\"{url}\"";
@@ -3198,6 +4625,8 @@ public class AutoTagResult
     public int? TrackCount { get; set; }
     public string? AlbumArtist { get; set; }
     public string? CoverPath { get; set; }
+    // Paroles a ecrire dans le tag du fichier (texte brut, ou LRC si synchronisees). null = ne pas toucher.
+    public string? Lyrics { get; set; }
     public double Score { get; set; }
 }
 
@@ -3792,14 +5221,20 @@ public static class AutoTagService
             using var file = TagLib.File.Create(filePath);
             bool changed = false;
 
-            if (data.Title != null) { file.Tag.Title = data.Title; changed = true; }
-            if (data.Artist != null) { file.Tag.Performers = new[] { data.Artist }; changed = true; }
-            if (data.Album != null) { file.Tag.Album = data.Album; changed = true; }
-            if (data.Genre != null) { file.Tag.Genres = new[] { data.Genre }; changed = true; }
+            if (data.Title != null) { file.Tag.Title = data.Title.Length == 0 ? null : data.Title; changed = true; }
+            if (data.Artist != null) { file.Tag.Performers = data.Artist.Length == 0 ? new string[0] : new[] { data.Artist }; changed = true; }
+            if (data.Album != null) { file.Tag.Album = data.Album.Length == 0 ? null : data.Album; changed = true; }
+            if (data.Genre != null) { file.Tag.Genres = data.Genre.Length == 0 ? new string[0] : new[] { data.Genre }; changed = true; }
             if (data.Year.HasValue) { file.Tag.Year = (uint)data.Year.Value; changed = true; }
             if (data.TrackNumber.HasValue) { file.Tag.Track = (uint)data.TrackNumber.Value; changed = true; }
             if (data.TrackCount.HasValue) { file.Tag.TrackCount = (uint)data.TrackCount.Value; changed = true; }
             if (data.AlbumArtist != null) { file.Tag.AlbumArtists = new[] { data.AlbumArtist }; changed = true; }
+
+            if (!string.IsNullOrWhiteSpace(data.Lyrics) && !string.Equals(file.Tag.Lyrics, data.Lyrics, StringComparison.Ordinal))
+            {
+                file.Tag.Lyrics = data.Lyrics;
+                changed = true;
+            }
 
             if (data.CoverPath != null && File.Exists(data.CoverPath))
             {

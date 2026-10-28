@@ -353,6 +353,8 @@ namespace Resona;
 		private bool _isSliderDragging;
 
 		private bool _crossfadeTriggered;
+		private long _lastCrossfadeTriggerTick;
+		private long _lastSeekTick;   // dernier deplacement manuel de la tete de lecture : pas d'enchainement automatique dans la foulee
 
 		private List<LrcLine> _lrcLines;
 
@@ -374,11 +376,28 @@ namespace Resona;
 
 		private ScrollViewer? _lyricsPlainScroll;
 
+		private StackPanel? _lyricsPlainContentPanel;
+
 		private TextBlock? _lyricsPlainText;
 
 		private HyperlinkButton? _lyricsGoogleBtn;
 
 		private StackPanel? _lyricsSyncedPanel;
+
+		private Border? _lyricsOffsetBar;
+
+		private TextBlock? _lyricsOffsetText;
+
+		private Button? _lyricsOffsetResetBtn;
+
+		private TimeSpan _lrcHeaderOffset = TimeSpan.Zero;
+
+		private static readonly string LyricsOffsetsFilePath = System.IO.Path.Combine(
+			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+			"Resona",
+			"lyrics_offsets.json");
+
+		private Dictionary<string, double> _lyricsTrackOffsets = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
 		private Grid? _navMainContentGrid;
 
@@ -896,14 +915,14 @@ namespace Resona;
 				Storyboard.SetTarget((Timeline)(object)val4, (DependencyObject)NowPlayingCenterCoverBorder);
 				Storyboard.SetTargetProperty((Timeline)(object)val4, "Opacity");
 				val.Children.Add((Timeline)(object)val4);
-				NowPlayingCenterCoverTransform.X = 0.0;
+				NowPlayingCenterCoverTransform.TranslateX = 0.0;
 				DoubleAnimation val5 = new DoubleAnimation
 				{
 					To = -5.0,
 					Duration = TimeSpan.FromMilliseconds(400.0)
 				};
 				Storyboard.SetTarget((Timeline)(object)val5, (DependencyObject)NowPlayingCenterCoverTransform);
-				Storyboard.SetTargetProperty((Timeline)(object)val5, "Y");
+				Storyboard.SetTargetProperty((Timeline)(object)val5, "TranslateY");
 				val.Children.Add((Timeline)(object)val5);
 				DoubleAnimation val6 = new DoubleAnimation
 				{
@@ -925,19 +944,8 @@ namespace Resona;
 				Storyboard.SetTarget((Timeline)(object)val7, (DependencyObject)NowPlayingCoverTransform);
 				Storyboard.SetTargetProperty((Timeline)(object)val7, "Y");
 				val.Children.Add((Timeline)(object)val7);
-				DoubleAnimation val8 = new DoubleAnimation
-				{
-					To = -58.0,
-					Duration = TimeSpan.FromMilliseconds(150.0),
-					BeginTime = TimeSpan.FromMilliseconds(80.0),
-					EasingFunction = (EasingFunctionBase)new CubicEase
-					{
-						EasingMode = EasingMode.EaseOut
-					}
-				};
-				Storyboard.SetTarget((Timeline)(object)val8, (DependencyObject)NowPlayingTextTransform);
-				Storyboard.SetTargetProperty((Timeline)(object)val8, "X");
-				val.Children.Add((Timeline)(object)val8);
+				// (le decalage du texte est gere par AddPlayerCoverCollapseAnimations)
+				AddPlayerCoverCollapseAnimations(val, collapse: true, TimeSpan.Zero, TimeSpan.FromMilliseconds(250.0));
 				UpdateNowPlayingTextMaxWidth();
 				val.Begin();
 				if (trackId != null && trackId == _nowPlayingId)
@@ -989,7 +997,7 @@ namespace Resona;
 					Duration = TimeSpan.FromMilliseconds(150.0)
 				};
 				Storyboard.SetTarget((Timeline)(object)val14, (DependencyObject)NowPlayingCenterCoverTransform);
-				Storyboard.SetTargetProperty((Timeline)(object)val14, "Y");
+				Storyboard.SetTargetProperty((Timeline)(object)val14, "TranslateY");
 				val9.Children.Add((Timeline)(object)val14);
 				((UIElement)NowPlayingCenterCoverBorder).IsHitTestVisible = false;
 				DoubleAnimation val15 = new DoubleAnimation
@@ -1013,18 +1021,8 @@ namespace Resona;
 				Storyboard.SetTarget((Timeline)(object)val16, (DependencyObject)NowPlayingCoverTransform);
 				Storyboard.SetTargetProperty((Timeline)(object)val16, "Y");
 				val9.Children.Add((Timeline)(object)val16);
-				DoubleAnimation val17 = new DoubleAnimation
-				{
-					To = 0.0,
-					Duration = TimeSpan.FromMilliseconds(200.0),
-					EasingFunction = (EasingFunctionBase)new CubicEase
-					{
-						EasingMode = EasingMode.EaseOut
-					}
-				};
-				Storyboard.SetTarget((Timeline)(object)val17, (DependencyObject)NowPlayingTextTransform);
-				Storyboard.SetTargetProperty((Timeline)(object)val17, "X");
-				val9.Children.Add((Timeline)(object)val17);
+				// (le decalage du texte est gere par AddPlayerCoverCollapseAnimations)
+				AddPlayerCoverCollapseAnimations(val9, collapse: false, TimeSpan.FromMilliseconds(100.0), TimeSpan.FromMilliseconds(250.0));
 				UpdateNowPlayingTextMaxWidth();
 				((Timeline)val9).Completed += delegate
 				{
@@ -1032,6 +1030,12 @@ namespace Resona;
 					{
 						((UIElement)NowPlayingBlurredBackground).Visibility = Visibility.Collapsed;
 						((UIElement)NowPlayingDimOverlay).Visibility = Visibility.Collapsed;
+						// Le flou est vide : on oublie la pochette "appliquee", sinon UpdateNowPlayingBackground la croit deja chargee
+						// au prochain retour en mode grosse cover (meme son) et le fond reste uni.
+						ResetOutgoingNowPlayingLayers();
+						_npBgPath = null;
+						_npBlurAppliedPath = null;
+						_npBgToken++;
 						NowPlayingBlurredBackground.Source = null;
 					}
 				};
@@ -1059,6 +1063,7 @@ namespace Resona;
 			{
 				return;
 			}
+			StashPreviousNowPlayingImages();   // pour la transition de changement de son (cover sortante + ancien fond)
 			_npBgPath = coverPath;
 			int bgToken = ++_npBgToken;
 			try
@@ -1145,25 +1150,28 @@ namespace Resona;
 		private void AnimateTrackChange(bool isGoingBack)
 		{
 			Storyboard val = new Storyboard();
-			double x = (isGoingBack ? (-100) : 100);
-			NowPlayingCenterCoverTransform.X = x;
+			PlayTrackChangeTransition(isGoingBack);
+			double x = (isGoingBack ? (-420) : 420);   // la nouvelle cover vient de la droite (ou de la gauche en revenant en arriere) et se pose au centre
+			NowPlayingCenterCoverTransform.TranslateX = x;
 			((UIElement)NowPlayingCenterCoverBorder).Opacity = 0.0;
 			((UIElement)NowPlayingBlurredBackground).Opacity = 0.0;
 			DoubleAnimation val2 = new DoubleAnimation
 			{
+				From = x,
 				To = 0.0,
-				Duration = TimeSpan.FromMilliseconds(400.0),
+				Duration = TimeSpan.FromMilliseconds(550.0),
 				EasingFunction = (EasingFunctionBase)new CubicEase
 				{
 					EasingMode = EasingMode.EaseOut
 				}
 			};
 			Storyboard.SetTarget((Timeline)(object)val2, (DependencyObject)NowPlayingCenterCoverTransform);
-			Storyboard.SetTargetProperty((Timeline)(object)val2, "X");
+			Storyboard.SetTargetProperty((Timeline)(object)val2, "TranslateX");
 			DoubleAnimation val3 = new DoubleAnimation
 			{
+				From = 0.0,
 				To = 1.0,
-				Duration = TimeSpan.FromMilliseconds(400.0)
+				Duration = TimeSpan.FromMilliseconds(160.0)
 			};
 			Storyboard.SetTarget((Timeline)(object)val3, (DependencyObject)NowPlayingCenterCoverBorder);
 			Storyboard.SetTargetProperty((Timeline)(object)val3, "Opacity");
@@ -1200,6 +1208,9 @@ namespace Resona;
 			else
 			{
 				npPage.UpdateTrackInfo(track);
+				// Sans "ouvrir automatiquement la grosse cover", seul UpdateTrackInfo etait appele : le fond et la cover changeaient
+				// d'un coup (flick). On joue la meme animation de changement de son que dans l'autre cas.
+				AnimateTrackChange(isGoingBack);
 			}
 			return true;
 		}
@@ -1220,6 +1231,7 @@ namespace Resona;
 
 		private void StartNowPlayingBlurFade()
 		{
+			StartOutgoingBlurFadeOut();   // l'ancien fond flou disparait sous le nouveau (fondu enchaine)
 			Storyboard fade = new Storyboard();
 			DoubleAnimation anim = new DoubleAnimation
 			{
@@ -1235,13 +1247,7 @@ namespace Resona;
 
 		public void NavigateToNowPlaying(Track track, bool isGoingBack = false)
 		{
-			Transform renderTransform = ((UIElement)NowPlayingCenterCoverBorder).RenderTransform;
-			CompositeTransform val = renderTransform as CompositeTransform;
-			if (val != null)
-			{
-				val.ScaleX = 1.0;
-				val.ScaleY = 1.0;
-			}
+			SetNowPlayingCenterCoverScale(1f, animate: false);
 			((UIElement)SettingsContainer).Visibility = Visibility.Collapsed;
 			((UIElement)ContentFrame).Visibility = Visibility.Visible;
 			if (((ContentControl)ContentFrame).Content is NowPlayingPage nowPlayingPage)
@@ -1350,75 +1356,35 @@ namespace Resona;
 
 		private void NowPlayingCenterCover_PointerEntered(object sender, PointerRoutedEventArgs e)
 		{
-			Storyboard val = new Storyboard();
-			DoubleAnimation val2 = new DoubleAnimation
-			{
-				To = 1.03,
-				Duration = TimeSpan.FromMilliseconds(250.0),
-				EasingFunction = (EasingFunctionBase)new CubicEase
-				{
-					EasingMode = EasingMode.EaseOut
-				}
-			};
-			DoubleAnimation val3 = new DoubleAnimation
-			{
-				To = 1.03,
-				Duration = TimeSpan.FromMilliseconds(250.0),
-				EasingFunction = (EasingFunctionBase)new CubicEase
-				{
-					EasingMode = EasingMode.EaseOut
-				}
-			};
-			if (!(((UIElement)NowPlayingCenterCoverBorder).RenderTransform is CompositeTransform))
-			{
-				CompositeTransform val4 = new CompositeTransform();
-				val4.TranslateY = -5.0;
-				((UIElement)NowPlayingCenterCoverBorder).RenderTransform = (Transform)val4;
-			}
-			((UIElement)NowPlayingCenterCoverBorder).RenderTransformOrigin = new Point(0.5, 0.5);
-			Storyboard.SetTarget((Timeline)(object)val2, (DependencyObject)NowPlayingCenterCoverBorder);
-			Storyboard.SetTargetProperty((Timeline)(object)val2, "(UIElement.RenderTransform).(CompositeTransform.ScaleX)");
-			Storyboard.SetTarget((Timeline)(object)val3, (DependencyObject)NowPlayingCenterCoverBorder);
-			Storyboard.SetTargetProperty((Timeline)(object)val3, "(UIElement.RenderTransform).(CompositeTransform.ScaleY)");
-			val.Children.Add((Timeline)(object)val2);
-			val.Children.Add((Timeline)(object)val3);
-			val.Begin();
+			SetNowPlayingCenterCoverScale(1.03f, animate: true);
 		}
 
 		private void NowPlayingCenterCover_PointerExited(object sender, PointerRoutedEventArgs e)
 		{
-			Storyboard val = new Storyboard();
-			DoubleAnimation val2 = new DoubleAnimation
+			SetNowPlayingCenterCoverScale(1f, animate: true);
+		}
+
+		// Agrandissement au survol de la grosse cover, via le compositeur (Visual.Scale).
+		// Avant : le survol REMPLACAIT le RenderTransform de la cover par un nouveau CompositeTransform, ce qui detachait
+		// NowPlayingCenterCoverTransform (translation X/Y : arrivee du son suivant, entree / sortie du mode grosse cover). Apres un survol,
+		// la nouvelle cover n'arrivait donc plus de la droite : elle apparaissait directement au centre.
+		private void SetNowPlayingCenterCoverScale(float scale, bool animate)
+		{
+			if (!animate)
 			{
-				To = 1.0,
-				Duration = TimeSpan.FromMilliseconds(250.0),
-				EasingFunction = (EasingFunctionBase)new CubicEase
-				{
-					EasingMode = EasingMode.EaseOut
-				}
-			};
-			DoubleAnimation val3 = new DoubleAnimation
-			{
-				To = 1.0,
-				Duration = TimeSpan.FromMilliseconds(250.0),
-				EasingFunction = (EasingFunctionBase)new CubicEase
-				{
-					EasingMode = EasingMode.EaseOut
-				}
-			};
-			if (!(((UIElement)NowPlayingCenterCoverBorder).RenderTransform is CompositeTransform))
-			{
-				CompositeTransform val4 = new CompositeTransform();
-				val4.TranslateY = -5.0;
-				((UIElement)NowPlayingCenterCoverBorder).RenderTransform = (Transform)val4;
+				NowPlayingCenterCoverTransform.ScaleX = scale;
+				NowPlayingCenterCoverTransform.ScaleY = scale;
+				return;
 			}
-			Storyboard.SetTarget((Timeline)(object)val2, (DependencyObject)NowPlayingCenterCoverBorder);
-			Storyboard.SetTargetProperty((Timeline)(object)val2, "(UIElement.RenderTransform).(CompositeTransform.ScaleX)");
-			Storyboard.SetTarget((Timeline)(object)val3, (DependencyObject)NowPlayingCenterCoverBorder);
-			Storyboard.SetTargetProperty((Timeline)(object)val3, "(UIElement.RenderTransform).(CompositeTransform.ScaleY)");
-			val.Children.Add((Timeline)(object)val2);
-			val.Children.Add((Timeline)(object)val3);
-			val.Begin();
+			Storyboard sb = new Storyboard();
+			foreach (string prop in new[] { "ScaleX", "ScaleY" })
+			{
+				DoubleAnimation a = new DoubleAnimation { To = scale, Duration = TimeSpan.FromMilliseconds(250.0), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+				Storyboard.SetTarget(a, NowPlayingCenterCoverTransform);
+				Storyboard.SetTargetProperty(a, prop);
+				sb.Children.Add(a);
+			}
+			sb.Begin();
 		}
 
 		private async void UpdateSMTCInfo(Track track, bool isPlaying)
@@ -1458,6 +1424,24 @@ namespace Resona;
 			}
 		}
 
+		private bool IsCurrentQueueFromLibrary()
+		{
+			if (_queue == null || _queue.Count <= 1) return false;
+
+			if (ReferenceEquals(_queue, _library)) return true;
+
+			if (!string.IsNullOrEmpty(_queueSourceName))
+			{
+				if (string.Equals(_queueSourceName, Strings.Current.MainWindow_UpNext_FromLibrary, StringComparison.OrdinalIgnoreCase))
+					return true;
+				if (string.Equals(_queueSourceName, "Depuis la bibliothèque", StringComparison.OrdinalIgnoreCase) ||
+					string.Equals(_queueSourceName, "From library", StringComparison.OrdinalIgnoreCase))
+					return true;
+			}
+
+			return false;
+		}
+
 		private void RegenerateShuffleUpcoming(bool includeCurrent = false)
 		{
 			_shuffleUpcoming.Clear();
@@ -1466,18 +1450,24 @@ namespace Resona;
 				return;
 			}
 			List<Track> list = _queue.ToList();
-			Random random = new Random();
-			for (int num = list.Count - 1; num > 0; num--)
+
+			if (App.Settings.Current.WeightedShuffleEnabled && IsCurrentQueueFromLibrary() && list.Count > 3)
 			{
-				int num2 = random.Next(num + 1);
-				List<Track> list2 = list;
-				int index = num;
-				int index2 = num2;
-				Track value = list[num2];
-				Track value2 = list[num];
-				list2[index] = value;
-				list[index2] = value2;
+				ApplyWeightedShuffle(list);
 			}
+			else
+			{
+				Random random = new Random();
+				for (int num = list.Count - 1; num > 0; num--)
+				{
+					int num2 = random.Next(num + 1);
+					Track value = list[num2];
+					Track value2 = list[num];
+					list[num] = value;
+					list[num2] = value2;
+				}
+			}
+
 			if (list.Count > 1 && list[0].Id == _nowPlayingId)
 			{
 				Track value3 = list[0];
@@ -1488,6 +1478,103 @@ namespace Resona;
 			if (!includeCurrent)
 			{
 				_shuffleUpcoming.RemoveAll((Track t) => t.Id == _nowPlayingId);
+			}
+		}
+
+		private void ApplyWeightedShuffle(List<Track> list)
+		{
+			if (list.Count <= 2) return;
+
+			var lastPlayedDict = App.PlayHistory?.GetLastPlayedUtcByTrackId() ?? new Dictionary<string, DateTime>();
+			DateTime nowUtc = DateTime.UtcNow;
+			var sessionRecentIds = new HashSet<string>(_playbackHistory.Take(15).Select(t => t.Id), StringComparer.OrdinalIgnoreCase);
+
+			var random = new Random();
+			var scoredList = new List<(Track track, double key)>(list.Count);
+
+			foreach (var track in list)
+			{
+				double weight = 100.0;
+
+				int playCount = App.PlayStats?.GetPlayCount(track.Id) ?? 0;
+				if (playCount > 0)
+				{
+					weight /= (1.0 + 0.15 * playCount);
+				}
+
+				if (lastPlayedDict.TryGetValue(track.Id, out DateTime lastUtc))
+				{
+					double hoursSince = (nowUtc - lastUtc).TotalHours;
+					if (hoursSince < 2.0)
+					{
+						weight *= 0.05;
+					}
+					else if (hoursSince < 6.0)
+					{
+						weight *= 0.20;
+					}
+					else if (hoursSince < 24.0)
+					{
+						weight *= 0.50;
+					}
+					else if (hoursSince < 48.0)
+					{
+						weight *= 0.80;
+					}
+				}
+
+				if (sessionRecentIds.Contains(track.Id))
+				{
+					weight *= 0.10;
+				}
+
+				if (weight < 0.001) weight = 0.001;
+
+				double u = random.NextDouble();
+				if (u <= 0.0) u = 0.0000001;
+				double key = Math.Pow(u, 1.0 / weight);
+
+				scoredList.Add((track, key));
+			}
+
+			scoredList.Sort((a, b) => b.key.CompareTo(a.key));
+
+			for (int i = 0; i < scoredList.Count; i++)
+			{
+				list[i] = scoredList[i].track;
+			}
+
+			DeclusterArtists(list);
+		}
+
+		private static void DeclusterArtists(List<Track> list)
+		{
+			for (int i = 0; i < list.Count - 1; i++)
+			{
+				string artist1 = list[i].Artist?.Trim() ?? "";
+				if (string.IsNullOrEmpty(artist1)) continue;
+
+				string artist2 = list[i + 1].Artist?.Trim() ?? "";
+				if (!string.IsNullOrEmpty(artist2) && string.Equals(artist1, artist2, StringComparison.OrdinalIgnoreCase))
+				{
+					int swapIdx = -1;
+					for (int j = i + 2; j < Math.Min(list.Count, i + 9); j++)
+					{
+						string artistNext = list[j].Artist?.Trim() ?? "";
+						if (!string.Equals(artistNext, artist1, StringComparison.OrdinalIgnoreCase))
+						{
+							swapIdx = j;
+							break;
+						}
+					}
+
+					if (swapIdx != -1)
+					{
+						Track temp = list[i + 1];
+						list[i + 1] = list[swapIdx];
+						list[swapIdx] = temp;
+					}
+				}
 			}
 		}
 
@@ -1512,6 +1599,7 @@ namespace Resona;
 			_lrcLines = new List<LrcLine>();
 			_lrcCurrentIndex = -1;
 			_lyricsOverlayOpen = false;
+			LoadLyricsOffsets();
 			_isNowPlayingModeActive = false;
 			_lastComputedAvgColor = Color.FromArgb(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue);
 			_isManuallyClosingPane = false;
@@ -1591,23 +1679,71 @@ namespace Resona;
 			}, true);
 			((UIElement)RootGrid).PreviewKeyDown += (KeyEventHandler)delegate(object s, KeyRoutedEventArgs e)
 			{
+				// Year in review ouvert : les touches servent a naviguer dans le bilan (pas de lecture/pause ni de changement de titre).
+				if (_yearInReviewOpen) return;
+				if (_lyricsEditorOpen) return;
 				object focusedElement = FocusManager.GetFocusedElement(((Window)this).Content.XamlRoot);
-				bool isTextInput = focusedElement is TextBox || focusedElement is PasswordBox || focusedElement is AutoSuggestBox || focusedElement is RichEditBox;
+				bool isTextInput = focusedElement is TextBox || focusedElement is PasswordBox || focusedElement is AutoSuggestBox || focusedElement is RichEditBox || focusedElement is NumberBox;
 
-				if ((int)e.Key == 32 && !isTextInput)
+				if (_lyricsOverlayOpen && !isTextInput)
+				{
+					if ((int)e.Key == 27) // Escape
+					{
+						e.Handled = true;
+						CloseLyricsOverlay();
+						return;
+					}
+					if ((int)e.Key == 219 || (int)e.Key == 189 || (int)e.Key == 109) // [ or - or NumPad -
+					{
+						e.Handled = true;
+						AdjustLyricsOffset(0.5);
+						return;
+					}
+					if ((int)e.Key == 221 || (int)e.Key == 187 || (int)e.Key == 107) // ] or + or NumPad +
+					{
+						e.Handled = true;
+						AdjustLyricsOffset(-0.5);
+						return;
+					}
+					if ((int)e.Key == 48 || (int)e.Key == 96) // 0 or NumPad 0
+					{
+						e.Handled = true;
+						ResetLyricsOffset();
+						return;
+					}
+				}
+
+				bool isCtrlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+				bool isAltDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Menu) & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
+				if ((int)e.Key == 32 && !isTextInput && !isCtrlDown && !isAltDown) // Space
 				{
 					e.Handled = true;
 					PlayPauseButton_Click(this, new RoutedEventArgs());
 				}
-				else if ((int)e.Key == 37 && !isTextInput) // Left Arrow
+				else if ((int)e.Key == 37 && !isTextInput && !isAltDown) // Left Arrow
 				{
 					e.Handled = true;
-					PrevButton_Click(this, new RoutedEventArgs());
+					if (isCtrlDown)
+					{
+						PrevButton_Click(this, new RoutedEventArgs());
+					}
+					else
+					{
+						SeekRelative(-5.0);
+					}
 				}
-				else if ((int)e.Key == 39 && !isTextInput) // Right Arrow
+				else if ((int)e.Key == 39 && !isTextInput && !isAltDown) // Right Arrow
 				{
 					e.Handled = true;
-					NextButton_Click(this, new RoutedEventArgs());
+					if (isCtrlDown)
+					{
+						NextButton_Click(this, new RoutedEventArgs());
+					}
+					else
+					{
+						SeekRelative(5.0);
+					}
 				}
 			};
 			((FrameworkElement)RootNav).Loaded += (RoutedEventHandler)delegate
@@ -2984,18 +3120,10 @@ namespace Resona;
 				return;
 			}
 			bool flag = ((ContentControl)ContentFrame).Content is NowPlayingPage;
-			if (flag)
-			{
-				GridLength width = PlayerBar.ColumnDefinitions[0].Width;
-				if (width.IsAuto)
-				{
-					PlayerBar.ColumnDefinitions[0].Width = new GridLength(PlayerBar.ColumnDefinitions[0].ActualWidth);
-				}
-			}
-			else
-			{
-				PlayerBar.ColumnDefinitions[0].Width = new GridLength(1.0, GridUnitType.Auto);
-			}
+			// Colonne toujours en largeur automatique : en mode grosse cover la cover du lecteur est repliee (animation), donc la colonne
+			// retrecit et la barre de lecture s'etire en temps reel, avec le meme espace qu'en affichage normal.
+			PlayerBar.ColumnDefinitions[0].MinWidth = 0.0;
+			PlayerBar.ColumnDefinitions[0].Width = new GridLength(1.0, GridUnitType.Auto);
 			double actualWidth = PlayerBar.ColumnDefinitions[0].ActualWidth;
 			if (!(actualWidth <= 0.0))
 			{
@@ -3003,6 +3131,7 @@ namespace Resona;
 				double val = actualWidth - num;
 				double val2 = (flag ? 458 : 400);
 				val = Math.Max(180.0, Math.Min(val, val2));
+				val = flag ? 240.0 : 182.0;   // en grosse cover la cover du lecteur est repliee : le texte gagne sa place (48 + 10 px)
 				((FrameworkElement)NowPlayingTextContainer).MaxWidth = val;
 			}
 		}
@@ -3282,7 +3411,8 @@ namespace Resona;
 			}
 		}
 
-		public void RefreshNavCategories()
+		[Obsolete("Remplace par MainWindow.NavOrder.cs (ordre personnalise + animations)")]
+		private void RefreshNavCategoriesLegacy()
 		{
 			AppSettings current = App.Settings.Current;
 			List<NavigationViewItem> list = new List<NavigationViewItem> { NavLibrary, NavAlbums, NavPlaylists, NavQueue, NavArtists, NavGenres, NavFolders, NavStatistics, NavDownload };
@@ -3380,23 +3510,84 @@ namespace Resona;
 			RestoreSidebarSelection();
 		}
 
+		public List<Track> GetLibrarySnapshot()
+		{
+			lock (_dirtyLock)
+			{
+				return _library.ToList();
+			}
+		}
+
 		public void AddTrackToLibrary(Track track)
 		{
-			Track track2 = _library.FirstOrDefault((Track t) => string.Equals(t.FilePath, track.FilePath, StringComparison.OrdinalIgnoreCase));
-			if (track2 != null)
+			if (track == null) return;
+			AddTracksToLibrary(new[] { track });
+		}
+
+		public void AddTracksToLibrary(IEnumerable<Track> tracks)
+		{
+			if (tracks == null) return;
+			bool changed = false;
+			var newTracks = new List<Track>();
+			lock (_dirtyLock)
 			{
-				int index = _library.IndexOf(track2);
-				_library[index] = track;
+				foreach (var track in tracks)
+				{
+					int index = _library.FindIndex(t => string.Equals(t.FilePath, track.FilePath, StringComparison.OrdinalIgnoreCase));
+					if (index >= 0)
+					{
+						_library[index] = track;
+						changed = true;
+					}
+					else
+					{
+						_library.Add(track);
+						newTracks.Add(track);
+						changed = true;
+					}
+
+					for (int i = 0; i < _queue.Count; i++)
+					{
+						if (string.Equals(_queue[i].FilePath, track.FilePath, StringComparison.OrdinalIgnoreCase))
+						{
+							_queue[i] = track;
+						}
+					}
+				}
 			}
-			else
+			if (changed)
 			{
-				_library.Add(track);
+				RefreshAllLibraryViews();
+				if (newTracks.Count > 0)
+				{
+					FetchMissingCoversInBackgroundAsync(newTracks);
+				}
 			}
+		}
+
+		public void RemoveTracksFromLibrary(IEnumerable<string> filePaths)
+		{
+			if (filePaths == null) return;
+			var set = new HashSet<string>(filePaths, StringComparer.OrdinalIgnoreCase);
+			int removed = 0;
+			lock (_dirtyLock)
+			{
+				removed = _library.RemoveAll(t => set.Contains(t.FilePath));
+			}
+			if (removed > 0)
+			{
+				RefreshAllLibraryViews();
+			}
+		}
+
+		public void RefreshAllLibraryViews()
+		{
 			_libraryPageInstance?.SetTracks(_library);
 			_albumsPageInstance?.LoadData(_library);
 			_artistsPageInstance?.LoadData(_library);
 			_genresPageInstance?.LoadData(_library);
 			_foldersPageInstance?.LoadData(_library);
+			_statisticsPageInstance?.LoadData(_library);
 		}
 
 		private async Task LoadLibraryFromCacheAsync()
@@ -3404,11 +3595,8 @@ namespace Resona;
 			await App.Cache.InitializeAsync();
 			_library = await App.Cache.LoadAllTracksAsync();
 			RestoreManualQueue();
-			_libraryPageInstance?.SetTracks(_library);
-			_albumsPageInstance?.LoadData(_library);
-			_artistsPageInstance?.LoadData(_library);
-			_genresPageInstance?.LoadData(_library);
-			_foldersPageInstance?.LoadData(_library);
+			RefreshAllLibraryViews();
+			App.FolderWatcher?.Start();
 			FetchMissingCoversInBackgroundAsync(_library.ToList());
 			_ = BackgroundRescanAsync().ContinueWith((Task _) => AutoAnalyzeLibraryIfNeeded(), TaskScheduler.Default);
 		}
@@ -3580,14 +3768,16 @@ namespace Resona;
 			}
 			_scanInProgress = true;
 			_rescanPending = false;
+			App.FolderWatcher?.Pause();
 			try
 			{
 				await BackgroundRescanAsync();
-					AutoAnalyzeLibraryIfNeeded();
+				AutoAnalyzeLibraryIfNeeded();
 			}
 			finally
 			{
 				_scanInProgress = false;
+				App.FolderWatcher?.Resume();
 				if (_rescanPending)
 				{
 					RunRescanAsync();
@@ -3854,6 +4044,8 @@ namespace Resona;
 			};
 			_positionTimer.Tick += delegate
 			{
+				TickAudioReactiveTheme();
+				TickNowPlayingEqualizer();
 				if (!_isSliderDragging)
 				{
 					TimeSpan currentPosition = App.AudioEngine.CurrentPosition;
@@ -3897,14 +4089,23 @@ namespace Resona;
 							}
 						}
 						TickSyncedLyrics(currentPosition);
-						if (App.Settings.Current.EnableCrossfade && !_crossfadeTriggered && !App.AudioEngine.IsFadingOut && (int)App.AudioEngine.State == 1 && duration.TotalSeconds > 0.0 && _queue.Count > 0 && _queueIndex >= 0)
+						if ((App.Settings.Current.EnableCrossfade || App.Settings.Current.PartyModeEnabled) && !_crossfadeTriggered && !App.AudioEngine.IsFadingOut && (int)App.AudioEngine.State == 1 && duration.TotalSeconds > 0.0 && _queue.Count > 0 && _queueIndex >= 0
+							&& Environment.TickCount64 - _lastCrossfadeTriggerTick > 4000 && Environment.TickCount64 - _lastSeekTick > 2500          // anti-rebond : pas de 2e transition juste apres une transition
+							&& currentPosition.TotalSeconds > 2.0                                  // le son vient reellement de demarrer (evite de lire l'etat de l'ancien son)
+							&& App.AudioEngine.CurrentTrack != null && App.AudioEngine.CurrentTrack.FilePath == App.NowPlayingFilePath)   // le moteur joue bien le son affiche
 						{
-							double num = App.Settings.Current.CrossfadeDurationSeconds;
+							double num = GetEffectiveCrossfadeMs();
 							double num2 = num / 1000.0;
-							double num3 = duration.TotalSeconds - currentPosition.TotalSeconds;
+							// Mode soiree : on enchaine AVANT la fin audible du son (meme s'il reste de l'audio), sauf sur les sons tres courts.
+							if (App.Settings.Current.PartyModeEnabled && duration.TotalSeconds > 30.0) num2 += PartyEarlyCutSeconds;
+							// Fin "utile" du son (avant les silences de fin quand l'option est active) : le fondu enchaine demarre avant le silence.
+							TimeSpan effectiveEnd = App.AudioEngine.EffectiveEnd;
+							double num3 = (effectiveEnd > TimeSpan.Zero ? effectiveEnd : duration).TotalSeconds - currentPosition.TotalSeconds;
 							if (num3 <= num2 && num3 > 0.2)
 							{
 								_crossfadeTriggered = true;
+								_lastCrossfadeTriggerTick = Environment.TickCount64;
+								Resona.Services.LogService.Write("Playback", $"Enchainement automatique : position {currentPosition.TotalSeconds:0.0}s, fin utile {effectiveEnd.TotalSeconds:0.0}s, duree {duration.TotalSeconds:0.0}s ({App.AudioEngine.CurrentTrack?.Title})");
 								((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 								{
 									NextButton_Click(null, null);
@@ -3914,6 +4115,7 @@ namespace Resona;
 						if ((int)App.AudioEngine.State == 1)
 						{
 							App.PlayStats.AddListenTime(TimeSpan.FromMilliseconds(33.0));
+							App.PlayHistory.AddListenTime(0.033);
 						}
 					}
 				}
@@ -3924,6 +4126,17 @@ namespace Resona;
 		private static string FormatTime(TimeSpan t)
 		{
 			return (t.TotalHours >= 1.0) ? t.ToString("h\\:mm\\:ss") : t.ToString("m\\:ss");
+		}
+
+		// Mode soiree : duree de fondu fixe (non reglable) et avance de la transition sur la fin audible du son.
+		private const int PartyCrossfadeMs = 3000;
+		private const double PartyEarlyCutSeconds = 6.0;
+
+		/// <summary>Duree du fondu enchaine en ms (le reglage s'appelle "Seconds" mais est stocke en ms). Mode soiree : valeur fixe, le reglage de l'utilisateur est ignore.</summary>
+		private static int GetEffectiveCrossfadeMs()
+		{
+			var s = App.Settings.Current;
+			return s.PartyModeEnabled ? PartyCrossfadeMs : s.CrossfadeDurationSeconds;
 		}
 
 		private void UpdateIsPlayingGlobally(string filePath, bool isPlaying)
@@ -3972,7 +4185,13 @@ namespace Resona;
 		public async void PlayTrack(Track track, List<Track>? queue = null, bool isGoingBack = false, bool isGoingForward = false, string? sourceName = null, bool fromManualQueue = false)
 		{
 			bool manualSkip = _manualSkipPending;
+			// Vrai uniquement quand c'est le minuteur qui enchaine (fin de son proche) : seul cas ou le mode DJ cale la transition sur les temps.
+			// Clic sur un son, suivant / precedent : lancement manuel = simple fondu.
+			bool autoMix = _crossfadeTriggered;
 			_manualSkipPending = false;
+			// Sens des animations de la grosse cover : retour arriere (bouton precedent, y compris hors aleatoire) ou non.
+			bool animBack = isGoingBack || _prevNavPending;
+			_prevNavPending = false;
 			Track old = _queue.FirstOrDefault((Track t) => t.Id == _nowPlayingId);
 			if (old != null)
 			{
@@ -4055,7 +4274,7 @@ namespace Resona;
 				// Couleur du gradient du lecteur : mise à jour immédiate (comme les textes), sans attendre le délai ci-dessous
 				UpdatePlayerBarColorAsync(track);
 				// Mode "grosse cover" : pochette centrale, fond flou et animation en meme temps que les textes
-				earlyNp = TryEarlyNowPlayingUpdate(track, isGoingBack);
+				earlyNp = TryEarlyNowPlayingUpdate(track, animBack);
 				// Pochette du lecteur : mise à jour immédiate aussi, en même temps que les textes et le gradient
 				if (!string.IsNullOrEmpty(track.CoverArtPath))
 				{
@@ -4132,7 +4351,7 @@ namespace Resona;
 			{
 				UpdatePlayerBarColorAsync(track);
 				// Mode "grosse cover" : pochette centrale, fond flou et animation en meme temps que les textes
-				earlyNp = TryEarlyNowPlayingUpdate(track, isGoingBack);
+				earlyNp = TryEarlyNowPlayingUpdate(track, animBack);
 			}
 			// Mises à jour d'interface secondaires (pages, Up Next, pochette, couleurs, paroles) : reportées à priorité basse
 			// pour que l'audio démarre sans attendre ; ignorées si un son plus récent a pris la place entre-temps.
@@ -4189,16 +4408,38 @@ namespace Resona;
 			}
 			if (App.Settings.Current.AutoOpenNowPlaying && !earlyNp)
 			{
-				NavigateToNowPlaying(track, isGoingBack);
+				NavigateToNowPlaying(track, animBack);
 			}
 			_lrcLines.Clear();
 			_lrcCurrentIndex = -1;
 			UpdateLyricsOverlayTrackInfo(track);
 			if (settings.LyricsEnabled)
 			{
-				if (!string.IsNullOrEmpty(track.Lyrics))
+				if (Resona.Services.LyricsOverrideService.TryGet(track.FilePath, out var pickedLyrics))
 				{
+					// Paroles choisies a la main (selecteur) : elles priment sur le cache et sur toute recherche automatique.
+					track.Lyrics = pickedLyrics.Lyrics;
+					track.LyricsSynced = pickedLyrics.Synced;
 					LoadLyricsAsync(track.Lyrics, track.LyricsSynced);
+				}
+				else if (!string.IsNullOrEmpty(track.Lyrics))
+				{
+					// Texte en cache : on retire le titre de page recopie par certaines sources puis on verifie qu'il est coherent avec le
+					// morceau (assez de contenu, horodatages dans la duree). Sinon on l'ecarte et on relance la recherche.
+					string cleanedCachedLyrics = App.Lyrics.SanitizeLyricsText(track.Lyrics, track.Artist, track.Title);
+					bool cachedLyricsOk = Resona.Services.LyricsService.IsPlausibleForTrack(cleanedCachedLyrics, track.LyricsSynced, track.Duration);
+					if (cachedLyricsOk) track.Lyrics = cleanedCachedLyrics;
+					if (!cachedLyricsOk)
+					{
+						track.Lyrics = null;
+						track.LyricsSynced = false;
+						if (!track.IsExternal) { _ = App.Cache.UpdateTrackAsync(track); }
+						FindMissingLyricsAsync(track);
+					}
+					else
+					{
+						LoadLyricsAsync(track.Lyrics, track.LyricsSynced);
+					}
 				}
 				else
 				{
@@ -4226,9 +4467,9 @@ namespace Resona;
 				ContentDialog downloadDialog = null;
 				TextBlock statusText = null;
 				int crossfadeMs = 0;
-				if (App.Settings.Current.EnableCrossfade && (int)App.AudioEngine.State == 1)
+				if ((App.Settings.Current.EnableCrossfade || App.Settings.Current.PartyModeEnabled) && (int)App.AudioEngine.State == 1)
 				{
-					crossfadeMs = App.Settings.Current.CrossfadeDurationSeconds;
+					crossfadeMs = GetEffectiveCrossfadeMs();
 				}
 				await App.AudioEngine.PlayAsync(track, settings.ExclusiveAudioMode, gainToApply, delegate(string line)
 				{
@@ -4264,7 +4505,7 @@ namespace Resona;
 							statusText.Text = line;
 						}
 					});
-				}, crossfadeMs);
+				}, crossfadeMs, beatMix: autoMix);
 				if (downloadDialog != (ContentDialog)null)
 				{
 					downloadDialog.Hide();
@@ -4300,6 +4541,7 @@ namespace Resona;
 				return;
 			}
 			App.PlayStats.RecordPlay(track.Id);
+			App.PlayHistory.BeginPlay(track);
 			if (_queueIndex >= 0 && _queueIndex + 1 < _queue.Count)
 			{
 				Track next = _queue[_queueIndex + 1];
@@ -4430,15 +4672,28 @@ namespace Resona;
 
 		private async Task FindMissingLyricsAsync(Track track)
 		{
-			// Paroles locales d'abord (tags embarqués, sidecar .lrc/.txt, sous-dossier Lyrics),
-			// avant tout appel réseau : évite une recherche web inutile quand l'utilisateur gère
-			// déjà ses paroles localement.
-			var local = await Task.Run(() => Resona.Services.LocalLyricsService.FindLocalLyrics(track.FilePath));
-			if (local != null && !string.IsNullOrWhiteSpace(local.Text))
+			// Paroles choisies a la main : elles priment sur tout (local, cache, recherche automatique).
+			if (Resona.Services.LyricsOverrideService.TryGet(track.FilePath, out var picked))
 			{
-				track.Lyrics = local.Text;
+				track.Lyrics = picked.Lyrics;
+				track.LyricsSynced = picked.Synced;
+				((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
+				{
+					LoadLyricsAsync(track.Lyrics, track.LyricsSynced);
+				});
+				return;
+			}
+
+			// Paroles locales d'abord (tags embarqués, sidecar .lrc/.txt, sous-dossier Lyrics) :
+			// Priorité absolue aux paroles locales, qu'elles soient synchronisées ou non.
+			// Aucun appel réseau n'est effectué si des paroles existent déjà localement.
+			var local = await Task.Run(() => Resona.Services.LocalLyricsService.FindLocalLyrics(track.FilePath));
+			if (local != null && !string.IsNullOrWhiteSpace(local.Text) && Resona.Services.LyricsService.HasActualLyrics(local.Text))
+			{
+				string localCleaned = App.Lyrics.SanitizeLyricsText(local.Text, track.Artist, track.Title);
+				track.Lyrics = string.IsNullOrWhiteSpace(localCleaned) ? local.Text : localCleaned;
 				track.LyricsSynced = local.IsSynced;
-				await App.Cache.UpdateTrackAsync(track);
+				if (!track.IsExternal) { await App.Cache.UpdateTrackAsync(track); }
 				((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 				{
 					LoadLyricsAsync(track.Lyrics, track.LyricsSynced);
@@ -4477,7 +4732,9 @@ namespace Resona;
 			catch
 			{
 			}
-			if (!result.Found && autoTag != null)
+			// Le tag deduit n'est utilise pour relancer la recherche que s'il est fiable : sinon on cherchait les paroles
+			// d'un morceau different (cas typique : morceaux instrumentaux au titre generique).
+			if (!result.Found && autoTag != null && autoTag.Score >= 0.75)
 			{
 				string altArtist = autoTag.Artist ?? track.Artist;
 				string altTitle = autoTag.Title ?? track.Title;
@@ -4501,17 +4758,23 @@ namespace Resona;
 					}
 				}
 			}
-			track.Lyrics = (result.Found ? (result.SyncedLyrics ?? result.PlainLyrics) : null);
-			track.LyricsSynced = result.SyncedLyrics != null;
-			if (result.Found)
+			// Paroles saisies ou choisies a la main pendant la recherche : elles priment sur ce resultat tardif.
+				if (Resona.Services.LyricsOverrideService.TryGet(track.FilePath, out _) || _lyricsEditedThisSession.Contains(track.Id))
+				{
+					return;
+				}
+				bool validResult = result.Found && Resona.Services.LyricsService.HasActualLyrics(result.SyncedLyrics ?? result.PlainLyrics);
+			track.Lyrics = (validResult ? (result.SyncedLyrics ?? result.PlainLyrics) : null);
+			track.LyricsSynced = validResult && result.SyncedLyrics != null;
+			if (validResult)
 			{
-				await App.Cache.UpdateTrackAsync(track);
+				if (!track.IsExternal) { await App.Cache.UpdateTrackAsync(track); }
 			}
 			((Window)this).DispatcherQueue.TryEnqueue((DispatcherQueueHandler)delegate
 			{
 				if (_currentIndex >= 0 && !(_library[_currentIndex].Id != track.Id))
 				{
-					if (result.Found)
+					if (validResult)
 					{
 						LoadLyricsAsync(track.Lyrics, track.LyricsSynced);
 					}
@@ -4790,10 +5053,34 @@ namespace Resona;
 		{
 			_lrcLines.Clear();
 			_lrcCurrentIndex = -1;
+			_lrcHeaderOffset = TimeSpan.Zero;
+			_displayedLyricsRaw = Resona.Services.LyricsService.HasActualLyrics(lyrics) ? lyrics : null;
+			_displayedLyricsSynced = isSynced;
+			_lyricsStatusKind = LyricsStatus.None;
+			if (!Resona.Services.LyricsService.HasActualLyrics(lyrics))
+			{
+				ShowPlainLyrics(Strings.Current.IsFr ? "Aucune parole trouvée pour ce morceau." : "No lyrics found for this track.");
+				return;
+			}
 			if (isSynced)
 			{
+				Track? currentTrack = (_currentIndex >= 0 && _currentIndex < _library.Count) ? _library[_currentIndex] : _nowPlayingTrack;
+				bool isTrackAsian = false;
+				if (currentTrack != null)
+				{
+					string meta = (currentTrack.Artist ?? "") + " " + (currentTrack.Title ?? "");
+					isTrackAsian = System.Text.RegularExpressions.Regex.IsMatch(meta, @"[\p{IsCJKUnifiedIdeographs}\p{IsHiragana}\p{IsKatakana}\p{IsHangulSyllables}]");
+				}
+
 				List<LrcLine> rawLines = new List<LrcLine>();
 				string[] array = lyrics.Split('\n');
+				TimeSpan maxTimeSeen = TimeSpan.Zero;
+				var timeTagRegex = new System.Text.RegularExpressions.Regex(@"\[(\d{1,2}:\d{2}(?:[.:]\d{1,3})?)\]");
+				var offsetTagRegex = new System.Text.RegularExpressions.Regex(@"^\[offset:\s*([+-]?\d+)\s*\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+				var creditRegex = new System.Text.RegularExpressions.Regex(
+					@"^(作词|作曲|编曲|制作|监制|混音|母带|吉他|贝斯|鼓|键盘|和声|录音|发行|企划|统筹|文案|OP|SP|T_T|BY)\s*[:：]|^(作词|作曲|编曲|制作人|written by|composed by|lyrics by|produced by)\b",
+					System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
 				foreach (string rawLine in array)
 				{
 					string line = rawLine.Trim();
@@ -4801,18 +5088,92 @@ namespace Resona;
 					{
 						continue;
 					}
-					int close = line.IndexOf(']');
-					if (close >= 0)
+
+					var offsetMatch = offsetTagRegex.Match(line);
+					if (offsetMatch.Success && int.TryParse(offsetMatch.Groups[1].Value, out int headerMs))
 					{
-						string timePart = line.Substring(1, close - 1);
-						string text = line.Substring(close + 1).Trim();
+						_lrcHeaderOffset = TimeSpan.FromMilliseconds(headerMs);
+						continue;
+					}
+
+					var matches = timeTagRegex.Matches(line);
+					if (matches.Count == 0) continue;
+
+					int lastTagEnd = matches[matches.Count - 1].Index + matches[matches.Count - 1].Length;
+					string text = (lastTagEnd < line.Length) ? line.Substring(lastTagEnd).Trim() : string.Empty;
+
+					if (string.IsNullOrWhiteSpace(text)) continue;
+
+					bool isResetDetected = false;
+					foreach (System.Text.RegularExpressions.Match m in matches)
+					{
+						string timePart = m.Groups[1].Value;
 						if (TryParseLrcTime(timePart, out var ts))
 						{
+							// Détection de saut temporel en arrière : flux secondaire de traduction bilingue en fin de fichier
+							if (maxTimeSeen > TimeSpan.FromSeconds(20.0) && ts < maxTimeSeen - TimeSpan.FromSeconds(15.0))
+							{
+								isResetDetected = true;
+								break;
+							}
+
+							if (ts > maxTimeSeen)
+							{
+								maxTimeSeen = ts;
+							}
+
+							// Ignorer les crédits introductifs au tout début (< 8s)
+							if (ts.TotalSeconds < 8.0 && creditRegex.IsMatch(text))
+							{
+								continue;
+							}
+
 							rawLines.Add(new LrcLine(ts, text));
 						}
 					}
+
+					if (isResetDetected)
+					{
+						break;
+					}
 				}
+
 				rawLines.Sort((LrcLine a, LrcLine b) => a.Time.CompareTo(b.Time));
+
+				// Déduplication des timestamps identiques ou quasi-identiques (paroles bilingues entrelacées)
+				List<LrcLine> cleanLines = new List<LrcLine>();
+				foreach (var line in rawLines)
+				{
+					if (cleanLines.Count == 0)
+					{
+						cleanLines.Add(line);
+						continue;
+					}
+
+					var prev = cleanLines[cleanLines.Count - 1];
+					bool isSameTimestamp = Math.Abs((line.Time - prev.Time).TotalSeconds) < 0.25;
+
+					if (isSameTimestamp)
+					{
+						bool prevHasCjk = System.Text.RegularExpressions.Regex.IsMatch(prev.Text, @"\p{IsCJKUnifiedIdeographs}");
+						bool currHasCjk = System.Text.RegularExpressions.Regex.IsMatch(line.Text, @"\p{IsCJKUnifiedIdeographs}");
+
+						if (!isTrackAsian)
+						{
+							if (prevHasCjk && !currHasCjk)
+							{
+								cleanLines[cleanLines.Count - 1] = line;
+							}
+							// Si la précédente est occidentale et l'actuelle est CJK, on ignore l'actuelle
+						}
+					}
+					else
+					{
+						cleanLines.Add(line);
+					}
+				}
+				rawLines = cleanLines;
+
 				if (App.Settings.Current.TranslateLyricsEnabled)
 				{
 					string combined = string.Join(" \n ", rawLines.Select((LrcLine l) => l.Text));
@@ -4950,6 +5311,7 @@ namespace Resona;
 			_lyricsSyncedPanel = new StackPanel
 			{
 				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center,
 				MaxWidth = 620.0,
 				Padding = new Thickness(32.0, 0.0, 32.0, 0.0),
 				Visibility = Visibility.Visible
@@ -4983,18 +5345,26 @@ namespace Resona;
 					Windows.System.Launcher.LaunchUriAsync(new Uri("https://www.google.com/search?q=" + Uri.EscapeDataString(track.Artist + " " + track.Title + (Strings.Current.IsFr ? " paroles" : " lyrics"))));
 				}
 			};
-			StackPanel val2 = new StackPanel
+			_lyricsPlainContentPanel = new StackPanel
 			{
 				HorizontalAlignment = HorizontalAlignment.Center,
-				VerticalAlignment = VerticalAlignment.Center
+				VerticalAlignment = VerticalAlignment.Top
 			};
-			((Panel)val2).Children.Add((UIElement)_lyricsPlainText);
-			((Panel)val2).Children.Add((UIElement)_lyricsGoogleBtn);
+			((Panel)_lyricsPlainContentPanel).Children.Add((UIElement)_lyricsPlainText);
+			((Panel)_lyricsPlainContentPanel).Children.Add((UIElement)_lyricsGoogleBtn);
 			_lyricsPlainScroll = new ScrollViewer
 			{
-				Content = val2,
-				Padding = new Thickness(32.0, 24.0, 32.0, 40.0),
+				Content = _lyricsPlainContentPanel,
+				Padding = new Thickness(32.0, 24.0, 32.0, 24.0),
+				// Le texte s'arrete au-dessus de la barre du bas (decalage + bouton de choix des paroles) au lieu de passer dessous.
+				Margin = new Thickness(0.0, 0.0, 0.0, 84.0),
 				VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+				VerticalScrollMode = ScrollMode.Enabled,
+				HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+				HorizontalScrollMode = ScrollMode.Disabled,
+				HorizontalAlignment = HorizontalAlignment.Stretch,
+				VerticalAlignment = VerticalAlignment.Stretch,
+				Background = (Brush)new SolidColorBrush(Microsoft.UI.Colors.Transparent),
 				Visibility = Visibility.Collapsed,
 				IsHitTestVisible = true
 			};
@@ -5005,14 +5375,128 @@ namespace Resona;
 			};
 			((Panel)val3).Children.Add((UIElement)_lyricsTrackTitle);
 			((Panel)val3).Children.Add((UIElement)_lyricsTrackArtist);
-			StackPanel val4 = new StackPanel
+			Grid val4 = new Grid
 			{
-				VerticalAlignment = VerticalAlignment.Center
+				HorizontalAlignment = HorizontalAlignment.Stretch,
+				VerticalAlignment = VerticalAlignment.Stretch
 			};
 			((Panel)val4).Children.Add((UIElement)_lyricsSyncedPanel);
 			((Panel)val4).Children.Add((UIElement)_lyricsPlainScroll);
+
+			_lyricsOffsetBar = new Border
+			{
+				Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)200, (byte)22, (byte)22, (byte)28)),
+				BorderBrush = (Brush)new SolidColorBrush(Color.FromArgb((byte)45, (byte)255, (byte)255, (byte)255)),
+				BorderThickness = new Thickness(1.0),
+				CornerRadius = new CornerRadius(18.0),
+				Padding = new Thickness(10.0, 5.0, 10.0, 5.0),
+				VerticalAlignment = VerticalAlignment.Center,
+				Visibility = Visibility.Collapsed,
+				IsHitTestVisible = true
+			};
+			((UIElement)_lyricsOffsetBar).Tapped += (TappedEventHandler)delegate(object s, TappedRoutedEventArgs e) { e.Handled = true; };
+			((UIElement)_lyricsOffsetBar).PointerPressed += (PointerEventHandler)delegate(object s, PointerRoutedEventArgs e) { e.Handled = true; };
+
+			StackPanel offsetStack = new StackPanel
+			{
+				Orientation = Orientation.Horizontal,
+				Spacing = 6.0,
+				VerticalAlignment = VerticalAlignment.Center
+			};
+
+			FontIcon syncIcon = new FontIcon
+			{
+				Glyph = "\uE823",
+				FontSize = 12.0,
+				Opacity = 0.45,
+				VerticalAlignment = VerticalAlignment.Center,
+				Margin = new Thickness(2.0, 0.0, 4.0, 0.0)
+			};
+
+			Button btnMinus = new Button
+			{
+				Content = "− 0.5s",
+				FontSize = 11.0,
+				Padding = new Thickness(8.0, 2.0, 8.0, 2.0),
+				CornerRadius = new CornerRadius(10.0),
+				Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)30, (byte)255, (byte)255, (byte)255)),
+				BorderThickness = new Thickness(0.0),
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			((UIElement)btnMinus).Tapped += (TappedEventHandler)delegate(object s, TappedRoutedEventArgs e) { e.Handled = true; };
+			((UIElement)btnMinus).PointerPressed += (PointerEventHandler)delegate(object s, PointerRoutedEventArgs e) { e.Handled = true; };
+			((ButtonBase)btnMinus).Click += (RoutedEventHandler)delegate { AdjustLyricsOffset(0.5); }; // − : paroles plus tot (valeur interne positive)
+			ToolTipService.SetToolTip((DependencyObject)(object)btnMinus, Strings.Current.IsFr ? "Avancer les paroles (-0.5s) [Touche : [ ou -]" : "Show lyrics earlier (-0.5s) [Key: [ or -]");
+
+			_lyricsOffsetText = new TextBlock
+			{
+				Text = "0.0s",
+				FontSize = 12.0,
+				FontWeight = FontWeights.SemiBold,
+				Opacity = 0.55,
+				VerticalAlignment = VerticalAlignment.Center,
+				MinWidth = 42.0,
+				TextAlignment = TextAlignment.Center
+			};
+
+			Button btnPlus = new Button
+			{
+				Content = "+ 0.5s",
+				FontSize = 11.0,
+				Padding = new Thickness(8.0, 2.0, 8.0, 2.0),
+				CornerRadius = new CornerRadius(10.0),
+				Background = (Brush)new SolidColorBrush(Color.FromArgb((byte)30, (byte)255, (byte)255, (byte)255)),
+				BorderThickness = new Thickness(0.0),
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			((UIElement)btnPlus).Tapped += (TappedEventHandler)delegate(object s, TappedRoutedEventArgs e) { e.Handled = true; };
+			((UIElement)btnPlus).PointerPressed += (PointerEventHandler)delegate(object s, PointerRoutedEventArgs e) { e.Handled = true; };
+			((ButtonBase)btnPlus).Click += (RoutedEventHandler)delegate { AdjustLyricsOffset(-0.5); }; // + : paroles plus tard (valeur interne negative)
+			ToolTipService.SetToolTip((DependencyObject)(object)btnPlus, Strings.Current.IsFr ? "Retarder les paroles (+0.5s) [Touche : ] ou +]" : "Show lyrics later (+0.5s) [Key: ] or +]");
+
+			_lyricsOffsetResetBtn = new Button
+			{
+				Content = "↺",
+				FontSize = 12.0,
+				Padding = new Thickness(6.0, 2.0, 6.0, 2.0),
+				CornerRadius = new CornerRadius(10.0),
+				Background = (Brush)new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+				BorderThickness = new Thickness(0.0),
+				VerticalAlignment = VerticalAlignment.Center,
+				Opacity = 0.6,
+				Visibility = Visibility.Collapsed
+			};
+			((UIElement)_lyricsOffsetResetBtn).Tapped += (TappedEventHandler)delegate(object s, TappedRoutedEventArgs e) { e.Handled = true; };
+			((UIElement)_lyricsOffsetResetBtn).PointerPressed += (PointerEventHandler)delegate(object s, PointerRoutedEventArgs e) { e.Handled = true; };
+			((ButtonBase)_lyricsOffsetResetBtn).Click += (RoutedEventHandler)delegate { ResetLyricsOffset(); };
+			ToolTipService.SetToolTip((DependencyObject)(object)_lyricsOffsetResetBtn, Strings.Current.IsFr ? "Réinitialiser le décalage (0s)" : "Reset sync offset (0s)");
+
+			((Panel)offsetStack).Children.Add((UIElement)syncIcon);
+			((Panel)offsetStack).Children.Add((UIElement)btnMinus);
+			((Panel)offsetStack).Children.Add((UIElement)_lyricsOffsetText);
+			((Panel)offsetStack).Children.Add((UIElement)btnPlus);
+			((Panel)offsetStack).Children.Add((UIElement)_lyricsOffsetResetBtn);
+			_lyricsOffsetBar.Child = (UIElement)offsetStack;
+
+			// Barre du bas, centree : reglage du decalage de synchro + bouton de choix des paroles (toujours visible,
+			// meme quand la barre de decalage est masquee pour des paroles non synchronisees).
+			StackPanel lyricsBottomBar = new StackPanel
+			{
+				Orientation = Orientation.Horizontal,
+				Spacing = 8.0,
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Bottom,
+				Margin = new Thickness(0.0, 0.0, 0.0, 36.0)
+			};
+			lyricsBottomBar.Children.Add((UIElement)_lyricsOffsetBar);
+			_lyricsPickerBtn = CreateLyricsPickerButton();
+			lyricsBottomBar.Children.Add((UIElement)_lyricsPickerBtn);
+			_lyricsEditBtn = CreateLyricsEditButton();
+			lyricsBottomBar.Children.Add((UIElement)_lyricsEditBtn);
+			((Panel)val4).Children.Add((UIElement)lyricsBottomBar);
 			Grid val5 = new Grid
 			{
+				HorizontalAlignment = HorizontalAlignment.Stretch,
 				VerticalAlignment = VerticalAlignment.Stretch
 			};
 			val5.RowDefinitions.Add(new RowDefinition
@@ -5042,6 +5526,7 @@ namespace Resona;
 			((Panel)_lyricsOverlay).Children.Add((UIElement)val);
 			((Panel)_lyricsOverlay).Children.Add((UIElement)val5);
 			((Panel)RootGrid).Children.Add((UIElement)_lyricsOverlay);
+			HookLyricsOverlayLanguage();
 		}
 
 		private void ShowSyncedLyricsUI()
@@ -5055,15 +5540,34 @@ namespace Resona;
 			{
 				((UIElement)_lyricsSyncedPanel).Visibility = Visibility.Visible;
 			}
+			if (_lyricsOffsetBar != (Border)null)
+			{
+				((UIElement)_lyricsOffsetBar).Visibility = Visibility.Visible;
+				UpdateLyricsOffsetUI();
+			}
 			UpdateSyncedLyricsDisplay(-1);
 		}
 
 		private void ShowPlainLyrics(string text)
 		{
+			_lyricsStatusKind = DetectLyricsStatus(text);
+			ShowPlainLyricsCore(text);
+		}
+
+		private void ShowPlainLyricsCore(string text)
+		{
 			EnsureLyricsOverlayCreated();
+			if (_lyricsOffsetBar != (Border)null)
+			{
+				((UIElement)_lyricsOffsetBar).Visibility = Visibility.Collapsed;
+			}
 			if (_lyricsPlainText != (TextBlock)null)
 			{
 				_lyricsPlainText.Text = text;
+			}
+			if (_lyricsPlainContentPanel != (StackPanel)null)
+			{
+				_lyricsPlainContentPanel.VerticalAlignment = (text.Contains('\n')) ? VerticalAlignment.Top : VerticalAlignment.Center;
 			}
 			if (_lyricsLinePrev != (TextBlock)null)
 			{
@@ -5079,6 +5583,7 @@ namespace Resona;
 			}
 			if (_lyricsPlainScroll != (ScrollViewer)null)
 			{
+				_lyricsPlainScroll.ChangeView(null, 0.0, null, true);
 				((UIElement)_lyricsPlainScroll).Visibility = Visibility.Visible;
 			}
 			if (_lyricsSyncedPanel != (StackPanel)null)
@@ -5102,7 +5607,9 @@ namespace Resona;
 			{
 				_lyricsTrackArtist.Text = track.Artist;
 			}
-			ShowPlainLyrics(Strings.Current.IsFr ? "Recherche des paroles..." : "Searching for lyrics...");
+			UpdateLyricsOffsetUI();
+			_displayedLyricsRaw = null;
+				ShowPlainLyrics(Strings.Current.IsFr ? "Recherche des paroles..." : "Searching for lyrics...");
 		}
 
 		private void UpdateSyncedLyricsDisplay(int newIndex)
@@ -5193,8 +5700,13 @@ namespace Resona;
 		{
 			if (_lrcLines.Count != 0 && _lyricsOverlayOpen)
 			{
+				Track? currentTrack = (_currentIndex >= 0 && _currentIndex < _library.Count) ? _library[_currentIndex] : _nowPlayingTrack;
+				double trackManualOffset = GetTrackLyricsOffset(currentTrack);
+				TimeSpan effectivePosition = position + _lrcHeaderOffset + TimeSpan.FromSeconds(trackManualOffset);
+				if (effectivePosition < TimeSpan.Zero) effectivePosition = TimeSpan.Zero;
+
 				int num = -1;
-				for (int i = 0; i < _lrcLines.Count && _lrcLines[i].Time <= position; i++)
+				for (int i = 0; i < _lrcLines.Count && _lrcLines[i].Time <= effectivePosition; i++)
 				{
 					num = i;
 				}
@@ -5204,6 +5716,168 @@ namespace Resona;
 					UpdateSyncedLyricsDisplay(num);
 				}
 			}
+		}
+
+		private static string GetTrackLyricsKey(Track track)
+		{
+			if (!string.IsNullOrWhiteSpace(track.FilePath))
+			{
+				return track.FilePath.Trim().ToLowerInvariant();
+			}
+			if (!string.IsNullOrWhiteSpace(track.Id))
+			{
+				return track.Id.Trim();
+			}
+			return ((track.Artist ?? "") + " - " + (track.Title ?? "")).Trim().ToLowerInvariant();
+		}
+
+		private double GetTrackLyricsOffset(Track? track)
+		{
+			if (track == null) return 0.0;
+			string key = GetTrackLyricsKey(track);
+			lock (_lyricsTrackOffsets)
+			{
+				if (_lyricsTrackOffsets.TryGetValue(key, out double val))
+				{
+					return val;
+				}
+			}
+			return 0.0;
+		}
+
+		private void AdjustLyricsOffset(double delta)
+		{
+			Track? track = (_currentIndex >= 0 && _currentIndex < _library.Count) ? _library[_currentIndex] : _nowPlayingTrack;
+			if (track == null) return;
+
+			string trackKey = GetTrackLyricsKey(track);
+			double current = 0.0;
+			lock (_lyricsTrackOffsets)
+			{
+				_lyricsTrackOffsets.TryGetValue(trackKey, out current);
+				current = Math.Round(current + delta, 1);
+				if (Math.Abs(current) < 0.01)
+				{
+					_lyricsTrackOffsets.Remove(trackKey);
+					current = 0.0;
+				}
+				else
+				{
+					_lyricsTrackOffsets[trackKey] = current;
+				}
+			}
+
+			SaveLyricsOffsetsAsync();
+			UpdateLyricsOffsetUI();
+
+			try
+			{
+				TickSyncedLyrics(App.AudioEngine.CurrentPosition);
+			}
+			catch { }
+		}
+
+		private void ResetLyricsOffset()
+		{
+			Track? track = (_currentIndex >= 0 && _currentIndex < _library.Count) ? _library[_currentIndex] : _nowPlayingTrack;
+			if (track == null) return;
+
+			string trackKey = GetTrackLyricsKey(track);
+			lock (_lyricsTrackOffsets)
+			{
+				_lyricsTrackOffsets.Remove(trackKey);
+			}
+
+			SaveLyricsOffsetsAsync();
+			UpdateLyricsOffsetUI();
+
+			try
+			{
+				TickSyncedLyrics(App.AudioEngine.CurrentPosition);
+			}
+			catch { }
+		}
+
+		private void UpdateLyricsOffsetUI()
+		{
+			if (_lyricsOffsetText == null) return;
+			Track? track = (_currentIndex >= 0 && _currentIndex < _library.Count) ? _library[_currentIndex] : _nowPlayingTrack;
+			// Affichage : negatif = paroles plus tot, positif = paroles plus tard (la valeur stockee est l'inverse : position + decalage).
+			double offset = -GetTrackLyricsOffset(track);
+
+			if (Math.Abs(offset) < 0.01)
+			{
+				_lyricsOffsetText.Text = "0.0s";
+				_lyricsOffsetText.Opacity = 0.55;
+				_lyricsOffsetText.Foreground = (Brush)new SolidColorBrush(Microsoft.UI.Colors.White);
+				if (_lyricsOffsetResetBtn != null)
+				{
+					_lyricsOffsetResetBtn.Visibility = Visibility.Collapsed;
+				}
+			}
+			else
+			{
+				string sign = offset > 0 ? "+" : "";
+				_lyricsOffsetText.Text = $"{sign}{offset:0.0}s";
+				_lyricsOffsetText.Opacity = 1.0;
+				if (Application.Current.Resources.TryGetValue("AppAccentBrush", out object brushObj) && brushObj is Brush accentBrush)
+				{
+					_lyricsOffsetText.Foreground = accentBrush;
+				}
+				if (_lyricsOffsetResetBtn != null)
+				{
+					_lyricsOffsetResetBtn.Visibility = Visibility.Visible;
+				}
+			}
+		}
+
+		private void LoadLyricsOffsets()
+		{
+			try
+			{
+				if (File.Exists(LyricsOffsetsFilePath))
+				{
+					string json = File.ReadAllText(LyricsOffsetsFilePath);
+					var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, double>>(json);
+					if (dict != null)
+					{
+						lock (_lyricsTrackOffsets)
+						{
+							_lyricsTrackOffsets = new Dictionary<string, double>(dict, StringComparer.OrdinalIgnoreCase);
+						}
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				LogService.Write("LyricsOffsets", ex);
+			}
+		}
+
+		private void SaveLyricsOffsetsAsync()
+		{
+			Task.Run(() =>
+			{
+				try
+				{
+					string dir = Path.GetDirectoryName(LyricsOffsetsFilePath)!;
+					if (!Directory.Exists(dir))
+					{
+						Directory.CreateDirectory(dir);
+					}
+					Dictionary<string, double> copy;
+					lock (_lyricsTrackOffsets)
+					{
+						copy = new Dictionary<string, double>(_lyricsTrackOffsets, StringComparer.OrdinalIgnoreCase);
+					}
+					string json = System.Text.Json.JsonSerializer.Serialize(copy, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+					File.WriteAllText(LyricsOffsetsFilePath, json);
+				}
+				catch (Exception ex)
+				{
+					LogService.Write("LyricsOffsets", ex);
+				}
+			});
 		}
 
 		private void OpenLyricsOverlay()
@@ -5602,6 +6276,20 @@ namespace Resona;
 				ShowAutoTagDialogAsync(track);
 			};
 			val.Items.Add((MenuFlyoutItemBase)val8);
+			// Mode Discovery : artistes similaires (Deezer), voir MainWindow.Discovery.cs
+			MenuFlyoutItem similarArtistsItem = new MenuFlyoutItem
+			{
+				Text = Strings.Current.IsFr ? "Artistes similaires" : "Similar artists",
+				Icon = (IconElement)new FontIcon
+				{
+					Glyph = "\ue716"
+				}
+			};
+			similarArtistsItem.Click += (RoutedEventHandler)async delegate
+			{
+				await ShowSimilarArtistsAsync(track);
+			};
+			val.Items.Add((MenuFlyoutItemBase)similarArtistsItem);
 			val.Items.Add((MenuFlyoutItemBase)new MenuFlyoutSeparator());
 			MenuFlyoutItem val9 = new MenuFlyoutItem
 			{
@@ -5617,6 +6305,20 @@ namespace Resona;
 				await ShowDeleteTracksDialogAsync(new List<Track> { track });
 			};
 			val.Items.Add((MenuFlyoutItemBase)val9);
+			// Propriétés : infos techniques du fichier (voir MainWindow.TrackProperties.cs), tout en bas du menu (hors multi-sélection)
+			MenuFlyoutItem propertiesItem = new MenuFlyoutItem
+			{
+				Text = Strings.Current.IsFr ? "Propriétés" : "Properties",
+				Icon = (IconElement)new FontIcon
+				{
+					Glyph = "\ue946"
+				}
+			};
+			propertiesItem.Click += (RoutedEventHandler)async delegate
+			{
+				await ShowTrackPropertiesAsync(track);
+			};
+			val.Items.Add((MenuFlyoutItemBase)propertiesItem);
 			return val;
 		}
 
@@ -6758,11 +7460,11 @@ public void UpdateQueue(List<Track> newQueue)
 			PlayPauseButton_Click(this, new RoutedEventArgs());
 		}
 
-		public void SetShuffleModeAndPlay(Track track, List<Track> queue)
+		public void SetShuffleModeAndPlay(Track track, List<Track> queue, string? sourceName = null)
 		{
 			_playbackMode = PlaybackMode.Shuffle;
 			UpdateRepeatButtonVisual();
-			PlayTrack(track, queue);
+			PlayTrack(track, queue, false, false, sourceName);
 			RegenerateShuffleUpcoming();
 		}
 
@@ -7361,12 +8063,55 @@ public void UpdateQueue(List<Track> newQueue)
 			}
 			else if (_queueIndex > 0)
 			{
+				_prevNavPending = true;   // animations de la grosse cover dans l'autre sens
 				PlayTrack(_queue[_queueIndex - 1], _queue);
 			}
 			else if (_playbackMode == PlaybackMode.RepeatAll)
 			{
+				_prevNavPending = true;   // animations de la grosse cover dans l'autre sens
 				PlayTrack(_queue[_queue.Count - 1], _queue);
 			}
+		}
+
+		public void SeekRelative(double seconds)
+		{
+			TimeSpan totalDuration = App.AudioEngine.TotalDuration;
+			if (totalDuration.TotalSeconds <= 0.0 && App.AudioEngine.CurrentTrack != null)
+			{
+				totalDuration = App.AudioEngine.CurrentTrack.Duration;
+			}
+			if (totalDuration.TotalSeconds <= 0.0)
+			{
+				return;
+			}
+
+			TimeSpan currentPosition = App.AudioEngine.CurrentPosition;
+			double newSeconds = Math.Clamp(currentPosition.TotalSeconds + seconds, 0.0, totalDuration.TotalSeconds);
+			TimeSpan target = TimeSpan.FromSeconds(newSeconds);
+
+			_lastSeekTick = Environment.TickCount64;
+			App.AudioEngine.Seek(target);
+
+			if (ProgressSlider != null)
+			{
+				((RangeBase)ProgressSlider).Value = newSeconds;
+			}
+			if (MiniProgressSlider != null)
+			{
+				((RangeBase)MiniProgressSlider).Value = newSeconds;
+			}
+			string timeStr = FormatTime(target);
+			if (CurrentTimeText != null)
+			{
+				CurrentTimeText.Text = timeStr;
+			}
+			if (MiniCurrentTimeText != null)
+			{
+				MiniCurrentTimeText.Text = timeStr;
+			}
+
+			App.DiscordRpc?.UpdatePresence(App.AudioEngine.CurrentTrack, isPlaying: (int)App.AudioEngine.State == 1, position: target);
+			TickSyncedLyrics(target);
 		}
 
 		private void HideInfoOverlay()
@@ -7586,67 +8331,313 @@ public void UpdateQueue(List<Track> newQueue)
 		{
 			if ((int)((UIElement)PlayerBar).Visibility > 0)
 			{
+				// L'apparition de la barre reserve sa place d'un coup : les elements ancres en bas (Parametres du menu, paginations...)
+				// sauteraient. On leur pose une animation implicite de position AVANT le changement de layout : ils glissent vers leur
+				// nouvelle place, au meme rythme que la barre.
+				BeginSmoothLayoutShift(RootNav);
 				((UIElement)PlayerBar).Visibility = Visibility.Visible;
 				((UIElement)PlayerBar).Opacity = 0.0;
 				RefreshOverlayTheme(PlayerBar);
-				((FrameworkElement)PlayerBar).Height = 0.0;
+				// Plus d'animation de Height (relayout complet de l'app a chaque image = lag) : l'espace est reserve d'un coup,
+				// seule la barre glisse / apparait via des animations independantes (thread compositeur).
+				((DependencyObject)PlayerBar).ClearValue(FrameworkElement.HeightProperty);
 				if (App.Settings.Current.PlayerGradientOverflowEnabled && App.Settings.Current.PlayerGradientEnabled && App.Settings.Current.Backdrop.IsSolidLike())
 				{
 					((UIElement)PlayerGradientOverflow).Visibility = Visibility.Visible;
 					((UIElement)PlayerGradientFadeLayer).Visibility = Visibility.Visible;
 				}
+				// Apparition "organique" : la barre monte depuis le bas avec une courbe expo-out (demarrage vif, atterrissage tres doux),
+				// le fondu est un peu plus court que le glissement. Opacity + TranslateTransform = animations independantes du thread UI,
+				// donc fluides meme pendant que le premier son charge sa pochette / ses couleurs.
 				TranslateTransform val = new TranslateTransform
 				{
-					Y = 15.0
+					Y = 106.0   // = hauteur de la barre : elle part entierement sous l'ecran et POUSSE le contenu, qui ne passe donc jamais dessous
 				};
 				((UIElement)PlayerBar).RenderTransform = (Transform)val;
 				Storyboard val2 = new Storyboard();
-				DoubleAnimation val3 = new DoubleAnimation
+
+				DoubleAnimationUsingKeyFrames fade = new DoubleAnimationUsingKeyFrames();
+				fade.KeyFrames.Add(new SplineDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 0.0 });
+				fade.KeyFrames.Add(new SplineDoubleKeyFrame
 				{
-					From = 0.0,
-					To = 1.0,
-					Duration = new Duration(TimeSpan.FromMilliseconds(250.0)),
-					EasingFunction = (EasingFunctionBase)new QuadraticEase
-					{
-						EasingMode = EasingMode.EaseOut
-					}
-				};
-				Storyboard.SetTarget((Timeline)(object)val3, (DependencyObject)PlayerBar);
-				Storyboard.SetTargetProperty((Timeline)(object)val3, "Opacity");
-				DoubleAnimation val4 = new DoubleAnimation
+					KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420.0)),
+					Value = 1.0,
+					KeySpline = new KeySpline { ControlPoint1 = new Point(0.25, 0.1), ControlPoint2 = new Point(0.25, 1.0) }
+				});
+				Storyboard.SetTarget((Timeline)(object)fade, (DependencyObject)PlayerBar);
+				Storyboard.SetTargetProperty((Timeline)(object)fade, "Opacity");
+
+				DoubleAnimationUsingKeyFrames slide = new DoubleAnimationUsingKeyFrames();
+				slide.KeyFrames.Add(new SplineDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 106.0 });
+				slide.KeyFrames.Add(new SplineDoubleKeyFrame
 				{
-					From = 15.0,
-					To = 0.0,
-					Duration = new Duration(TimeSpan.FromMilliseconds(300.0)),
-					EasingFunction = (EasingFunctionBase)new QuadraticEase
-					{
-						EasingMode = EasingMode.EaseOut
-					}
-				};
-				Storyboard.SetTarget((Timeline)(object)val4, (DependencyObject)val);
-				Storyboard.SetTargetProperty((Timeline)(object)val4, "Y");
-				DoubleAnimation val5 = new DoubleAnimation
+					KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(650.0)),
+					Value = 0.0,
+					KeySpline = new KeySpline { ControlPoint1 = new Point(0.16, 1.0), ControlPoint2 = new Point(0.3, 1.0) }
+				});
+				Storyboard.SetTarget((Timeline)(object)slide, (DependencyObject)val);
+				Storyboard.SetTargetProperty((Timeline)(object)slide, "Y");
+
+				val2.Children.Add((Timeline)(object)fade);
+				val2.Children.Add((Timeline)(object)slide);
+
+				// Le degrade qui deborde du lecteur monte depuis le bas avec la barre. On n'anime SURTOUT PAS son opacite : a opacite partielle,
+				// la couche de couleur et la couche de fade ne s'annulent plus et la limite haute du degrade apparait nettement.
+				// En glissant, les deux calques restent superposes tels quels et le haut du degrade reste doux.
+				bool slideGradient = ((UIElement)PlayerGradientOverflow).Visibility == Visibility.Visible && !_isNowPlayingModeActive;
+				if (slideGradient)
 				{
-					From = 0.0,
-					To = 106.0,
-					Duration = new Duration(TimeSpan.FromMilliseconds(300.0)),
-					EasingFunction = (EasingFunctionBase)new QuadraticEase
+					TranslateTransform gradShift = new TranslateTransform
 					{
-						EasingMode = EasingMode.EaseOut
-					},
-					EnableDependentAnimation = true
-				};
-				Storyboard.SetTarget((Timeline)(object)val5, (DependencyObject)PlayerBar);
-				Storyboard.SetTargetProperty((Timeline)(object)val5, "Height");
-				val2.Children.Add((Timeline)(object)val3);
-				val2.Children.Add((Timeline)(object)val4);
-				val2.Children.Add((Timeline)(object)val5);
+						Y = 320.0
+					};
+					((UIElement)PlayerGradientOverflow).RenderTransform = (Transform)gradShift;
+					DoubleAnimationUsingKeyFrames gradSlide = new DoubleAnimationUsingKeyFrames();
+					gradSlide.KeyFrames.Add(new SplineDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 320.0 });
+					gradSlide.KeyFrames.Add(new SplineDoubleKeyFrame
+					{
+						KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(650.0)),
+						Value = 0.0,
+						KeySpline = new KeySpline { ControlPoint1 = new Point(0.16, 1.0), ControlPoint2 = new Point(0.3, 1.0) }
+					});
+					Storyboard.SetTarget((Timeline)(object)gradSlide, (DependencyObject)gradShift);
+					Storyboard.SetTargetProperty((Timeline)(object)gradSlide, "Y");
+					val2.Children.Add((Timeline)(object)gradSlide);
+				}
+
 				((Timeline)val2).Completed += delegate
 				{
-					((DependencyObject)PlayerBar).ClearValue(FrameworkElement.HeightProperty);
 					((UIElement)PlayerBar).RenderTransform = (Transform)new TranslateTransform();
+					((DependencyObject)PlayerGradientOverflow).ClearValue(UIElement.RenderTransformProperty);
+					// Relache la valeur "tenue" par l'animation pour que les autres reglages d'opacite reprennent la main.
+					val2.Stop();
+					((UIElement)PlayerBar).Opacity = 1.0;
 				};
+				// Le layout (place reservee de la barre) est applique maintenant, et chaque element qui a bouge est ramene visuellement
+				// a son ancienne position puis glisse vers la nouvelle, en meme temps que la barre.
+				PrepareSmoothLayoutShift(RootNav, TimeSpan.FromMilliseconds(650.0));
 				val2.Begin();
+			}
+		}
+
+		// Transition douce d'un changement de layout ponctuel (ici : la barre du lecteur reserve sa place d'un coup).
+		// Methode deterministe, sans animation implicite : "Begin" releve la position de chaque element visible AVANT le changement,
+		// "Finish" force le layout, mesure de combien chaque element a bouge, puis le ramene visuellement a son ancienne place
+		// (Translation) et l'anime vers sa nouvelle place. Seule la position RELATIVE au parent est animee (le parent entraine ses enfants).
+		// On ne descend pas dans les ScrollViewer (listes virtualisees, defilement) pour ne jamais gener le scroll.
+		private sealed class LayoutShiftItem
+		{
+			public UIElement Element = null!;
+			public int Parent;
+			public double OldX;
+			public double OldY;
+			public double OldH;
+		}
+
+		private readonly List<LayoutShiftItem> _layoutShiftItems = new List<LayoutShiftItem>();
+
+		private void BeginSmoothLayoutShift(UIElement root)
+		{
+			_layoutShiftItems.Clear();
+			try
+			{
+				CollectLayoutShiftItems(root, root, -1, 0);
+			}
+			catch
+			{
+				_layoutShiftItems.Clear();
+			}
+		}
+
+		private void CollectLayoutShiftItems(DependencyObject node, UIElement root, int parentIndex, int depth)
+		{
+			if (_layoutShiftItems.Count >= 800 || depth > 40) return;
+			int childCount = VisualTreeHelper.GetChildrenCount(node);
+			for (int i = 0; i < childCount; i++)
+			{
+				DependencyObject child = VisualTreeHelper.GetChild(node, i);
+				int myIndex = parentIndex;
+				if (child is UIElement ui)
+				{
+					if (ui.Visibility != Visibility.Visible) continue;
+					try
+					{
+						Point p = ui.TransformToVisual(root).TransformPoint(new Point(0.0, 0.0));
+						_layoutShiftItems.Add(new LayoutShiftItem { Element = ui, Parent = parentIndex, OldX = p.X, OldY = p.Y, OldH = ui.ActualSize.Y });
+						myIndex = _layoutShiftItems.Count - 1;
+					}
+					catch
+					{
+					}
+					if (child is ScrollViewer) continue;
+				}
+				CollectLayoutShiftItems(child, root, myIndex, depth + 1);
+			}
+		}
+
+		// Elements effectivement animes (pour remettre leur Translation a la valeur de base une fois le vrai layout applique).
+		private sealed class LayoutShiftAnimated
+		{
+			public UIElement Element = null!;
+			public Microsoft.UI.Composition.Visual Visual = null!;
+			public System.Numerics.Vector3 BaseTranslation;
+		}
+
+		private readonly List<LayoutShiftAnimated> _layoutShiftAnimated = new List<LayoutShiftAnimated>();
+		// Elements qui RETRECISSENT avec le nouveau layout (liste de sons, contenu des pages...) : leur bas est masque progressivement (InsetClip).
+		private readonly List<Microsoft.UI.Composition.Visual> _layoutShiftClipped = new List<Microsoft.UI.Composition.Visual>();
+		private DispatcherTimer? _layoutShiftTimer;
+
+		// Principe : les elements qui doivent bouger sont animes ALORS QUE RootNav garde encore son ancienne taille (marge basse negative) :
+		// ils ne sont donc jamais rognes par les limites du menu / de la page (c'etait la cause du "on ne voit que la fin"), et restent
+		// toujours au-dessus de la barre puisqu'ils montent au meme rythme qu'elle. A la fin, le VRAI layout est applique d'un coup et les
+		// decalages sont remis a zero dans le meme instant : positions finales identiques, donc aucun saut visible.
+		private void PrepareSmoothLayoutShift(UIElement root, TimeSpan duration)
+		{
+			if (_layoutShiftItems.Count == 0) return;
+			bool marginApplied = false;
+			try
+			{
+				// 1) Layout final (barre visible, place reservee) : on releve de combien chaque element a bouge.
+				((UIElement)RootGrid).UpdateLayout();
+				double barHeight = ((FrameworkElement)PlayerBar).ActualHeight;
+				if (barHeight < 1.0) return;
+
+				int n = _layoutShiftItems.Count;
+				double[] dxs = new double[n];
+				double[] dys = new double[n];
+				double[] rxs = new double[n];
+				double[] rys = new double[n];
+				double[] shrinks = new double[n];
+				for (int i = 0; i < n; i++)
+				{
+					LayoutShiftItem item = _layoutShiftItems[i];
+					double dx = 0.0, dy = 0.0;
+					try
+					{
+						Point p = item.Element.TransformToVisual(root).TransformPoint(new Point(0.0, 0.0));
+						dx = p.X - item.OldX;   // deplacement ancien -> nouveau (negatif = vers le haut / la gauche)
+						dy = p.Y - item.OldY;
+					}
+					catch
+					{
+					}
+					dxs[i] = dx;
+					dys[i] = dy;
+					// Le parent (ajoute avant l'enfant) entraine deja son propre deplacement : on n'anime que le surplus.
+					rxs[i] = dx - (item.Parent >= 0 ? dxs[item.Parent] : 0.0);
+					rys[i] = dy - (item.Parent >= 0 ? dys[item.Parent] : 0.0);
+					shrinks[i] = item.OldH - item.Element.ActualSize.Y;   // > 0 : l'element perd de la hauteur avec le nouveau layout
+				}
+
+				// 2) On redonne a RootNav son ancienne taille : le layout redevient identique a celui d'avant l'apparition de la barre.
+				((FrameworkElement)RootNav).Margin = new Thickness(0.0, 0.0, 0.0, -barHeight);
+				marginApplied = true;
+				((UIElement)RootGrid).UpdateLayout();
+
+				// 3) Animation de chaque element de son ancienne position (layout actuel) vers la nouvelle.
+				Microsoft.UI.Composition.Compositor compositor = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(root).Compositor;
+				var ease = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.16f, 1f), new System.Numerics.Vector2(0.3f, 1f));
+				_layoutShiftAnimated.Clear();
+				_layoutShiftClipped.Clear();
+				for (int i = 0; i < n; i++)
+				{
+					double rx = rxs[i];
+					double ry = rys[i];
+
+					// Zone qui doit se faire recouvrir par la barre : son bas est masque progressivement (au meme rythme que la barre)
+					// au lieu de disparaitre d'un coup quand le vrai layout est applique.
+					double shrink = shrinks[i];
+					if (shrink > 0.5 && shrink < 700.0 && _layoutShiftItems[i].Element.Clip == null)
+					{
+						try
+						{
+							Microsoft.UI.Composition.Visual clipVisual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(_layoutShiftItems[i].Element);
+							var inset = compositor.CreateInsetClip(0f, 0f, 0f, 0f);
+							clipVisual.Clip = inset;
+							var clipAnim = compositor.CreateScalarKeyFrameAnimation();
+							clipAnim.InsertKeyFrame(0f, 0f);
+							clipAnim.InsertKeyFrame(1f, (float)shrink, ease);
+							clipAnim.Duration = duration;
+							inset.StartAnimation("BottomInset", clipAnim);
+							_layoutShiftClipped.Add(clipVisual);
+						}
+						catch
+						{
+						}
+					}
+
+					if (Math.Abs(rx) < 0.5 && Math.Abs(ry) < 0.5) continue;
+					if (Math.Abs(rx) > 700.0 || Math.Abs(ry) > 700.0) continue;
+					try
+					{
+						UIElement element = _layoutShiftItems[i].Element;
+						Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+						Microsoft.UI.Composition.Visual visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
+						System.Numerics.Vector3 baseT = element.Translation;   // conserve un eventuel Translation existant (ombres, etc.)
+						var anim = compositor.CreateVector3KeyFrameAnimation();
+						anim.InsertKeyFrame(0f, baseT);
+						anim.InsertKeyFrame(1f, new System.Numerics.Vector3(baseT.X + (float)rx, baseT.Y + (float)ry, baseT.Z), ease);
+						anim.Duration = duration;
+						visual.StartAnimation("Translation", anim);
+						_layoutShiftAnimated.Add(new LayoutShiftAnimated { Element = element, Visual = visual, BaseTranslation = baseT });
+					}
+					catch
+					{
+					}
+				}
+
+				// 4) Fin d'animation : vrai layout + remise a zero des decalages, dans le meme instant.
+				_layoutShiftTimer?.Stop();
+				_layoutShiftTimer = new DispatcherTimer { Interval = duration + TimeSpan.FromMilliseconds(40.0) };
+				_layoutShiftTimer.Tick += delegate
+				{
+					FinalizeSmoothLayoutShift();
+				};
+				_layoutShiftTimer.Start();
+			}
+			catch
+			{
+				// Purement cosmetique : en cas d'erreur, on applique tout de suite le layout final (les elements sautent comme avant)
+				if (marginApplied) FinalizeSmoothLayoutShift();
+			}
+			finally
+			{
+				_layoutShiftItems.Clear();
+			}
+		}
+
+		private void FinalizeSmoothLayoutShift()
+		{
+			_layoutShiftTimer?.Stop();
+			_layoutShiftTimer = null;
+			try
+			{
+				((FrameworkElement)RootNav).Margin = new Thickness(0.0);
+				((UIElement)RootGrid).UpdateLayout();
+				foreach (Microsoft.UI.Composition.Visual cv in _layoutShiftClipped)
+				{
+					try { cv.Clip = null; } catch { }
+				}
+				_layoutShiftClipped.Clear();
+				foreach (LayoutShiftAnimated a in _layoutShiftAnimated)
+				{
+					try
+					{
+						a.Visual.StopAnimation("Translation");
+						// L'animation tournait cote compositeur : la propriete XAML Translation valait deja "base" (affecter la meme valeur ne fait rien),
+						// alors que le visuel est reste sur la valeur finale animee. On remet donc la valeur de base DIRECTEMENT sur le visuel.
+						a.Visual.Properties.InsertVector3("Translation", a.BaseTranslation);
+						a.Element.Translation = a.BaseTranslation;
+					}
+					catch
+					{
+					}
+				}
+			}
+			finally
+			{
+				_layoutShiftAnimated.Clear();
 			}
 		}
 
@@ -7719,6 +8710,7 @@ public void UpdateQueue(List<Track> newQueue)
 			TimeSpan totalDuration = App.AudioEngine.TotalDuration;
 			if (totalDuration.TotalSeconds > 0.0)
 			{
+				_lastSeekTick = Environment.TickCount64;
 				App.AudioEngine.Seek(TimeSpan.FromSeconds(((RangeBase)ProgressSlider).Value));
 				// La barre de progression Discord suit le deplacement dans le son.
 				App.DiscordRpc?.UpdatePresence(App.AudioEngine.CurrentTrack, isPlaying: (int)App.AudioEngine.State == 1, position: TimeSpan.FromSeconds(((RangeBase)ProgressSlider).Value));
@@ -7823,6 +8815,7 @@ public void UpdateQueue(List<Track> newQueue)
 				}
 				App.Settings.SaveSync();
 			}
+			App.FolderWatcher?.Dispose();
 		}
 
 		public void UpdateMiniPlayerButtonVisibility()

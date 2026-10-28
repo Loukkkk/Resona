@@ -65,9 +65,9 @@ public sealed partial class GenresPage : Page
         var items = _library.Select(t => $"{t.Artist} - {t.Title}").Distinct().ToList();
         await AIHelper.RunAICleanup(this, items, "Genres", _library, (track, mapping) => mapping.ContainsKey($"{track.Artist} - {track.Title}".Trim()), (track, mapping) => 
         {
-            if (mapping.TryGetValue($"{track.Artist} - {track.Title}".Trim(), out var newGenre))
+            if (mapping.TryGetValue(track.GenreMappingKey, out var newGenre))
             {
-                App.Settings.Current.GenreMappings[track.Genre] = newGenre;
+                App.Settings.Current.TrackGenreMappings[track.GenreMappingKey] = newGenre;
             }
         }, () => {
             _builtLibraryHash = 0; // Force reload
@@ -218,6 +218,7 @@ public static class AIHelper
                         foreach (var track in tracksToModify) { applyMapping(track, mapping); }
                         // Do not save Tracks to DB, the AI mappings are stored in AppSettings!
                     });
+                    await App.Settings.SaveAsync();   // les correspondances vivent dans les réglages : sans sauvegarde elles seraient perdues à la fermeture
                 }
                 loadingDialog.Hide();
                 reloadUI();

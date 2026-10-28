@@ -76,6 +76,62 @@ public sealed partial class StatisticsPage : Page
 
 
 
+	private void AddYearInReviewHeader()
+
+	{
+
+		var years = App.PlayHistory.YearsWithData();
+
+		int? promptYear = Resona.Services.YearInReviewService.GetPromptYear(DateTime.Now);
+
+		int year = promptYear ?? (years.Count > 0 ? years[0] : DateTime.Now.Year);
+
+		var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 0, 0, 8) };
+
+		var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+
+		content.Children.Add(new FontIcon { Glyph = "\uE787", FontSize = 14 });
+
+		content.Children.Add(new TextBlock { Text = (Strings.Current.IsFr ? "Mon bilan " : "Year in review ") + year });
+
+		var reviewButton = new Button { Content = content };
+
+		// Du 20 decembre au 31 janvier : bouton mis en avant (couleur d'accent).
+
+		if (promptYear != null)
+
+		{
+
+			try { reviewButton.Style = (Style)Application.Current.Resources["AccentButtonStyle"]; } catch { }
+
+		}
+
+		reviewButton.Click += (_, _) => App.MainWindowInstance.ShowYearInReview(year);
+
+		row.Children.Add(reviewButton);
+
+#if DEBUG
+
+		// Build Debug uniquement : ouvre le bilan de l'annee choisie avec de FAUSSES ecoutes (le vrai historique n'est pas modifie).
+
+		var debugYear = new NumberBox { Value = DateTime.Now.Year, Minimum = 2000, Maximum = 2100, Width = 120, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+
+		var debugButton = new Button { Content = "DEBUG: fake data" };
+
+		debugButton.Click += (_, _) => App.MainWindowInstance.ShowYearInReview((int)debugYear.Value, debugData: true);
+
+		row.Children.Add(debugYear);
+
+		row.Children.Add(debugButton);
+
+#endif
+
+		ContentPanel.Children.Add(row);
+
+	}
+
+
+
 	private void BuildEmpty()
 
 	{
@@ -109,6 +165,8 @@ public sealed partial class StatisticsPage : Page
 	{
 
 		ContentPanel.Children.Clear();
+
+		AddYearInReviewHeader();
 
 		TimeSpan timeSpan = TimeSpan.FromTicks(library.Sum((Track t) => t.Duration.Ticks));
 

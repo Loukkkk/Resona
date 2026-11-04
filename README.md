@@ -46,7 +46,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [x] Fix the occasional audio crackling, especially when changing tracks (potentially fixed, but requires extensive testing to verify)
 - [ ] Add a selection menu when long-pressing the repeat button
 - [ ] Improve security
-- [x] Add the missing English translations
+- [x] Small Improvements
 - [ ] Make a promo video for the app
 - [x] Make the equalizer in the large central cover mode more faithful in how it represents the sound being played
 

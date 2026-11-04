@@ -38,36 +38,17 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 
 <br>
 
-#### 🎧 Player & Playback
-- [x] Use all the available space for the playback bar when the text (title, album, artist) is long, with the small cover to its left in the player
-- [x] Sound wave / equalizer animation (optional and toggleable, for example in the large central cover view)
-- [x] Keyboard shortcut to skip 5 seconds
-- [x] Weighted shuffle: avoid replaying recent tracks
-- [x] Smart silence skipping at the start and end of tracks
-- [x] Volume ducking when another app plays a sound
-- [x] Transition animation between two tracks
-- [x] Light DJ mode: two decks with manual crossfade and tempo adjustment
-
-#### 📚 Library & Playlists
-- [x] Smart playlists with dynamic rules: "added this month", "never played", "genre = X and year > 2010", "most played", Mood analysis: sort tracks by BPM, vibe, ...
-- [x] Folder watching (`FileSystemWatcher`) to add or remove tracks without rescanning (to be checked)
-- [x] Playlist downloading
-- [x] Import playlists from other services through an exported file (Spotify CSV or other), with fuzzy matching against the local library
-- [x] Properties in the right-click menu
-- [x] Library quality check: tracks without cover, corrupted files, inconsistent tags... with quick suggested fixes
-- [x] Broken path repair (import playlist)
-- [x] "Discovery" mode: similar artist suggestions
-
-#### 🎤 Lyrics
-- [x] Manual lyrics editing, with a sync offset adjustment for synchronized lyrics
-- [x] Additional fallback lyrics source(s)
-
-#### 🎨 Themes & Interface
-- [x] Color theme animations that react to the sound
-- [x] Be able to choose the order in which categories are displayed in the pane
-
-#### 🌐 Sharing & Integrations
-- [x] Year in review: most played tracks, charts and more, animated and exportable as an image (designed to shine on New Year's Day)
+- [ ] Make the direct setup install from the app not require choosing an install location (it just downloads with a progress indicator and installs right away)
+- [ ] Improve the color transitions between tracks in the normal view, and in all display modes improve the transition between tracks for the text and other elements (a smooth animation, not a flicker)
+- [ ] Allow pure white in the color picker (as a gradient)
+- [ ] Add an option so the app's theme grain isn't static
+- [ ] Stream your music to a friend (a full synchronized listening system with music sent in both directions, the ability to send a notification to a friend who has Resona open, etc.)
+- [x] Fix the occasional audio crackling, especially when changing tracks (potentially fixed, but requires extensive testing to verify)
+- [ ] Add a selection menu when long-pressing the repeat button
+- [ ] Improve security
+- [x] Add the missing English translations
+- [ ] Make a promo video for the app
+- [x] Make the equalizer in the large central cover mode more faithful in how it represents the sound being played
 
 </details>
 

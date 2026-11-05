@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="src/icon.ico" width="128" alt="Resona Logo">
   <h1>🎵 Resona</h1>
   <p><b>A modern Windows local music player designed for seamless library management, music downloading, auto-tagging, lyrics & cover fetching, AI playlist prompts, an equalizer, EN/FR support & more.</b></p>
@@ -46,9 +46,13 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [x] Fix the occasional audio crackling, especially when changing tracks (potentially fixed, but requires extensive testing to verify)
 - [x] Add a selection menu when long-pressing the repeat button
 - [ ] Improve security
+- [x] Make the equalizer in the large central cover mode more faithful in how it represents the sound being played
+- [x] Improve the crossfade volume curve to prevent the previous track from cutting off too abruptly towards the end of transitions
+- [x] Automatically hide missing tracks from playlist views while keeping them saved so they reappear if restored to disk
+- [x] Fix playback bar control buttons position flickering
+- [x] Fix tracks with lower sample rates playing silently due to equalizer filters exceeding the Nyquist frequency
 - [x] Small Improvements
 - [ ] Make a promo video for the app
-- [x] Make the equalizer in the large central cover mode more faithful in how it represents the sound being played
 
 </details>
 

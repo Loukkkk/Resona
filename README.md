@@ -39,13 +39,12 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 <br>
 
 - [x] Make the direct setup install from the app not require choosing an install location (it just downloads with a progress indicator and installs right away)
-- [ ] Improve the color transitions between tracks in the normal view, and in all display modes improve the transition between tracks for the text and other elements (a smooth animation, not a flicker)
+- [x] Improve the color transitions between tracks in the normal view, and in all display modes improve the transition between tracks for the text and other elements (a smooth animation, not a flicker)
 - [x] Allow pure white in the color picker (as a gradient)
-- [ ] Add an option so the app's theme grain isn't static
-- [ ] Stream your music to a friend (a full synchronized listening system with music sent in both directions, the ability to send a notification to a friend who has Resona open, etc.)
+- [x] Add an option so the app's theme grain isn't static
+- [x] Stream your music to a friend (a full synchronized listening system with music sent in both directions, the ability to send a notification to a friend who has Resona open, etc.)
 - [x] Fix the occasional audio crackling, especially when changing tracks (potentially fixed, but requires extensive testing to verify)
 - [x] Add a selection menu when long-pressing the repeat button
-- [ ] Improve security
 - [x] Make the equalizer in the large central cover mode more faithful in how it represents the sound being played
 - [x] Improve the crossfade volume curve to prevent the previous track from cutting off too abruptly towards the end of transitions
 - [x] Automatically hide missing tracks from playlist views while keeping them saved so they reappear if restored to disk

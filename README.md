@@ -11,7 +11,7 @@
 ## ✨ Features
 
 * 🎨 **Modern Design:** Beautiful WinUI 3 interface with support for 3 backdrop materials: Solid Color, Acrylic, and Mica.
-* 🎧 **Bit-perfect Playback:** Uses NAudio (with an option to activate WASAPI Exclusive mode to bypass the Windows mixer for pure, unaltered sound).
+* 👥 **Listen Together:** Connect with a friend and listen in sync, each of you can share music with the other in real time.
 * 📥 **Online Search & Download:** Search for music online and download tracks directly from the app into your library.
 * 🔍 **Auto-Tagging:** Automatically identifies unknown tracks using acoustic fingerprinting (Chromaprint/fpcalc) to fetch accurate metadata (artist, title) from MusicBrainz.
 * 🖼️ **Cover Art Fetching:** Automatically retrieves high-quality covers online.
@@ -23,6 +23,7 @@
 * 📝 **Playlist Management:** Full support for M3U and M3U8 import/export.
 * 🎮 **Discord Rich Presence:** Automatically showcase the track you are currently listening to on your Discord profile.
 * 🤖 **AI DJ:** Provides prompts to AI models to generate smart playlists, suggest tracks, and offer deep insights into your music collection.
+* 🎧 **Bit-perfect Playback:** Uses NAudio (with an option to activate WASAPI Exclusive mode to bypass the Windows mixer for pure, unaltered sound).
 * 🌍 **Language:** Available in English and French. The interface auto-adapts to your OS language.
 
 ---
@@ -50,7 +51,8 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [x] Automatically hide missing tracks from playlist views while keeping them saved so they reappear if restored to disk
 - [x] Fix playback bar control buttons position flickering
 - [x] Fix tracks with lower sample rates playing silently due to equalizer filters exceeding the Nyquist frequency
-- [x] Small Improvements
+- [x] Fixed an issue where Resona would not track the Windows device when it changed while the party option was enabled.
+- [x] Small Improvements / Fix
 - [ ] Make a promo video for the app
 
 </details>

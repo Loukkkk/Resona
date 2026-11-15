@@ -53,7 +53,7 @@ Here is a big list of features and ideas I'd like to add to Resona. It is simply
 - [x] Fix tracks with lower sample rates playing silently due to equalizer filters exceeding the Nyquist frequency
 - [x] Fixed an issue where Resona would not track the Windows device when it changed while the party option was enabled.
 - [x] Small Improvements / Fix
-- [ ] Make a promo video for the app
+- [x] Make a promo video for the app
 
 </details>
 

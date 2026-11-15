@@ -1,7 +1,7 @@
 <div align="center">
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="src/icon.ico" width="128" alt="Resona Logo">
   <h1>🎵 Resona</h1>
-  <p><b>A modern Windows local music player designed for seamless library management, music downloading, auto-tagging, lyrics & cover fetching, AI playlist prompts, an equalizer, EN/FR support & more.</b></p>
+  <p><b>A modern Windows local music player designed for seamless library management, music downloading, auto-tagging, lyrics & cover fetching, connecting with a friend to listen to the same track in sync, AI playlist prompts, an equalizer, EN/FR support & more.</b></p>
   </div>
 
 ![Aperçu des thèmes de Resona](images/Visuel-App-Themes.png)
